@@ -1,0 +1,46 @@
+export type QueueStatus =
+  | 'pre_recepcion'
+  | 'en_atencion_recepcion'
+  | 'en_espera_toma_muestras'
+  | 'en_atencion_toma_muestras'
+  | 'retirado'
+
+export interface Priority { id: string; code: string; name: string; color_hex: string; rank: number }
+export interface Reason { id: string; code: string; name: string }
+export interface Patient {
+  id: string
+  document_type: string
+  document_number: string
+  first_name: string
+  second_name: string | null
+  first_last_name: string
+  second_last_name: string | null
+  sex: 'M' | 'F' | null
+  birth_date: string | null
+  birth_place: string | null
+  blood_type: string | null
+  email: string | null
+  phone: string | null
+  address: string | null
+  insurer: string | null
+}
+export interface QueueEntry {
+  id: string
+  status: QueueStatus
+  claimed_by: string | null
+  arrived_at: string
+  draft: { test_codes?: string[] }
+  patient: Patient
+  priority: Priority
+  order_number: string | null
+}
+export interface CatalogTest { code: string; name: string; abbreviation: string | null }
+export interface OrderPrecondition {
+  category: string
+  name: string
+  duration_value: number | null
+  duration_unit: string | null
+  patient_instructions: string | null
+  source_test_codes: string[]
+}
+export interface ApiErrorBody { code?: string; message?: string; details?: unknown }
