@@ -1,8 +1,9 @@
 """Ordenes de laboratorio: numero, examenes y preanaliticos con snapshot."""
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -61,3 +62,23 @@ class OrderPrecondition(UUIDv7PK, Base):
     duration_unit: Mapped[str | None] = mapped_column(String(16))
     patient_instructions: Mapped[str | None] = mapped_column(Text)
     source_test_codes: Mapped[list] = mapped_column(JSONB, nullable=False)
+
+
+class OrderSample(UUIDv7PK, Base):
+    """Tubo de la orden: un tipo de muestra compartido por varios examenes."""
+
+    __tablename__ = "order_samples"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False
+    )
+    sample_type_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    sample_type_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    cap_color_hex: Mapped[str | None] = mapped_column(String(7))
+    draw_order: Mapped[int | None] = mapped_column(Integer)
+    collection_instructions: Mapped[str | None] = mapped_column(Text)
+    required_volume_ml: Mapped[float | None] = mapped_column(Float)
+    test_codes: Mapped[list] = mapped_column(JSONB, nullable=False)
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collected_by: Mapped[str | None] = mapped_column(String(120))

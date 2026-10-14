@@ -10,6 +10,7 @@ QueueStatusLiteral = Literal[
     "en_atencion_recepcion",
     "en_espera_toma_muestras",
     "en_atencion_toma_muestras",
+    "toma_finalizada",
     "retirado",
 ]
 

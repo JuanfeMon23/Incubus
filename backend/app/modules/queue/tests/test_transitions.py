@@ -25,6 +25,19 @@ def test_avances_validos():
     )
 
 
+def test_finalizar_toma_es_un_avance():
+    assert (
+        resolve_transition(S.EN_ATENCION_TOMA_MUESTRAS, S.TOMA_FINALIZADA)
+        is TransitionKind.ADVANCE
+    )
+
+
+def test_toma_finalizada_es_terminal():
+    for target in (S.EN_ESPERA_TOMA_MUESTRAS, S.PRE_RECEPCION, S.RETIRADO):
+        with pytest.raises(InvalidTransitionError):
+            resolve_transition(S.TOMA_FINALIZADA, target)
+
+
 def test_devoluciones_validas():
     assert (
         resolve_transition(S.EN_ATENCION_RECEPCION, S.PRE_RECEPCION)
