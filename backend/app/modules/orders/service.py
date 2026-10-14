@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError, ValidationAppError
 from app.modules.catalog_client.client import CatalogClient
+from app.modules.orders.errors import NoteRequiredError, UnansweredPreconditionsError
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
 from app.modules.orders.order_number import (
     OrderNumberExhaustedError,
@@ -17,6 +18,7 @@ from app.modules.orders.order_number import (
 from app.modules.orders.preconditions import (
     EffectivePrecondition,
     dedupe_preconditions,
+    precondition_key,
     slot_key,
 )
 from app.modules.orders.samples import group_samples
@@ -92,6 +94,7 @@ async def resolve_tests(
     merged = dedupe_preconditions([p for p, _ in pairs])
     preconditions = [
         {
+            "key": precondition_key(item),
             "category": item.category,
             "name": item.name,
             "duration_value": item.duration_value,
@@ -106,12 +109,43 @@ async def resolve_tests(
     return tests, preconditions
 
 
+def validate_checks(keys: list[str], checks: list[dict]) -> dict[str, dict]:
+    """Cada precondicion debe quedar respondida; 'no cumple' exige una nota.
+
+    No bloquea por incumplimiento: lo registra para decision clinica.
+    """
+    by_key = {c["key"]: c for c in checks}
+    missing = [k for k in keys if k not in by_key or by_key[k].get("met") is None]
+    if missing:
+        raise UnansweredPreconditionsError(
+            "Cada precondicion debe marcarse como cumple o no cumple.",
+            {"keys": missing},
+        )
+    needs_note = [
+        k
+        for k in keys
+        if by_key[k]["met"] is False and not (by_key[k].get("note") or "").strip()
+    ]
+    if needs_note:
+        raise NoteRequiredError(
+            "Una precondicion que no se cumple requiere una nota.", {"keys": needs_note}
+        )
+    return {
+        k: {
+            "met": bool(by_key[k]["met"]),
+            "note": (by_key[k].get("note") or "").strip() or None,
+        }
+        for k in keys
+    }
+
+
 async def close_reception(
     session: AsyncSession,
     catalog: CatalogClient,
     entry_id: UUID,
     test_codes: list[str],
     actor: str | None,
+    checks: list[dict] | None = None,
 ) -> Order:
     entry = await queue_service.get_entry(session, entry_id, lock=True)
     if entry.status != QueueStatus.EN_ATENCION_RECEPCION:
@@ -131,6 +165,7 @@ async def close_reception(
             {"missing_fields": missing},
         )
     tests, preconditions = await resolve_tests(catalog, test_codes)
+    answers = validate_checks([p["key"] for p in preconditions], checks or [])
     order = Order(
         order_number=await next_order_number(session, datetime.now(UTC)),
         queue_entry_id=entry.id,
@@ -147,13 +182,24 @@ async def close_reception(
                 snapshot=test,
             )
         )
+    now = datetime.now(UTC)
     for pre in preconditions:
-        session.add(OrderPrecondition(order_id=order.id, **pre))
+        answer = answers[pre["key"]]
+        session.add(
+            OrderPrecondition(
+                order_id=order.id,
+                **pre,
+                reception_met=answer["met"],
+                reception_note=answer["note"],
+                reception_checked_at=now,
+                reception_checked_by=actor,
+            )
+        )
     await session.flush()
     await queue_service.change_status(
         session,
         entry.id,
-        QueueStatus.EN_ESPERA_TOMA_MUESTRAS,
+        QueueStatus.EN_ESPERA_IMPRESION,
         actor=actor,
         note=f"orden {order.order_number}",
     )
@@ -162,30 +208,40 @@ async def close_reception(
 
 async def ensure_samples(
     session: AsyncSession, catalog: CatalogClient, entry_id: UUID
-) -> None:
-    """Crea los tubos de la orden la primera vez que el paciente entra a toma de
-    muestras (no al cerrar recepcion). Idempotente: devolver y volver a tomar al
-    paciente no duplica tubos. Usa el snapshot de examenes de la orden."""
+) -> Order | None:
+    """Crea los tubos de la orden (idempotente) desde el snapshot de examenes.
+
+    Los tubos pertenecen a la estacion de impresion/toma, no a recepcion. Cada
+    tubo guarda la ruta de areas (acronimos) de los examenes que contiene.
+    """
     order = (
         await session.execute(select(Order).where(Order.queue_entry_id == entry_id))
     ).scalar_one_or_none()
     if order is None:
-        return
+        return None
     existing = (
         await session.execute(
             select(OrderSample.id).where(OrderSample.order_id == order.id).limit(1)
         )
     ).first()
     if existing is not None:
-        return
-    snapshots = (
-        await session.execute(
-            select(OrderTest.snapshot).where(OrderTest.order_id == order.id)
-        )
-    ).scalars()
-    tests = list(snapshots)
+        return order
+    tests = list(
+        (
+            await session.execute(
+                select(OrderTest.snapshot).where(OrderTest.order_id == order.id)
+            )
+        ).scalars()
+    )
     sample_types = await catalog.sample_types_by_id() if tests else {}
+    areas = await catalog.areas_by_id() if tests else {}
+    area_of_test = {t["code"]: areas.get(str(t.get("area_id"))) for t in tests}
     for tube in group_samples(tests, sample_types):
+        route: list[str] = []
+        for code in tube.test_codes:
+            acronym = area_of_test.get(code)
+            if acronym and acronym not in route:
+                route.append(acronym)
         session.add(
             OrderSample(
                 order_id=order.id,
@@ -197,6 +253,98 @@ async def ensure_samples(
                 collection_instructions=tube.collection_instructions,
                 required_volume_ml=tube.required_volume_ml,
                 test_codes=tube.test_codes,
+                area_route=route,
             )
         )
     await session.flush()
+    return order
+
+
+async def print_labels(
+    session: AsyncSession,
+    catalog: CatalogClient,
+    entry_id: UUID,
+    professional_id: str,
+    professional_name: str,
+    actor: str | None,
+) -> Order:
+    """Imprime etiquetas: crea tubos, asigna al profesional y pasa a espera de toma."""
+    entry = await queue_service.get_entry(session, entry_id, lock=True)
+    if entry.status != QueueStatus.EN_ESPERA_IMPRESION:
+        raise ValidationAppError(
+            "Solo se imprimen etiquetas de una orden en espera de impresion.",
+            {"status": entry.status},
+        )
+    order = await ensure_samples(session, catalog, entry_id)
+    if order is None:
+        raise ValidationAppError(
+            "La entrada no tiene orden.", {"entry_id": str(entry_id)}
+        )
+    now = datetime.now(UTC)
+    tubes = (
+        await session.execute(
+            select(OrderSample).where(OrderSample.order_id == order.id)
+        )
+    ).scalars()
+    for tube in tubes:
+        tube.labels_printed_at = now
+    entry.assigned_professional_id = professional_id
+    entry.assigned_professional_name = professional_name
+    await session.flush()
+    await queue_service.change_status(
+        session,
+        entry_id,
+        QueueStatus.EN_ESPERA_TOMA_MUESTRAS,
+        actor=actor,
+        note=f"asignado a {professional_name}",
+    )
+    return order
+
+
+async def save_checks(
+    session: AsyncSession,
+    entry_id: UUID,
+    stage: str,
+    checks: list[dict],
+    actor: str | None,
+) -> None:
+    """Guarda la verificacion de una etapa (`reception` | `sampling`)."""
+    order = (
+        await session.execute(select(Order).where(Order.queue_entry_id == entry_id))
+    ).scalar_one_or_none()
+    if order is None:
+        raise ValidationAppError(
+            "La entrada no tiene orden.", {"entry_id": str(entry_id)}
+        )
+    rows = list(
+        (
+            await session.execute(
+                select(OrderPrecondition).where(OrderPrecondition.order_id == order.id)
+            )
+        ).scalars()
+    )
+    answers = validate_checks([r.key for r in rows], checks)
+    now = datetime.now(UTC)
+    for row in rows:
+        answer = answers[row.key]
+        setattr(row, f"{stage}_met", answer["met"])
+        setattr(row, f"{stage}_note", answer["note"])
+        setattr(row, f"{stage}_checked_at", now)
+        setattr(row, f"{stage}_checked_by", actor)
+    await session.flush()
+
+
+async def unanswered_checks(
+    session: AsyncSession, entry_id: UUID, stage: str
+) -> list[str]:
+    """Llaves de precondiciones aun sin responder en la etapa indicada."""
+    column = getattr(OrderPrecondition, f"{stage}_met")
+    return list(
+        (
+            await session.execute(
+                select(OrderPrecondition.key)
+                .join(Order, Order.id == OrderPrecondition.order_id)
+                .where(Order.queue_entry_id == entry_id, column.is_(None))
+            )
+        ).scalars()
+    )

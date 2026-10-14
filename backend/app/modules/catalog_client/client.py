@@ -86,6 +86,23 @@ class CatalogClient:
                 result[item["id"]] = item
         return result
 
+    async def areas_by_id(self) -> dict[str, str]:
+        """`id` del area -> acronimo (`code`) con el que se rotula el tubo."""
+        page = await self._get("/lab-areas", {"page_size": _PAGE_SIZE})
+        return {a["id"]: a["code"] for a in page["items"]}
+
+    async def list_staff(self) -> list[dict]:
+        """Personal activo (para elegir al profesional de toma de muestras)."""
+        page = await self._get("/staff", {"page_size": _PAGE_SIZE, "active": "true"})
+        return [
+            {
+                "id": s["id"],
+                "name": f"{s['first_name']} {s['last_name']}",
+                "job_title": s.get("job_title"),
+            }
+            for s in page["items"]
+        ]
+
 
 def get_catalog_client() -> CatalogClient:
     return CatalogClient(get_settings().vladimir_api_url)

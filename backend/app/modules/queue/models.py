@@ -92,6 +92,8 @@ class QueueEntry(UUIDv7PK, Timestamps, Base):
         String(32), server_default=text("'pre_recepcion'"), nullable=False
     )
     claimed_by: Mapped[str | None] = mapped_column(String(120))
+    assigned_professional_id: Mapped[str | None] = mapped_column(String(64))
+    assigned_professional_name: Mapped[str | None] = mapped_column(String(150))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Borrador de recepcion: sobrevive a una devolucion a pre-recepcion.
     draft: Mapped[dict] = mapped_column(

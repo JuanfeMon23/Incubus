@@ -8,6 +8,7 @@ Sex = Literal["M", "F"]
 QueueStatusLiteral = Literal[
     "pre_recepcion",
     "en_atencion_recepcion",
+    "en_espera_impresion",
     "en_espera_toma_muestras",
     "en_atencion_toma_muestras",
     "toma_finalizada",
@@ -78,6 +79,8 @@ class QueueEntryCreate(BaseModel):
 
 class ClaimInput(BaseModel):
     actor: str | None = Field(default=None, max_length=120)
+    # Toma de muestras: solo el profesional asignado puede tomar al paciente.
+    professional_id: str | None = Field(default=None, max_length=64)
 
 
 class ReasonedActionInput(BaseModel):
@@ -98,6 +101,8 @@ class QueueEntryRead(BaseModel):
     id: UUID
     status: QueueStatusLiteral
     claimed_by: str | None
+    assigned_professional_id: str | None = None
+    assigned_professional_name: str | None = None
     arrived_at: datetime
     draft: dict
     patient: PatientRead

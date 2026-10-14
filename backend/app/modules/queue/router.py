@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
 from app.core.realtime import queue_events
-from app.modules.catalog_client.client import CatalogClient, get_catalog_client
+from app.modules.orders.errors import UnansweredPreconditionsError
 from app.modules.orders.models import Order, OrderSample
-from app.modules.orders.service import ensure_samples
+from app.modules.orders.service import unanswered_checks
 from app.modules.patients.cedula import CedulaParseError, parse_cedula_barcode
 from app.modules.queue import service
 from app.modules.queue.models import Patient, Priority, RemovalReason, ReturnReason
@@ -120,6 +120,8 @@ def _to_read(entry, patient, priority, order_number=None) -> QueueEntryRead:
         id=entry.id,
         status=entry.status,
         claimed_by=entry.claimed_by,
+        assigned_professional_id=entry.assigned_professional_id,
+        assigned_professional_name=entry.assigned_professional_name,
         arrived_at=entry.arrived_at,
         draft=entry.draft,
         patient=PatientRead.model_validate(patient),
@@ -140,6 +142,7 @@ async def list_queue(
     status_filter: Annotated[
         list[QueueStatusLiteral] | None, Query(alias="status")
     ] = None,
+    professional_id: Annotated[str | None, Query(max_length=64)] = None,
 ) -> list[QueueEntryRead]:
     statuses = (
         [QueueStatus(s) for s in status_filter]
@@ -147,6 +150,8 @@ async def list_queue(
         else [s for s in QueueStatus if s is not QueueStatus.RETIRADO]
     )
     rows = await service.list_entries(session, statuses)
+    if professional_id is not None:
+        rows = [r for r in rows if r[0].assigned_professional_id == professional_id]
     numbers = dict(
         (await session.execute(select(Order.queue_entry_id, Order.order_number))).all()
     )
@@ -183,14 +188,9 @@ _CLAIM_TARGET = {
 
 
 @queue_router.post("/{entry_id}/claim", response_model=QueueEntryRead)
-async def claim(
-    entry_id: UUID,
-    body: ClaimInput,
-    session: Session,
-    catalog: Annotated[CatalogClient, Depends(get_catalog_client)],
-) -> QueueEntryRead:
-    """Toma al paciente: pre-recepcion -> en atencion de recepcion, o espera ->
-    en atencion de toma de muestras. Si otro ya lo tomo responde 409."""
+async def claim(entry_id: UUID, body: ClaimInput, session: Session) -> QueueEntryRead:
+    """Toma al paciente: pre-recepcion -> en atencion de recepcion, o espera de
+    toma -> en atencion de toma de muestras (solo el profesional asignado)."""
     entry = await service.get_entry(session, entry_id)
     target = _CLAIM_TARGET.get(QueueStatus(entry.status))
     if target is None:
@@ -198,9 +198,15 @@ async def claim(
             f"No se puede tomar un paciente en «{entry.status}».",
             {"status": entry.status},
         )
+    if (
+        target is QueueStatus.EN_ATENCION_TOMA_MUESTRAS
+        and entry.assigned_professional_id != body.professional_id
+    ):
+        raise ConflictError(
+            "El paciente esta asignado a otro profesional de toma de muestras.",
+            {"assigned_professional_id": entry.assigned_professional_id},
+        )
     await service.change_status(session, entry_id, target, actor=body.actor)
-    if target is QueueStatus.EN_ATENCION_TOMA_MUESTRAS:
-        await ensure_samples(session, catalog, entry_id)
     await session.commit()
     read = await _read(session, entry_id)
     await _publish("status_changed", read)
@@ -278,6 +284,11 @@ async def finish_sampling(
     )
     if pending:
         raise ValidationAppError("Faltan muestras por tomar.", {"pending": pending})
+    unanswered = await unanswered_checks(session, entry_id, "sampling")
+    if unanswered:
+        raise UnansweredPreconditionsError(
+            "Falta la segunda verificacion de precondiciones.", {"keys": unanswered}
+        )
     await service.change_status(
         session, entry_id, QueueStatus.TOMA_FINALIZADA, actor=body.actor
     )
