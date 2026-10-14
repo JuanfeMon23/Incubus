@@ -155,6 +155,18 @@ async def test_pdf_de_etiquetas_tiene_una_pagina_por_tubo(client, catalog):
     assert res.content.count(b"/Type /Page\n") >= 2
 
 
+async def test_zpl_de_etiquetas_con_un_bloque_por_tubo(client, catalog):
+    entry_id, number = await _printed(client, catalog)
+    res = await client.get(f"/api/v1/orders/by-entry/{entry_id}/labels.zpl")
+    assert res.status_code == 200
+    assert res.text.count("^XA") == 2
+    assert f"^FD{number}^FS" in res.text
+    custom = await client.get(
+        f"/api/v1/orders/by-entry/{entry_id}/labels.zpl?width_mm=50&height_mm=25&dpi=300"
+    )
+    assert "^PW600" in custom.text  # 50 mm a 12 dots/mm
+
+
 async def test_solo_el_profesional_asignado_toma_al_paciente(client, catalog):
     entry_id, _ = await _printed(client, catalog)
     otro = await client.post(
@@ -267,3 +279,14 @@ async def test_catalogo_de_personal(client, catalog):
     assert res == [
         {"id": "staff-1", "name": "Luis Perez", "job_title": "Toma de muestras"}
     ]
+
+
+async def test_personal_se_filtra_por_cargo(client, catalog):
+    catalog.add_staff(
+        "s1", "Luis", "Perez", "Auxiliar de laboratorio - Toma de muestras"
+    )
+    catalog.add_staff("s2", "Ana", "Gil", "Bacterióloga")
+    res = (await client.get("/api/v1/catalog/staff?job_title=toma de muestras")).json()
+    assert [s["id"] for s in res] == ["s1"]
+    todos = (await client.get("/api/v1/catalog/staff")).json()
+    assert len(todos) == 2
