@@ -69,10 +69,18 @@
             required
           />
         </UiFormField>
+        <UiCheckbox
+          :model-value="showAllStaff"
+          label="Mostrar todo el personal (no solo toma de muestras)"
+          @update:model-value="toggleStaff"
+        />
 
         <UiAlert v-if="error" variant="danger" :message="error" />
 
-        <div class="flex justify-end">
+        <div class="flex flex-wrap justify-end gap-2">
+          <UiButton variant="secondary" :disabled="!order?.samples.length" @click="downloadZpl">
+            Descargar ZPL
+          </UiButton>
           <UiButton :disabled="!professionalId || !order?.samples.length" :loading="busy" @click="print">
             Imprimir etiquetas y asignar
           </UiButton>
@@ -107,13 +115,33 @@ const loading = ref(false)
 const busy = ref(false)
 const error = ref('')
 
-onMounted(async () => {
+// Por defecto solo el personal cuyo cargo incluye "toma de muestras".
+const STAFF_JOB_FILTER = 'toma de muestras'
+const showAllStaff = ref(false)
+
+async function loadStaff() {
   try {
-    staff.value = await api<StaffMember[]>('/catalog/staff')
+    staff.value = await api<StaffMember[]>('/catalog/staff', {
+      query: showAllStaff.value ? {} : { job_title: STAFF_JOB_FILTER }
+    })
   } catch (e) {
     error.value = apiErrorMessage(e)
   }
-})
+}
+
+async function toggleStaff(value: boolean) {
+  showAllStaff.value = value
+  professionalId.value = ''
+  await loadStaff()
+}
+
+onMounted(loadStaff)
+
+/** Descarga el ZPL (203 dpi, 70x35 mm) para enviarlo a la impresora térmica. */
+function downloadZpl() {
+  if (!current.value) return
+  window.open(`${apiBase}/orders/by-entry/${current.value.id}/labels.zpl`, '_blank')
+}
 
 async function select(e: QueueEntry) {
   currentId.value = e.id
