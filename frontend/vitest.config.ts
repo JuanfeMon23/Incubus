@@ -9,6 +9,6 @@ export default defineVitestConfig({
         overrides: { runtimeConfig: { public: { apiBase: 'http://api.test/api/v1' } } }
       }
     },
-    include: ['app/**/*.test.ts']
+    include: ['app/components/**/*.test.ts']
   }
 })

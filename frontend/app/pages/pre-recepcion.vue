@@ -1,7 +1,7 @@
 <template>
   <div class="grid gap-6 lg:grid-cols-[24rem_1fr]">
     <UiCard title="Ingreso de paciente" description="Escanee la cédula o digite los datos.">
-      <form class="space-y-3" @submit.prevent="submit">
+      <form class="space-y-3" novalidate @submit.prevent="onSubmit">
         <UiFormField label="Escanear cédula (código de barras)" :error="scanError">
           <UiTextInput
             v-model="scan"
@@ -12,16 +12,16 @@
         </UiFormField>
 
         <div class="grid grid-cols-2 gap-3">
-          <UiFormField label="Documento" required><UiTextInput v-model="form.document_number" required /></UiFormField>
-          <UiFormField label="Sexo">
-            <UiSelect v-model="form.sex" :options="sexOptions" empty-label="—" />
+          <UiFormField name="document_number" label="Documento" required><UiTextInput /></UiFormField>
+          <UiFormField name="sex" label="Sexo">
+            <UiSelect :options="sexOptions" empty-label="—" />
           </UiFormField>
-          <UiFormField label="Primer nombre" required><UiTextInput v-model="form.first_name" required /></UiFormField>
-          <UiFormField label="Segundo nombre"><UiTextInput v-model="form.second_name" /></UiFormField>
-          <UiFormField label="Primer apellido" required><UiTextInput v-model="form.first_last_name" required /></UiFormField>
-          <UiFormField label="Segundo apellido"><UiTextInput v-model="form.second_last_name" /></UiFormField>
-          <UiFormField label="Nacimiento"><UiTextInput v-model="form.birth_date" type="date" /></UiFormField>
-          <UiFormField label="RH"><UiTextInput v-model="form.blood_type" /></UiFormField>
+          <UiFormField name="first_name" label="Primer nombre" required><UiTextInput /></UiFormField>
+          <UiFormField name="second_name" label="Segundo nombre"><UiTextInput /></UiFormField>
+          <UiFormField name="first_last_name" label="Primer apellido" required><UiTextInput /></UiFormField>
+          <UiFormField name="second_last_name" label="Segundo apellido"><UiTextInput /></UiFormField>
+          <UiFormField name="birth_date" label="Nacimiento"><UiTextInput type="date" /></UiFormField>
+          <UiFormField name="blood_type" label="RH"><UiTextInput /></UiFormField>
         </div>
 
         <fieldset>
@@ -38,10 +38,11 @@
               {{ p.name }}
             </label>
           </div>
+          <p v-if="errors.priority_id" class="mt-1 text-xs text-danger-600">{{ errors.priority_id }}</p>
         </fieldset>
 
-        <UiAlert v-if="error" variant="danger" :message="error" />
-        <UiButton type="submit" class="w-full" :disabled="!priorityId" :loading="busy">
+        <UiAlert v-if="formError" variant="danger" :message="formError" />
+        <UiButton type="submit" class="w-full" :loading="isSubmitting">
           Ingresar a la cola
         </UiButton>
       </form>
@@ -82,7 +83,8 @@
 </template>
 
 <script setup lang="ts">
-import type { Patient, Priority, Reason } from '../types'
+import type { Priority, Reason } from '../types'
+import { intakePatientSchema } from '../utils/patientSchemas'
 
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
@@ -107,14 +109,16 @@ const blank = () => ({
   second_last_name: '',
   sex: '' as '' | 'M' | 'F',
   birth_date: '',
-  blood_type: ''
+  blood_type: '',
+  priority_id: ''
 })
-const form = reactive(blank())
+// Errores en rojo bajo cada campo (zod + vee-validate), igual que en Vladimir.
+const form = useZodForm(intakePatientSchema, { initialValues: blank })
+const { errors, isSubmitting, formError } = form
 const priorityId = ref('')
+watch(priorityId, (id) => form.setFieldValue('priority_id', id))
 const scan = ref('')
 const scanError = ref('')
-const error = ref('')
-const busy = ref(false)
 const removing = ref<{ id: string } | null>(null)
 
 async function parseScan() {
@@ -124,13 +128,13 @@ async function parseScan() {
       method: 'POST',
       body: { raw: scan.value }
     })
-    Object.assign(form, {
+    form.setValues({
       document_number: data.document_number ?? '',
       first_name: data.first_name ?? '',
       second_name: data.second_name ?? '',
       first_last_name: data.first_last_name ?? '',
       second_last_name: data.second_last_name ?? '',
-      sex: data.sex ?? '',
+      sex: (data.sex ?? '') as '' | 'M' | 'F',
       birth_date: data.birth_date ?? '',
       blood_type: data.blood_type ?? ''
     })
@@ -141,24 +145,19 @@ async function parseScan() {
   }
 }
 
-async function submit() {
-  busy.value = true
-  error.value = ''
-  const clean = Object.fromEntries(
-    Object.entries(form).map(([k, v]) => [k, v === '' ? null : v])
-  ) as Partial<Patient>
+const onSubmit = form.submit(async (values) => {
+  const { priority_id: priorityValue, ...patient } = values
   try {
-    await api('/queue', { method: 'POST', body: { patient: clean, priority_id: priorityId.value } })
-    Object.assign(form, blank())
-    toast.success('Paciente ingresado a la cola.')
-    await refresh()
+    await api('/queue', { method: 'POST', body: { patient, priority_id: priorityValue } })
   } catch (e) {
-    error.value = apiErrorMessage(e)
-    toast.error(error.value)
-  } finally {
-    busy.value = false
+    toast.error(apiErrorMessage(e))
+    throw e
   }
-}
+  form.reset()
+  priorityId.value = priorities.value.find((p) => p.code === 'media')?.id ?? ''
+  toast.success('Paciente ingresado a la cola.')
+  await refresh()
+})
 
 async function remove(payload: { reason_id: string; note: string | null }) {
   if (!removing.value) return
