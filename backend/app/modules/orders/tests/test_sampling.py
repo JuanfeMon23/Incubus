@@ -31,14 +31,30 @@ async def _closed_order(client, catalog):
     return entry["id"], res.json()["order_number"]
 
 
-async def test_cierre_crea_un_tubo_por_tipo_ordenado_por_extraccion(client, catalog):
+async def test_cierre_de_recepcion_no_crea_tubos(client, catalog):
     entry_id, _ = await _closed_order(client, catalog)
     detail = (await client.get(f"/api/v1/orders/by-entry/{entry_id}")).json()
-    tubes = detail["samples"]
+    assert detail["samples"] == []
+
+
+async def test_tubos_aparecen_al_tomar_al_paciente_en_toma_de_muestras(client, catalog):
+    entry_id, _ = await _closed_order(client, catalog)
+    await client.post(f"/api/v1/queue/{entry_id}/claim", json={"actor": "luis"})
+    tubes = (await client.get(f"/api/v1/orders/by-entry/{entry_id}")).json()["samples"]
     assert [t["name"] for t in tubes] == ["Tapa lila", "Tapa roja"]
     assert tubes[1]["required_volume_ml"] == 5.0
     assert tubes[1]["test_codes"] == ["COL", "TRI"]
     assert all(t["collected_at"] is None for t in tubes)
+
+
+async def test_devolver_y_volver_a_tomar_no_duplica_tubos(client, catalog):
+    entry_id, _ = await _closed_order(client, catalog)
+    await client.post(f"/api/v1/queue/{entry_id}/claim", json={"actor": "luis"})
+    ret = (await client.get("/api/v1/return-reasons")).json()[0]["id"]
+    await client.post(f"/api/v1/queue/{entry_id}/return", json={"reason_id": ret})
+    await client.post(f"/api/v1/queue/{entry_id}/claim", json={"actor": "luis"})
+    tubes = (await client.get(f"/api/v1/orders/by-entry/{entry_id}")).json()["samples"]
+    assert len(tubes) == 2
 
 
 async def test_finalizar_exige_todos_los_tubos_tomados(client, catalog):
@@ -70,6 +86,7 @@ async def test_finalizar_exige_todos_los_tubos_tomados(client, catalog):
 
 async def test_destomar_un_tubo(client, catalog):
     entry_id, _ = await _closed_order(client, catalog)
+    await client.post(f"/api/v1/queue/{entry_id}/claim", json={"actor": "luis"})
     tube = (await client.get(f"/api/v1/orders/by-entry/{entry_id}")).json()["samples"][
         0
     ]

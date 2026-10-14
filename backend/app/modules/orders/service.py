@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError, ValidationAppError
@@ -149,6 +149,41 @@ async def close_reception(
         )
     for pre in preconditions:
         session.add(OrderPrecondition(order_id=order.id, **pre))
+    await session.flush()
+    await queue_service.change_status(
+        session,
+        entry.id,
+        QueueStatus.EN_ESPERA_TOMA_MUESTRAS,
+        actor=actor,
+        note=f"orden {order.order_number}",
+    )
+    return order
+
+
+async def ensure_samples(
+    session: AsyncSession, catalog: CatalogClient, entry_id: UUID
+) -> None:
+    """Crea los tubos de la orden la primera vez que el paciente entra a toma de
+    muestras (no al cerrar recepcion). Idempotente: devolver y volver a tomar al
+    paciente no duplica tubos. Usa el snapshot de examenes de la orden."""
+    order = (
+        await session.execute(select(Order).where(Order.queue_entry_id == entry_id))
+    ).scalar_one_or_none()
+    if order is None:
+        return
+    existing = (
+        await session.execute(
+            select(OrderSample.id).where(OrderSample.order_id == order.id).limit(1)
+        )
+    ).first()
+    if existing is not None:
+        return
+    snapshots = (
+        await session.execute(
+            select(OrderTest.snapshot).where(OrderTest.order_id == order.id)
+        )
+    ).scalars()
+    tests = list(snapshots)
     sample_types = await catalog.sample_types_by_id() if tests else {}
     for tube in group_samples(tests, sample_types):
         session.add(
@@ -165,11 +200,3 @@ async def close_reception(
             )
         )
     await session.flush()
-    await queue_service.change_status(
-        session,
-        entry.id,
-        QueueStatus.EN_ESPERA_TOMA_MUESTRAS,
-        actor=actor,
-        note=f"orden {order.order_number}",
-    )
-    return order
