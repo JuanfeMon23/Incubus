@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
 from app.core.realtime import queue_events
+from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders.models import Order, OrderSample
+from app.modules.orders.service import ensure_samples
 from app.modules.patients.cedula import CedulaParseError, parse_cedula_barcode
 from app.modules.queue import service
 from app.modules.queue.models import Patient, Priority, RemovalReason, ReturnReason
@@ -181,7 +183,12 @@ _CLAIM_TARGET = {
 
 
 @queue_router.post("/{entry_id}/claim", response_model=QueueEntryRead)
-async def claim(entry_id: UUID, body: ClaimInput, session: Session) -> QueueEntryRead:
+async def claim(
+    entry_id: UUID,
+    body: ClaimInput,
+    session: Session,
+    catalog: Annotated[CatalogClient, Depends(get_catalog_client)],
+) -> QueueEntryRead:
     """Toma al paciente: pre-recepcion -> en atencion de recepcion, o espera ->
     en atencion de toma de muestras. Si otro ya lo tomo responde 409."""
     entry = await service.get_entry(session, entry_id)
@@ -192,6 +199,8 @@ async def claim(entry_id: UUID, body: ClaimInput, session: Session) -> QueueEntr
             {"status": entry.status},
         )
     await service.change_status(session, entry_id, target, actor=body.actor)
+    if target is QueueStatus.EN_ATENCION_TOMA_MUESTRAS:
+        await ensure_samples(session, catalog, entry_id)
     await session.commit()
     read = await _read(session, entry_id)
     await _publish("status_changed", read)
