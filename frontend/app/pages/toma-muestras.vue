@@ -19,11 +19,16 @@
               </p>
               <div class="mt-2 flex items-center justify-between">
                 <PriorityBadge :priority="e.priority" />
-                <UiButton size="sm" :disabled="!professionalId" @click="claim(e)">Tomar</UiButton>
+                <UiButton size="sm" :disabled="!professionalId" :loading="claimingId === e.id" @click="claim(e)">
+                  Tomar
+                </UiButton>
               </div>
             </UiCard>
           </li>
-          <li v-if="!waiting.length" class="text-sm text-text-muted">
+          <li v-if="listLoading" class="flex justify-center py-4">
+            <UiSpinner color="primary" label="Cargando cola" />
+          </li>
+          <li v-else-if="!waiting.length" class="text-sm text-text-muted">
             {{ professionalId ? 'Sin pacientes asignados.' : 'Seleccione un profesional.' }}
           </li>
         </ul>
@@ -96,6 +101,7 @@
               </div>
               <UiCheckbox
                 :model-value="!!s.collected_at"
+                :disabled="togglingId === s.id"
                 label="Tomada"
                 @update:model-value="toggle(s, $event)"
               />
@@ -137,7 +143,10 @@ import type { CheckMap } from '../utils/checks'
 
 const ACTOR = 'toma-muestras'
 const api = useApi()
-const { entries, refresh } = useQueueList(['en_espera_toma_muestras', 'en_atencion_toma_muestras'])
+const toast = useToast()
+const { entries, loading: listLoading, refresh } = useQueueList(['en_espera_toma_muestras', 'en_atencion_toma_muestras'])
+const claimingId = ref<string | null>(null)
+const togglingId = ref<string | null>(null)
 
 // Profesional que atiende (se recuerda en este navegador).
 const staff = ref<StaffMember[]>([])
@@ -200,11 +209,13 @@ async function select(e: QueueEntry) {
     checks.value = initial
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
   }
 }
 
 async function claim(e: QueueEntry) {
   error.value = ''
+  claimingId.value = e.id
   try {
     await api(`/queue/${e.id}/claim`, {
       method: 'POST',
@@ -215,12 +226,16 @@ async function claim(e: QueueEntry) {
     if (fresh) await select(fresh)
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
     await refresh()
+  } finally {
+    claimingId.value = null
   }
 }
 
 async function toggle(sample: OrderSample, collected: boolean) {
   if (!order.value) return
+  togglingId.value = sample.id
   try {
     const updated = await api<OrderSample>(
       `/orders/samples/${sample.id}/${collected ? 'collect' : 'uncollect'}`,
@@ -230,8 +245,12 @@ async function toggle(sample: OrderSample, collected: boolean) {
       ...order.value,
       samples: order.value.samples.map((s) => (s.id === updated.id ? updated : s))
     }
+    if (collected) toast.success(`Tubo «${sample.name}» marcado como tomado.`)
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
+  } finally {
+    togglingId.value = null
   }
 }
 
@@ -252,11 +271,13 @@ async function finish() {
       method: 'POST',
       body: { actor: ACTOR }
     })
+    toast.success('Toma de muestras finalizada.')
     currentId.value = null
     order.value = null
     await refresh()
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
   } finally {
     busy.value = false
   }
@@ -270,11 +291,13 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
       method: 'POST',
       body: { ...payload, actor: ACTOR }
     })
+    toast.info('Paciente devuelto a espera de toma de muestras.')
     currentId.value = null
     order.value = null
     await refresh()
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
   }
 }
 </script>

@@ -17,7 +17,12 @@
             </span>
           </button>
         </li>
-        <li v-if="!entries.length" class="text-sm text-text-muted">Sin órdenes pendientes de impresión.</li>
+        <li v-if="listLoading" class="flex justify-center py-4">
+          <UiSpinner color="primary" label="Cargando cola" />
+        </li>
+        <li v-else-if="!entries.length" class="text-sm text-text-muted">
+          Sin órdenes pendientes de impresión.
+        </li>
       </ul>
     </aside>
 
@@ -100,8 +105,9 @@ import type { OrderDetail, QueueEntry, StaffMember } from '../types'
 
 const ACTOR = 'impresion'
 const api = useApi()
+const toast = useToast()
 const apiBase = useRuntimeConfig().public.apiBase
-const { entries, refresh } = useQueueList(['en_espera_impresion'])
+const { entries, loading: listLoading, refresh } = useQueueList(['en_espera_impresion'])
 
 const staff = ref<StaffMember[]>([])
 const staffOptions = computed(() =>
@@ -126,6 +132,7 @@ async function loadStaff() {
     })
   } catch (e) {
     error.value = apiErrorMessage(e)
+    toast.error(error.value)
   }
 }
 
@@ -153,6 +160,7 @@ async function select(e: QueueEntry) {
     order.value = await api<OrderDetail>(`/orders/by-entry/${e.id}/samples`, { method: 'POST' })
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
   } finally {
     loading.value = false
   }
@@ -172,11 +180,13 @@ async function print() {
     })
     // PDF básico con una etiqueta por tubo; ZPL para impresora térmica queda como mejora.
     window.open(`${apiBase}/orders/by-entry/${entryId}/labels.pdf`, '_blank')
+    toast.success(`Etiquetas generadas y paciente asignado a ${pro.name}.`)
     currentId.value = null
     order.value = null
     await refresh()
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
   } finally {
     busy.value = false
   }
