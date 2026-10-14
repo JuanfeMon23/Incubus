@@ -1,8 +1,15 @@
 <template>
   <div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
     <aside class="space-y-6">
+      <UiFormField label="Profesional" required>
+        <UiSelect
+          v-model="professionalId"
+          :options="staffOptions"
+          placeholder="Seleccione quién atiende…"
+        />
+      </UiFormField>
       <section>
-        <h2 class="mb-2 font-semibold">Esperando toma ({{ waiting.length }})</h2>
+        <h2 class="mb-2 font-semibold">Mi cola de espera ({{ waiting.length }})</h2>
         <ul class="space-y-2">
           <li v-for="e in waiting" :key="e.id">
             <UiCard padding="sm" :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }">
@@ -12,11 +19,13 @@
               </p>
               <div class="mt-2 flex items-center justify-between">
                 <PriorityBadge :priority="e.priority" />
-                <UiButton size="sm" @click="claim(e)">Tomar</UiButton>
+                <UiButton size="sm" :disabled="!professionalId" @click="claim(e)">Tomar</UiButton>
               </div>
             </UiCard>
           </li>
-          <li v-if="!waiting.length" class="text-sm text-text-muted">Nadie en espera.</li>
+          <li v-if="!waiting.length" class="text-sm text-text-muted">
+            {{ professionalId ? 'Sin pacientes asignados.' : 'Seleccione un profesional.' }}
+          </li>
         </ul>
       </section>
 
@@ -53,17 +62,13 @@
           <PriorityBadge :priority="current.priority" />
         </div>
 
-        <UiAlert v-if="order.preconditions.length" variant="warning" title="Verificar preparación del paciente">
-          <ul class="space-y-1 text-sm">
-            <li v-for="p in order.preconditions" :key="p.category + p.name + p.patient_instructions">
-              <strong>{{ p.name }}</strong>
-              <span v-if="formatDuration(p.duration_value, p.duration_unit)">
-                — {{ formatDuration(p.duration_value, p.duration_unit) }}
-              </span>
-              <span v-if="p.patient_instructions">: {{ p.patient_instructions }}</span>
-            </li>
-          </ul>
-        </UiAlert>
+        <PreconditionChecklist
+          v-if="order.preconditions.length"
+          v-model="checks"
+          title="Segunda verificación de la preparación del paciente"
+          :items="order.preconditions"
+          :previous="receptionResults"
+        />
 
         <UiSection title="Tubos a tomar" description="En orden de extracción.">
           <ul class="space-y-2">
@@ -84,7 +89,9 @@
                     · {{ formatVolume(s.required_volume_ml) }}
                   </span>
                 </p>
-                <p class="text-xs text-text-muted">Exámenes: {{ s.test_codes.join(', ') }}</p>
+                <p class="text-xs text-text-muted">
+                  Exámenes: {{ s.test_codes.join(', ') }} · Ruta: {{ s.area_route.join(' > ') || '—' }}
+                </p>
                 <p v-if="s.collection_instructions" class="text-xs">{{ s.collection_instructions }}</p>
               </div>
               <UiCheckbox
@@ -100,7 +107,7 @@
 
         <div class="flex justify-between">
           <UiButton variant="secondary" @click="returning = true">Devolver a espera</UiButton>
-          <UiButton :disabled="!allCollected(order.samples)" :loading="busy" @click="finish">
+          <UiButton :disabled="!allCollected(order.samples) || !checksOk" :loading="busy" @click="finish">
             Finalizar toma
           </UiButton>
         </div>
@@ -124,13 +131,31 @@
 </template>
 
 <script setup lang="ts">
-import type { OrderDetail, OrderSample, QueueEntry, Reason } from '../types'
+import type { OrderDetail, OrderSample, QueueEntry, Reason, StaffMember } from '../types'
+import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
+import type { CheckMap } from '../utils/checks'
 
 const ACTOR = 'toma-muestras'
 const api = useApi()
 const { entries, refresh } = useQueueList(['en_espera_toma_muestras', 'en_atencion_toma_muestras'])
-const waiting = computed(() => entries.value.filter((e) => e.status === 'en_espera_toma_muestras'))
-const attending = computed(() => entries.value.filter((e) => e.status === 'en_atencion_toma_muestras'))
+
+// Profesional que atiende (se recuerda en este navegador).
+const staff = ref<StaffMember[]>([])
+const staffOptions = computed(() => staff.value.map((s) => ({ value: s.id, label: s.name })))
+const professionalId = ref('')
+const professional = computed(() => staff.value.find((s) => s.id === professionalId.value) ?? null)
+const mine = computed(() =>
+  entries.value.filter((e) => e.assigned_professional_id === professionalId.value)
+)
+const waiting = computed(() => mine.value.filter((e) => e.status === 'en_espera_toma_muestras'))
+const attending = computed(() => mine.value.filter((e) => e.status === 'en_atencion_toma_muestras'))
+
+const checks = ref<CheckMap>({})
+const checkKeys = computed(() => order.value?.preconditions.map((p) => p.key) ?? [])
+const checksOk = computed(() => checksComplete(checkKeys.value, checks.value))
+const receptionResults = computed(() =>
+  Object.fromEntries((order.value?.preconditions ?? []).map((p) => [p.key, p.reception_met ?? null]))
+)
 
 const currentId = ref<string | null>(null)
 const current = computed(() => attending.value.find((e) => e.id === currentId.value) ?? null)
@@ -142,6 +167,22 @@ const returnReasons = ref<Reason[]>([])
 
 onMounted(async () => {
   returnReasons.value = await api<Reason[]>('/return-reasons')
+  staff.value = await api<StaffMember[]>('/catalog/staff')
+  try {
+    professionalId.value = localStorage.getItem('incubus.professional') ?? ''
+  } catch {
+    /* almacenamiento no disponible */
+  }
+})
+
+watch(professionalId, (id) => {
+  currentId.value = null
+  order.value = null
+  try {
+    localStorage.setItem('incubus.professional', id)
+  } catch {
+    /* almacenamiento no disponible */
+  }
 })
 
 async function select(e: QueueEntry) {
@@ -150,6 +191,13 @@ async function select(e: QueueEntry) {
   order.value = null
   try {
     order.value = await api<OrderDetail>(`/orders/by-entry/${e.id}`)
+    const initial = emptyChecks(order.value.preconditions.map((p) => p.key))
+    for (const p of order.value.preconditions) {
+      if (p.sampling_met !== null && p.sampling_met !== undefined) {
+        initial[p.key] = { met: p.sampling_met, note: p.sampling_note ?? '' }
+      }
+    }
+    checks.value = initial
   } catch (err) {
     error.value = apiErrorMessage(err)
   }
@@ -158,7 +206,10 @@ async function select(e: QueueEntry) {
 async function claim(e: QueueEntry) {
   error.value = ''
   try {
-    await api(`/queue/${e.id}/claim`, { method: 'POST', body: { actor: ACTOR } })
+    await api(`/queue/${e.id}/claim`, {
+      method: 'POST',
+      body: { actor: professional.value?.name ?? ACTOR, professional_id: professionalId.value }
+    })
     await refresh()
     const fresh = entries.value.find((x) => x.id === e.id)
     if (fresh) await select(fresh)
@@ -189,6 +240,14 @@ async function finish() {
   busy.value = true
   error.value = ''
   try {
+    await api(`/orders/by-entry/${current.value.id}/precondition-checks`, {
+      method: 'POST',
+      body: {
+        stage: 'sampling',
+        actor: professional.value?.name ?? ACTOR,
+        checks: toCheckPayload(checkKeys.value, checks.value)
+      }
+    })
     await api(`/queue/${current.value.id}/finish-sampling`, {
       method: 'POST',
       body: { actor: ACTOR }

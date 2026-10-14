@@ -84,15 +84,12 @@
           </ul>
         </UiSection>
 
-        <UiAlert v-if="preconditions.length" variant="warning" title="Preparación del paciente">
-          <ul class="space-y-1 text-sm">
-            <li v-for="p in preconditions" :key="p.category + p.name + p.patient_instructions">
-              <strong>{{ p.name }}</strong>
-              <span v-if="formatDuration(p.duration_value, p.duration_unit)"> — {{ formatDuration(p.duration_value, p.duration_unit) }}</span>
-              <span v-if="p.patient_instructions">: {{ p.patient_instructions }}</span>
-            </li>
-          </ul>
-        </UiAlert>
+        <PreconditionChecklist
+          v-if="preconditions.length"
+          v-model="checks"
+          title="Preparación del paciente: verifique cada condición"
+          :items="preconditions"
+        />
 
         <UiAlert v-if="error" variant="danger" :message="error" />
         <UiAlert v-if="orderNumber" variant="success">
@@ -101,7 +98,7 @@
 
         <div class="flex justify-between">
           <UiButton variant="secondary" @click="returning = true">Devolver a pre-recepción</UiButton>
-          <UiButton :disabled="!chosen.length" :loading="busy" @click="close">Cerrar y generar orden</UiButton>
+          <UiButton :disabled="!chosen.length || !checksOk" :loading="busy" @click="close">Cerrar y generar orden</UiButton>
         </div>
       </div>
     </UiCard>
@@ -122,6 +119,8 @@
 
 <script setup lang="ts">
 import type { CatalogTest, OrderPrecondition, QueueEntry, Reason } from '../types'
+import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
+import type { CheckMap } from '../utils/checks'
 
 const ACTOR = 'recepcion'
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
@@ -140,6 +139,9 @@ const demo = reactive({
 })
 const chosen = ref<CatalogTest[]>([])
 const preconditions = ref<OrderPrecondition[]>([])
+const checks = ref<CheckMap>({})
+const keys = computed(() => preconditions.value.map((p) => p.key))
+const checksOk = computed(() => checksComplete(keys.value, checks.value))
 const search = ref('')
 const results = ref<CatalogTest[]>([])
 const error = ref('')
@@ -227,6 +229,10 @@ async function loadPreconditions(codes: string[]) {
         body: { test_codes: codes }
       })).preconditions
     : []
+  // conserva respuestas de condiciones que siguen presentes; las nuevas quedan sin responder
+  const fresh = emptyChecks(keys.value)
+  for (const k of keys.value) if (checks.value[k]) fresh[k] = checks.value[k]
+  checks.value = fresh
 }
 
 async function saveDemographics() {
@@ -243,7 +249,11 @@ async function close() {
     await saveDemographics()
     const res = await api<{ order_number: string }>(`/orders/close-reception/${current.value.id}`, {
       method: 'POST',
-      body: { test_codes: chosen.value.map((t) => t.code), actor: ACTOR }
+      body: {
+        test_codes: chosen.value.map((t) => t.code),
+        actor: ACTOR,
+        precondition_checks: toCheckPayload(keys.value, checks.value)
+      }
     })
     orderNumber.value = res.order_number
     currentId.value = null
