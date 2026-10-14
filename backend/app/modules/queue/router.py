@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
 from app.core.realtime import queue_events
-from app.modules.orders.models import Order
+from app.modules.orders.models import Order, OrderSample
 from app.modules.patients.cedula import CedulaParseError, parse_cedula_barcode
 from app.modules.queue import service
 from app.modules.queue.models import Patient, Priority, RemovalReason, ReturnReason
@@ -241,6 +241,40 @@ async def remove_entry(
     await session.commit()
     read = await _read(session, entry_id)
     await _publish("removed", read)
+    return read
+
+
+@queue_router.post("/{entry_id}/finish-sampling", response_model=QueueEntryRead)
+async def finish_sampling(
+    entry_id: UUID, body: ClaimInput, session: Session
+) -> QueueEntryRead:
+    """Finaliza la toma: exige todos los tubos de la orden recolectados."""
+    entry = await service.get_entry(session, entry_id)
+    if entry.status != QueueStatus.EN_ATENCION_TOMA_MUESTRAS:
+        raise ConflictError(
+            f"No se puede finalizar la toma de un paciente en «{entry.status}».",
+            {"status": entry.status},
+        )
+    pending = list(
+        (
+            await session.execute(
+                select(OrderSample.name)
+                .join(Order, Order.id == OrderSample.order_id)
+                .where(
+                    Order.queue_entry_id == entry_id,
+                    OrderSample.collected_at.is_(None),
+                )
+            )
+        ).scalars()
+    )
+    if pending:
+        raise ValidationAppError("Faltan muestras por tomar.", {"pending": pending})
+    await service.change_status(
+        session, entry_id, QueueStatus.TOMA_FINALIZADA, actor=body.actor
+    )
+    await session.commit()
+    read = await _read(session, entry_id)
+    await _publish("status_changed", read)
     return read
 
 

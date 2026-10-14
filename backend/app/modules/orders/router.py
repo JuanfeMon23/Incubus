@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -10,7 +11,7 @@ from app.core.database import get_session
 from app.core.exceptions import NotFoundError
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders import service
-from app.modules.orders.models import Order, OrderPrecondition, OrderTest
+from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
 from app.modules.queue.router import _publish, _read
 
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -66,21 +67,39 @@ async def close_reception(
     return {"order_number": order.order_number, "order_id": str(order.id)}
 
 
-@router.get("/{order_number}")
-async def get_order(order_number: str, session: Session) -> dict:
-    order = (
-        await session.execute(select(Order).where(Order.order_number == order_number))
-    ).scalar_one_or_none()
-    if order is None:
-        raise NotFoundError(
-            f"No existe la orden '{order_number}'.", {"order_number": order_number}
-        )
+class CollectInput(BaseModel):
+    actor: str | None = Field(default=None, max_length=120)
+
+
+def sample_dict(s: OrderSample) -> dict:
+    return {
+        "id": str(s.id),
+        "sample_type_code": s.sample_type_code,
+        "name": s.name,
+        "cap_color_hex": s.cap_color_hex,
+        "draw_order": s.draw_order,
+        "collection_instructions": s.collection_instructions,
+        "required_volume_ml": s.required_volume_ml,
+        "test_codes": s.test_codes,
+        "collected_at": s.collected_at.isoformat() if s.collected_at else None,
+        "collected_by": s.collected_by,
+    }
+
+
+async def _order_detail(session: AsyncSession, order: Order) -> dict:
     tests = (
         await session.execute(select(OrderTest).where(OrderTest.order_id == order.id))
     ).scalars()
     pres = (
         await session.execute(
             select(OrderPrecondition).where(OrderPrecondition.order_id == order.id)
+        )
+    ).scalars()
+    samples = (
+        await session.execute(
+            select(OrderSample)
+            .where(OrderSample.order_id == order.id)
+            .order_by(OrderSample.draw_order.nulls_last(), OrderSample.name)
         )
     ).scalars()
     return {
@@ -98,4 +117,56 @@ async def get_order(order_number: str, session: Session) -> dict:
             }
             for p in pres
         ],
+        "samples": [sample_dict(s) for s in samples],
     }
+
+
+@router.get("/by-entry/{entry_id}")
+async def get_order_by_entry(entry_id: UUID, session: Session) -> dict:
+    order = (
+        await session.execute(select(Order).where(Order.queue_entry_id == entry_id))
+    ).scalar_one_or_none()
+    if order is None:
+        raise NotFoundError(
+            f"La entrada '{entry_id}' no tiene orden.",
+            {"queue_entry_id": str(entry_id)},
+        )
+    return await _order_detail(session, order)
+
+
+async def _set_collected(
+    session: AsyncSession, sample_id: UUID, actor: str | None, collected: bool
+) -> dict:
+    sample = await session.get(OrderSample, sample_id)
+    if sample is None:
+        raise NotFoundError(
+            f"No existe la muestra '{sample_id}'.", {"id": str(sample_id)}
+        )
+    sample.collected_at = datetime.now(UTC) if collected else None
+    sample.collected_by = actor if collected else None
+    await session.commit()
+    return sample_dict(sample)
+
+
+@router.post("/samples/{sample_id}/collect")
+async def collect_sample(sample_id: UUID, body: CollectInput, session: Session) -> dict:
+    return await _set_collected(session, sample_id, body.actor, True)
+
+
+@router.post("/samples/{sample_id}/uncollect")
+async def uncollect_sample(
+    sample_id: UUID, body: CollectInput, session: Session
+) -> dict:
+    return await _set_collected(session, sample_id, body.actor, False)
+
+
+@router.get("/{order_number}")
+async def get_order(order_number: str, session: Session) -> dict:
+    order = (
+        await session.execute(select(Order).where(Order.order_number == order_number))
+    ).scalar_one_or_none()
+    if order is None:
+        raise NotFoundError(
+            f"No existe la orden '{order_number}'.", {"order_number": order_number}
+        )
+    return await _order_detail(session, order)

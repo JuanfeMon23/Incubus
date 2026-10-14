@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError, ValidationAppError
 from app.modules.catalog_client.client import CatalogClient
-from app.modules.orders.models import Order, OrderPrecondition, OrderTest
+from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
 from app.modules.orders.order_number import (
     OrderNumberExhaustedError,
     format_order_number,
@@ -19,6 +19,7 @@ from app.modules.orders.preconditions import (
     dedupe_preconditions,
     slot_key,
 )
+from app.modules.orders.samples import group_samples
 from app.modules.queue import service as queue_service
 from app.modules.queue.models import Patient
 from app.modules.queue.transitions import QueueStatus
@@ -148,6 +149,21 @@ async def close_reception(
         )
     for pre in preconditions:
         session.add(OrderPrecondition(order_id=order.id, **pre))
+    sample_types = await catalog.sample_types_by_id() if tests else {}
+    for tube in group_samples(tests, sample_types):
+        session.add(
+            OrderSample(
+                order_id=order.id,
+                sample_type_id=tube.sample_type_id,
+                sample_type_code=tube.code,
+                name=tube.name,
+                cap_color_hex=tube.cap_color_hex,
+                draw_order=tube.draw_order,
+                collection_instructions=tube.collection_instructions,
+                required_volume_ml=tube.required_volume_ml,
+                test_codes=tube.test_codes,
+            )
+        )
     await session.flush()
     await queue_service.change_status(
         session,
