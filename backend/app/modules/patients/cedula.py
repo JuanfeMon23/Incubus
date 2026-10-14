@@ -67,6 +67,10 @@ def parse_cedula_barcode(raw: str) -> CedulaData:
         second_last, first, second = names[1], names[2], None
     else:
         second_last, first, second = names[1], names[2], names[3]
+    try:
+        birth_date = date(int(birth[:4]), int(birth[4:6]), int(birth[6:]))
+    except ValueError as exc:
+        raise CedulaParseError("Fecha de nacimiento invalida.") from exc
     return CedulaData(
         document_number=document,
         first_last_name=first_last,
@@ -74,6 +78,6 @@ def parse_cedula_barcode(raw: str) -> CedulaData:
         first_name=first,
         second_name=second,
         sex=sb.group(1),
-        birth_date=date(int(birth[:4]), int(birth[4:6]), int(birth[6:])),
+        birth_date=birth_date,
         blood_type=f"{blood.group(1)}{blood.group(2)}" if blood else None,
     )
