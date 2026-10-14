@@ -93,12 +93,12 @@ async def test_cierre_genera_orden_y_pasa_a_espera(client, catalog):
 
 
 async def test_consecutivo_secuencial_y_reinicia_por_mes(session):
-    oct_ = datetime(2026, 10, 15, 12, tzinfo=UTC)
-    nov = datetime(2026, 11, 3, 12, tzinfo=UTC)
-    assert await next_order_number(session, oct_) == "26100001"
-    assert await next_order_number(session, oct_) == "26100002"
-    assert await next_order_number(session, nov) == "26110001"
-    assert await next_order_number(session, oct_) == "26100003"
+    oct_ = datetime(2097, 10, 15, 12, tzinfo=UTC)
+    nov = datetime(2097, 11, 3, 12, tzinfo=UTC)
+    assert await next_order_number(session, oct_) == "97100001"
+    assert await next_order_number(session, oct_) == "97100002"
+    assert await next_order_number(session, nov) == "97110001"
+    assert await next_order_number(session, oct_) == "97100003"
 
 
 async def test_consecutivo_bajo_concurrencia_sin_duplicados_ni_huecos():

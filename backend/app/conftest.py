@@ -24,8 +24,28 @@ class FakeCatalog:
     def __init__(self) -> None:
         self.tests: dict[str, dict] = {}
         self.categories: dict[str, str] = {}
+        self.sample_types: dict[str, dict] = {}
 
-    def add_test(self, code: str, name: str, preconditions: list[dict]) -> None:
+    def add_sample_type(
+        self, type_id: str, name: str, color: str, draw_order: int | None = None
+    ) -> None:
+        self.sample_types[type_id] = {
+            "id": type_id,
+            "code": type_id.upper(),
+            "name": name,
+            "cap_color_hex": color,
+            "draw_order": draw_order,
+            "collection_instructions": None,
+            "is_active": True,
+        }
+
+    def add_test(
+        self,
+        code: str,
+        name: str,
+        preconditions: list[dict],
+        sample_types: list[tuple] | None = None,
+    ) -> None:
         pres = []
         for i, p in enumerate(preconditions):
             pid = f"pre-{code}-{i}"
@@ -47,6 +67,15 @@ class FakeCatalog:
             "name": name,
             "is_active": True,
             "preconditions": pres,
+            "sample_types": [
+                {
+                    "sample_type_id": sid,
+                    "is_preferred": pref,
+                    "required_volume_ml": vol,
+                    "is_active": True,
+                }
+                for sid, pref, vol in (sample_types or [])
+            ],
         }
 
     async def search_tests(self, q: str | None, limit: int = 20) -> list[dict]:
@@ -61,6 +90,9 @@ class FakeCatalog:
 
     async def precondition_categories(self) -> dict[str, str]:
         return self.categories
+
+    async def sample_types_by_id(self) -> dict[str, dict]:
+        return self.sample_types
 
 
 @pytest_asyncio.fixture
