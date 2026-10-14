@@ -171,6 +171,16 @@ async def enter_queue(body: QueueEntryCreate, session: Session) -> QueueEntryRea
     return read
 
 
+@queue_router.post("/call-next", response_model=QueueEntryRead)
+async def call_next(body: ClaimInput, session: Session) -> QueueEntryRead:
+    """Recepcion llama al siguiente paciente (no se elige uno en concreto)."""
+    entry = await service.claim_next(session, body.actor)
+    await session.commit()
+    read = await _read(session, entry.id)
+    await _publish("status_changed", read)
+    return read
+
+
 @queue_router.get("/{entry_id}", response_model=QueueEntryRead)
 async def get_entry(entry_id: UUID, session: Session) -> QueueEntryRead:
     return await _read(session, entry_id)

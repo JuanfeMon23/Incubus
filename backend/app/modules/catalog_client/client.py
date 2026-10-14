@@ -40,10 +40,19 @@ class CatalogClient:
             ) from exc
 
     async def search_tests(self, q: str | None, limit: int = 20) -> list[dict]:
+        """Busca examenes activos por nombre o codigo.
+
+        Los codigos usan guion bajo (`ACIDO_URICO`); si quien busca escribe con
+        espacios y no hay resultados, se reintenta con guion bajo.
+        """
         params: dict[str, Any] = {"active": "true", "page_size": limit}
         if q:
             params["q"] = q
-        return (await self._get("/lab-tests", params))["items"]
+        items = (await self._get("/lab-tests", params))["items"]
+        if not items and q and " " in q.strip():
+            params["q"] = "_".join(q.split())
+            items = (await self._get("/lab-tests", params))["items"]
+        return items
 
     async def get_test_by_code(self, code: str) -> dict | None:
         """Examen activo con sus precondiciones y tipos de muestra.

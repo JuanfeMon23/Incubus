@@ -1,10 +1,52 @@
 """Fixtures compartidas.
 
-- `session`: BD real dentro de una transaccion externa que se revierte al final
-  (savepoint anidado para sobrevivir a los `commit()` de los routers).
+- BD de pruebas aislada: se usa `<nombre>_test` (misma instancia que `DATABASE_URL`,
+  se crea si falta y se migra), para no depender de los datos de desarrollo.
+- `session`: transaccion externa que se revierte al final (savepoint anidado).
 - `client`: httpx contra la app, con `get_session` y el catalogo de Vladimir
   reemplazados (sesion del test y `FakeCatalog`).
 """
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from sqlalchemy.engine import make_url
+
+
+def _prepare_test_database() -> None:
+    from app.core.config import get_settings
+
+    url = make_url(get_settings().database_url)
+    test_name = f"{url.database}_test"
+    sync_url = url.set(drivername="postgresql", database="postgres")
+    import psycopg
+
+    with psycopg.connect(
+        sync_url.render_as_string(hide_password=False), autocommit=True
+    ) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s", (test_name,)
+        ).fetchone()
+        if not exists:
+            conn.execute(f'CREATE DATABASE "{test_name}"')
+    os.environ["DATABASE_URL"] = url.set(database=test_name).render_as_string(
+        hide_password=False
+    )
+    from app.core.config import get_settings as _gs
+
+    _gs.cache_clear()
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=os.environ.copy(),
+        check=True,
+        capture_output=True,
+    )
+
+
+_prepare_test_database()
 
 from collections.abc import AsyncGenerator
 
