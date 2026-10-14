@@ -53,21 +53,19 @@
         </div>
 
         <div class="grid grid-cols-2 gap-3">
-          <UiFormField label="Primer nombre" required><UiTextInput v-model="demo.first_name" /></UiFormField>
-          <UiFormField label="Segundo nombre"><UiTextInput v-model="demo.second_name" /></UiFormField>
-          <UiFormField label="Primer apellido" required><UiTextInput v-model="demo.first_last_name" /></UiFormField>
-          <UiFormField label="Segundo apellido"><UiTextInput v-model="demo.second_last_name" /></UiFormField>
-          <UiFormField label="Fecha de nacimiento" required><UiTextInput v-model="demo.birth_date" type="date" /></UiFormField>
-          <UiFormField label="Lugar de nacimiento" required><UiTextInput v-model="demo.birth_place" /></UiFormField>
-          <UiFormField label="Sexo" required>
-            <UiSelect v-model="demo.sex" :options="sexOptions" empty-label="—" />
+          <UiFormField name="first_name" label="Primer nombre" required><UiTextInput /></UiFormField>
+          <UiFormField name="second_name" label="Segundo nombre"><UiTextInput /></UiFormField>
+          <UiFormField name="first_last_name" label="Primer apellido" required><UiTextInput /></UiFormField>
+          <UiFormField name="second_last_name" label="Segundo apellido"><UiTextInput /></UiFormField>
+          <UiFormField name="birth_date" label="Fecha de nacimiento" required><UiTextInput type="date" /></UiFormField>
+          <UiFormField name="birth_place" label="Lugar de nacimiento" required><UiTextInput /></UiFormField>
+          <UiFormField name="sex" label="Sexo" required>
+            <UiSelect :options="sexOptions" placeholder="Seleccione…" />
           </UiFormField>
-          <UiFormField label="Correo electrónico" required><UiTextInput v-model="demo.email" type="email" /></UiFormField>
-          <UiFormField label="Teléfono" required><UiTextInput v-model="demo.phone" /></UiFormField>
-          <UiFormField label="Aseguradora" required><UiTextInput v-model="demo.insurer" /></UiFormField>
-          <UiFormField label="Dirección de residencia" class="col-span-2" required>
-            <UiTextInput v-model="demo.address" />
-          </UiFormField>
+          <UiFormField name="email" label="Correo electrónico" required><UiTextInput type="email" /></UiFormField>
+          <UiFormField name="phone" label="Teléfono" required><UiTextInput /></UiFormField>
+          <UiFormField name="insurer" label="Aseguradora" required><UiTextInput /></UiFormField>
+          <UiFormField name="address" label="Dirección de residencia" class="col-span-2" required><UiTextInput /></UiFormField>
         </div>
 
         <UiSection title="Exámenes">
@@ -93,18 +91,15 @@
           title="Preparación del paciente: verifique cada condición"
           :items="preconditions"
         />
-
-        <UiAlert v-if="!demographicsOk" variant="warning" title="Faltan datos del paciente">
-          {{ missingDemographics.join(', ') }}
-        </UiAlert>
-        <UiAlert v-if="error" variant="danger" :message="error" />
+        <UiAlert v-if="formError" variant="danger" :message="formError" />
+        <UiAlert v-else-if="error" variant="danger" :message="error" />
         <UiAlert v-if="orderNumber" variant="success">
           Orden generada: <strong class="font-mono text-base">{{ orderNumber }}</strong>
         </UiAlert>
 
         <div class="flex justify-between">
           <UiButton variant="secondary" @click="returning = true">Devolver a pre-recepción</UiButton>
-          <UiButton :disabled="!chosen.length || !checksOk || !demographicsOk" :loading="busy" @click="close">Cerrar y generar orden</UiButton>
+          <UiButton :disabled="!chosen.length || !checksOk" :loading="isSubmitting" @click="onClose">Cerrar y generar orden</UiButton>
         </div>
       </div>
     </UiCard>
@@ -127,6 +122,8 @@
 import type { CatalogTest, OrderPrecondition, QueueEntry, Reason } from '../types'
 import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
 import type { CheckMap } from '../utils/checks'
+import { receptionPatientSchema } from '../utils/patientSchemas'
+import type { ReceptionPatientInput } from '../utils/patientSchemas'
 
 const ACTOR = 'recepcion'
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
@@ -141,27 +138,19 @@ const currentId = ref<string | null>(null)
 const current = computed(() => attending.value.find((e) => e.id === currentId.value) ?? null)
 const age = computed(() => ageFrom(current.value?.patient.birth_date ?? null))
 
-const demo = reactive({
-  first_name: '', second_name: '', first_last_name: '', second_last_name: '',
-  birth_date: '', birth_place: '', sex: '', email: '', phone: '', insurer: '', address: ''
-})
+const DEMOGRAPHIC_FIELDS = [
+  'first_name', 'second_name', 'first_last_name', 'second_last_name', 'birth_date',
+  'birth_place', 'sex', 'blood_type', 'email', 'phone', 'insurer', 'address'
+] as const
 
-// Todos los campos son obligatorios salvo segundo nombre y segundo apellido.
-const REQUIRED_DEMOGRAPHICS: { key: keyof typeof demo; label: string }[] = [
-  { key: 'first_name', label: 'Primer nombre' },
-  { key: 'first_last_name', label: 'Primer apellido' },
-  { key: 'birth_date', label: 'Fecha de nacimiento' },
-  { key: 'birth_place', label: 'Lugar de nacimiento' },
-  { key: 'sex', label: 'Sexo' },
-  { key: 'email', label: 'Correo electrónico' },
-  { key: 'phone', label: 'Teléfono' },
-  { key: 'insurer', label: 'Aseguradora' },
-  { key: 'address', label: 'Dirección de residencia' }
-]
-const missingDemographics = computed(() =>
-  REQUIRED_DEMOGRAPHICS.filter((f) => !String(demo[f.key] ?? '').trim()).map((f) => f.label)
-)
-const demographicsOk = computed(() => missingDemographics.value.length === 0)
+function demographicsOf(patient: Record<string, unknown> | null): ReceptionPatientInput {
+  const get = (k: string) => String((patient?.[k] as string | null | undefined) ?? '')
+  return Object.fromEntries(DEMOGRAPHIC_FIELDS.map((k) => [k, get(k)])) as ReceptionPatientInput
+}
+
+// Todos obligatorios salvo segundo nombre/apellido: errores en rojo bajo cada campo.
+const form = useZodForm(receptionPatientSchema, { initialValues: () => demographicsOf(null) })
+const { isSubmitting, formError } = form
 const chosen = ref<CatalogTest[]>([])
 const preconditions = ref<OrderPrecondition[]>([])
 const checks = ref<CheckMap>({})
@@ -172,7 +161,6 @@ const search = ref('')
 const results = ref<CatalogTest[]>([])
 const error = ref('')
 const orderNumber = ref('')
-const busy = ref(false)
 const returning = ref(false)
 const returnReasons = ref<Reason[]>([])
 
@@ -184,9 +172,7 @@ function select(e: QueueEntry) {
   currentId.value = e.id
   orderNumber.value = ''
   error.value = ''
-  for (const k of Object.keys(demo) as (keyof typeof demo)[]) {
-    demo[k] = (e.patient as unknown as Record<string, string | null>)[k] ?? ''
-  }
+  form.reset(demographicsOf(e.patient as unknown as Record<string, unknown>))
   chosen.value = []
   preconditions.value = []
   // restaura el borrador (sobrevive a una devolución a pre-recepción)
@@ -268,13 +254,15 @@ async function loadPreconditions(codes: string[]) {
 
 async function saveDemographics() {
   if (!current.value) return
-  const body = Object.fromEntries(Object.entries(demo).map(([k, v]) => [k, v === '' ? null : v]))
+  const body = Object.fromEntries(
+    Object.entries(form.values as Record<string, unknown>).map(([k, v]) => [k, v === '' ? null : v])
+  )
   await api(`/patients/${current.value.patient.id}`, { method: 'PATCH', body })
 }
 
-async function close() {
+// Valida el formulario (zod); los errores del backend (p. ej. missing_fields) vuelven a los campos.
+const onClose = form.submit(async () => {
   if (!current.value) return
-  busy.value = true
   error.value = ''
   try {
     await saveDemographics()
@@ -291,12 +279,10 @@ async function close() {
     currentId.value = null
     await refresh()
   } catch (e) {
-    error.value = apiErrorMessage(e)
-    toast.error(error.value)
-  } finally {
-    busy.value = false
+    toast.error(apiErrorMessage(e))
+    throw e
   }
-}
+})
 
 async function giveBack(payload: { reason_id: string; note: string | null }) {
   if (!current.value) return
