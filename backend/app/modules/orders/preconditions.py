@@ -6,6 +6,7 @@ Las que no tienen duracion se deduplican por texto identico (sin mayusculas ni
 espacios sobrantes). Orden estable: primera aparicion.
 """
 
+import hashlib
 from dataclasses import dataclass
 
 _UNIT_MINUTES = {"minutos": 1, "horas": 60, "dias": 1440}
@@ -36,6 +37,19 @@ def slot_key(item: EffectivePrecondition) -> tuple:
     if item.duration_minutes is not None:
         return (item.category, "duration")
     return (item.category, "text", _text_key(item))
+
+
+def precondition_key(item: EffectivePrecondition) -> str:
+    """Llave estable (<= 64 caracteres) de un preanalitico unificado.
+
+    Identifica la misma precondicion entre la vista previa, el cierre de
+    recepcion y la verificacion en toma de muestras.
+    """
+    key = slot_key(item)
+    if len(key) == 2:
+        return f"{key[0]}:{key[1]}"
+    digest = hashlib.sha1(key[2].encode("utf-8")).hexdigest()[:12]
+    return f"{key[0]}:text:{digest}"
 
 
 def dedupe_preconditions(

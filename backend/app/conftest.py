@@ -25,6 +25,16 @@ class FakeCatalog:
         self.tests: dict[str, dict] = {}
         self.categories: dict[str, str] = {}
         self.sample_types: dict[str, dict] = {}
+        self.areas: dict[str, str] = {}
+        self.staff: list[dict] = []
+
+    def add_area(self, area_id: str, code: str) -> None:
+        self.areas[area_id] = code
+
+    def add_staff(self, staff_id: str, first: str, last: str, job_title: str) -> None:
+        self.staff.append(
+            {"id": staff_id, "name": f"{first} {last}", "job_title": job_title}
+        )
 
     def add_sample_type(
         self, type_id: str, name: str, color: str, draw_order: int | None = None
@@ -45,6 +55,7 @@ class FakeCatalog:
         name: str,
         preconditions: list[dict],
         sample_types: list[tuple] | None = None,
+        area_id: str | None = None,
     ) -> None:
         pres = []
         for i, p in enumerate(preconditions):
@@ -66,6 +77,7 @@ class FakeCatalog:
             "code": code,
             "name": name,
             "is_active": True,
+            "area_id": area_id,
             "preconditions": pres,
             "sample_types": [
                 {
@@ -93,6 +105,12 @@ class FakeCatalog:
 
     async def sample_types_by_id(self) -> dict[str, dict]:
         return self.sample_types
+
+    async def areas_by_id(self) -> dict[str, str]:
+        return self.areas
+
+    async def list_staff(self) -> list[dict]:
+        return self.staff
 
 
 @pytest_asyncio.fixture

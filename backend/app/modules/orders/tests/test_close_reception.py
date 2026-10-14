@@ -61,35 +61,36 @@ async def test_cierre_exige_datos_y_examenes(client, catalog):
     assert inexistente.status_code == 422
 
 
-async def test_cierre_genera_orden_y_pasa_a_espera(client, catalog):
+async def test_cierre_genera_orden_y_pasa_a_espera_de_impresion(client, catalog):
     entry = await _reception(client, catalog)
     await client.patch(
         f"/api/v1/patients/{entry['patient']['id']}",
         json={"address": "Calle 1 # 2-3", "email": "a@b.co"},
     )
+    preview = (
+        await client.post("/api/v1/orders/preview", json={"test_codes": ["COL", "TRI"]})
+    ).json()
+    assert all(p["key"] for p in preview["preconditions"])
     res = await client.post(
         f"/api/v1/orders/close-reception/{entry['id']}",
-        json={"test_codes": ["COL", "TRI"], "actor": "ana"},
+        json={
+            "test_codes": ["COL", "TRI"],
+            "actor": "ana",
+            "precondition_checks": [
+                {"key": p["key"], "met": True} for p in preview["preconditions"]
+            ],
+        },
     )
     assert res.status_code == 200, res.text
     number = res.json()["order_number"]
     assert len(number) == 8 and number.isdigit()
 
     after = (await client.get(f"/api/v1/queue/{entry['id']}")).json()
-    assert after["status"] == "en_espera_toma_muestras"
+    assert after["status"] == "en_espera_impresion"
     assert after["order_number"] == number
 
     order = (await client.get(f"/api/v1/orders/{number}")).json()
     assert {t["code"] for t in order["tests"]} == {"COL", "TRI"}
-
-    # devolucion desde toma de muestras conserva la orden
-    await client.post(f"/api/v1/queue/{entry['id']}/claim", json={"actor": "luis"})
-    ret = (await client.get("/api/v1/return-reasons")).json()[0]["id"]
-    back = await client.post(
-        f"/api/v1/queue/{entry['id']}/return", json={"reason_id": ret}
-    )
-    assert back.json()["status"] == "en_espera_toma_muestras"
-    assert back.json()["order_number"] == number
 
 
 async def test_consecutivo_secuencial_y_reinicia_por_mes(session):

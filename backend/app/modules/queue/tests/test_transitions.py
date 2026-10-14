@@ -16,7 +16,11 @@ def test_avances_validos():
         is TransitionKind.ADVANCE
     )
     assert (
-        resolve_transition(S.EN_ATENCION_RECEPCION, S.EN_ESPERA_TOMA_MUESTRAS)
+        resolve_transition(S.EN_ATENCION_RECEPCION, S.EN_ESPERA_IMPRESION)
+        is TransitionKind.ADVANCE
+    )
+    assert (
+        resolve_transition(S.EN_ESPERA_IMPRESION, S.EN_ESPERA_TOMA_MUESTRAS)
         is TransitionKind.ADVANCE
     )
     assert (
@@ -63,6 +67,8 @@ def test_retiro_desde_cualquier_estado_activo():
     ("origen", "destino"),
     [
         (S.PRE_RECEPCION, S.EN_ESPERA_TOMA_MUESTRAS),
+        (S.EN_ATENCION_RECEPCION, S.EN_ESPERA_TOMA_MUESTRAS),
+        (S.EN_ESPERA_IMPRESION, S.EN_ATENCION_TOMA_MUESTRAS),
         (S.PRE_RECEPCION, S.PRE_RECEPCION),
         (S.EN_ESPERA_TOMA_MUESTRAS, S.PRE_RECEPCION),
         (S.EN_ESPERA_TOMA_MUESTRAS, S.EN_ATENCION_RECEPCION),

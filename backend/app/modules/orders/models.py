@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,6 +62,19 @@ class OrderPrecondition(UUIDv7PK, Base):
     duration_unit: Mapped[str | None] = mapped_column(String(16))
     patient_instructions: Mapped[str | None] = mapped_column(Text)
     source_test_codes: Mapped[list] = mapped_column(JSONB, nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    reception_met: Mapped[bool | None] = mapped_column(Boolean)
+    reception_note: Mapped[str | None] = mapped_column(Text)
+    reception_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    reception_checked_by: Mapped[str | None] = mapped_column(String(120))
+    sampling_met: Mapped[bool | None] = mapped_column(Boolean)
+    sampling_note: Mapped[str | None] = mapped_column(Text)
+    sampling_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    sampling_checked_by: Mapped[str | None] = mapped_column(String(120))
 
 
 class OrderSample(UUIDv7PK, Base):
@@ -80,5 +93,9 @@ class OrderSample(UUIDv7PK, Base):
     collection_instructions: Mapped[str | None] = mapped_column(Text)
     required_volume_ml: Mapped[float | None] = mapped_column(Float)
     test_codes: Mapped[list] = mapped_column(JSONB, nullable=False)
+    area_route: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    labels_printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     collected_by: Mapped[str | None] = mapped_column(String(120))
