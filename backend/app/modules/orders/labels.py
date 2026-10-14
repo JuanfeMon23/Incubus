@@ -70,3 +70,48 @@ def render_labels_pdf(labels: list[LabelData]) -> bytes:
         c.showPage()
     c.save()
     return buffer.getvalue()
+
+
+def _zpl_text(value: str) -> str:
+    """Quita los caracteres de control de ZPL (`^` y `~`) de un campo de texto."""
+    return value.replace("^", " ").replace("~", " ").strip()
+
+
+def render_labels_zpl(
+    labels: list[LabelData],
+    *,
+    width_mm: float = 70,
+    height_mm: float = 35,
+    dpi: int = 203,
+) -> str:
+    """Etiquetas en ZPL II (impresoras termicas tipo Zebra): un bloque por tubo.
+
+    Mismo contenido que el PDF. `dpi` tipico: 203 (8 dots/mm) o 300.
+    """
+    if not labels:
+        raise ValueError("No hay etiquetas para imprimir.")
+    dots_per_mm = round(dpi / 25.4)  # 203 dpi -> 8, 300 dpi -> 12 (estandar ZPL)
+    width = round(width_mm * dots_per_mm)
+    height = round(height_mm * dots_per_mm)
+    margin = round(3 * dots_per_mm)
+    blocks = []
+    for label in labels:
+        route = " > ".join(label.area_route) if label.area_route else "-"
+        meta = f"{label.document + ' | ' if label.document else ''}Orden {label.order_number}"
+        blocks.append(
+            "\n".join(
+                [
+                    "^XA",
+                    "^CI28",  # UTF-8
+                    f"^PW{width}",
+                    f"^LL{height}",
+                    f"^FO{margin},{round(height * 0.06)}^A0N,32,32^FB{width - 2 * margin},1,0,L^FD{_zpl_text(label.patient_name)}^FS",
+                    f"^FO{margin},{round(height * 0.22)}^A0N,22,22^FD{_zpl_text(meta)}^FS",
+                    f"^FO{margin},{round(height * 0.34)}^BY2,3,{round(height * 0.3)}^BCN,{round(height * 0.3)},N,N,N^FD{label.order_number}^FS",
+                    f"^FO{margin},{round(height * 0.80)}^A0N,32,32^FD{_zpl_text(route)}^FS",
+                    f"^FO{round(width * 0.62)},{round(height * 0.84)}^A0N,20,20^FD{_zpl_text(label.tube_name)[:26]}^FS",
+                    "^XZ",
+                ]
+            )
+        )
+    return "\n".join(blocks) + "\n"

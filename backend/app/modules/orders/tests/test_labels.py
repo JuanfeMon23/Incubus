@@ -5,14 +5,14 @@ from app.modules.orders.labels import LabelData, render_labels_pdf
 
 
 def label(**over) -> LabelData:
-    base = dict(
-        patient_name="JUAN CARLOS GOMEZ RODRIGUEZ",
-        order_number="26100001",
-        tube_name="Tapa roja",
-        area_route=["QC", "HEM"],
-        cap_color_hex="#DC2626",
-        document="CC 1020304050",
-    )
+    base = {
+        "patient_name": "JUAN CARLOS GOMEZ RODRIGUEZ",
+        "order_number": "26100001",
+        "tube_name": "Tapa roja",
+        "area_route": ["QC", "HEM"],
+        "cap_color_hex": "#DC2626",
+        "document": "CC 1020304050",
+    }
     base.update(over)
     return LabelData(**base)
 

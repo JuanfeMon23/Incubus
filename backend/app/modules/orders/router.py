@@ -11,7 +11,7 @@ from app.core.database import get_session
 from app.core.exceptions import NotFoundError
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders import service
-from app.modules.orders.labels import LabelData, render_labels_pdf
+from app.modules.orders.labels import LabelData, render_labels_pdf, render_labels_zpl
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
 from app.modules.queue.models import Patient
 from app.modules.queue.router import _publish, _read
@@ -67,9 +67,15 @@ async def search_tests(
 
 
 @catalog_router.get("/staff")
-async def list_staff(catalog: Catalog) -> list[dict]:
-    """Personal activo de Vladimir (profesionales de toma de muestras)."""
-    return await catalog.list_staff()
+async def list_staff(
+    catalog: Catalog, job_title: Annotated[str | None, Query(max_length=100)] = None
+) -> list[dict]:
+    """Personal activo de Vladimir; `job_title` filtra por texto del cargo."""
+    staff = await catalog.list_staff()
+    if job_title:
+        needle = job_title.casefold()
+        staff = [s for s in staff if needle in (s.get("job_title") or "").casefold()]
+    return staff
 
 
 @router.post("/preview")
@@ -240,8 +246,9 @@ async def prepare_samples(entry_id: UUID, session: Session, catalog: Catalog) ->
     return await _order_detail(session, await _entry_order(session, entry_id))
 
 
-@router.get("/by-entry/{entry_id}/labels.pdf")
-async def labels_pdf(entry_id: UUID, session: Session) -> Response:
+async def _labels(
+    session: AsyncSession, entry_id: UUID
+) -> tuple[Order, list[LabelData]]:
     order = await _entry_order(session, entry_id)
     patient = await session.get(Patient, order.patient_id)
     tubes = list(
@@ -269,7 +276,7 @@ async def labels_pdf(entry_id: UUID, session: Session) -> Response:
             ],
         )
     )
-    labels = [
+    return order, [
         LabelData(
             patient_name=name,
             order_number=order.order_number,
@@ -280,11 +287,36 @@ async def labels_pdf(entry_id: UUID, session: Session) -> Response:
         )
         for t in tubes
     ]
+
+
+@router.get("/by-entry/{entry_id}/labels.pdf")
+async def labels_pdf(entry_id: UUID, session: Session) -> Response:
+    order, labels = await _labels(session, entry_id)
     filename = f"etiquetas-{order.order_number}.pdf"
     return Response(
         content=render_labels_pdf(labels),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/by-entry/{entry_id}/labels.zpl")
+async def labels_zpl(
+    entry_id: UUID,
+    session: Session,
+    width_mm: Annotated[float, Query(ge=20, le=120)] = 70,
+    height_mm: Annotated[float, Query(ge=15, le=120)] = 35,
+    dpi: Annotated[int, Query(ge=150, le=600)] = 203,
+) -> Response:
+    """Etiquetas en ZPL II para impresora termica (descarga o envio crudo)."""
+    order, labels = await _labels(session, entry_id)
+    filename = f"etiquetas-{order.order_number}.zpl"
+    return Response(
+        content=render_labels_zpl(
+            labels, width_mm=width_mm, height_mm=height_mm, dpi=dpi
+        ),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
