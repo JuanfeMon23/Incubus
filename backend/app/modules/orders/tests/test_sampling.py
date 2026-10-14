@@ -5,6 +5,14 @@ PATIENT = {
     "sex": "F",
     "birth_date": "1990-01-01",
 }
+FULL_DEMOGRAPHICS = {
+    "birth_place": "Bogota",
+    "blood_type": "O+",
+    "email": "a@b.co",
+    "phone": "3001112233",
+    "address": "Calle 1",
+    "insurer": "EPS Salud",
+}
 PRO = {"professional_id": "staff-1", "professional_name": "Luis Perez"}
 
 
@@ -34,7 +42,7 @@ async def _reception_closed(client, catalog):
     ).json()
     await client.post(f"/api/v1/queue/{entry['id']}/claim", json={"actor": "ana"})
     await client.patch(
-        f"/api/v1/patients/{entry['patient']['id']}", json={"address": "Calle 1"}
+        f"/api/v1/patients/{entry['patient']['id']}", json=FULL_DEMOGRAPHICS
     )
     preview = (
         await client.post(
@@ -94,7 +102,7 @@ async def test_cierre_exige_responder_cada_precondicion(client, catalog):
     ).json()
     await client.post(f"/api/v1/queue/{entry['id']}/claim", json={"actor": "ana"})
     await client.patch(
-        f"/api/v1/patients/{entry['patient']['id']}", json={"address": "Calle 1"}
+        f"/api/v1/patients/{entry['patient']['id']}", json=FULL_DEMOGRAPHICS
     )
     url = f"/api/v1/orders/close-reception/{entry['id']}"
     sin = await client.post(url, json={"test_codes": ["COL"]})

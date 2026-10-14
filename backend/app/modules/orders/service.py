@@ -26,8 +26,19 @@ from app.modules.queue import service as queue_service
 from app.modules.queue.models import Patient
 from app.modules.queue.transitions import QueueStatus
 
-# Datos minimos de la secretaria para cerrar la recepcion.
-REQUIRED_PATIENT_FIELDS = ("sex", "birth_date", "address")
+# Datos que debe tener el paciente para cerrar la recepcion (decision del usuario:
+# todos los campos del formulario). Los segundos nombre/apellido quedan fuera
+# porque pueden no existir.
+REQUIRED_PATIENT_FIELDS = (
+    "sex",
+    "birth_date",
+    "birth_place",
+    "blood_type",
+    "email",
+    "phone",
+    "address",
+    "insurer",
+)
 
 
 class OrderNumberExhausted(AppError):

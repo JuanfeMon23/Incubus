@@ -15,6 +15,16 @@ PATIENT = {
 }
 
 
+FULL_DEMOGRAPHICS = {
+    "birth_place": "Bogota",
+    "blood_type": "O+",
+    "email": "a@b.co",
+    "phone": "3001112233",
+    "address": "Calle 1 # 2-3",
+    "insurer": "EPS Salud",
+}
+
+
 async def _reception(client, catalog):
     catalog.add_test(
         "COL",
@@ -56,7 +66,14 @@ async def test_cierre_exige_datos_y_examenes(client, catalog):
     assert (await client.post(url, json={"test_codes": []})).status_code == 422
     falta = await client.post(url, json={"test_codes": ["COL"]})
     assert falta.status_code == 422
-    assert falta.json()["details"]["missing_fields"] == ["address"]
+    assert falta.json()["details"]["missing_fields"] == [
+        "birth_place",
+        "blood_type",
+        "email",
+        "phone",
+        "address",
+        "insurer",
+    ]
     inexistente = await client.post(url, json={"test_codes": ["NOPE"]})
     assert inexistente.status_code == 422
 
@@ -65,7 +82,7 @@ async def test_cierre_genera_orden_y_pasa_a_espera_de_impresion(client, catalog)
     entry = await _reception(client, catalog)
     await client.patch(
         f"/api/v1/patients/{entry['patient']['id']}",
-        json={"address": "Calle 1 # 2-3", "email": "a@b.co"},
+        json=FULL_DEMOGRAPHICS,
     )
     preview = (
         await client.post("/api/v1/orders/preview", json={"test_codes": ["COL", "TRI"]})
