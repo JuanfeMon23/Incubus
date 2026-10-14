@@ -1,6 +1,7 @@
 export type QueueStatus =
   | 'pre_recepcion'
   | 'en_atencion_recepcion'
+  | 'en_espera_impresion'
   | 'en_espera_toma_muestras'
   | 'en_atencion_toma_muestras'
   | 'toma_finalizada'
@@ -29,6 +30,8 @@ export interface QueueEntry {
   id: string
   status: QueueStatus
   claimed_by: string | null
+  assigned_professional_id: string | null
+  assigned_professional_name: string | null
   arrived_at: string
   draft: { test_codes?: string[] }
   patient: Patient
@@ -37,6 +40,11 @@ export interface QueueEntry {
 }
 export interface CatalogTest { code: string; name: string; abbreviation: string | null }
 export interface OrderPrecondition {
+  key: string
+  reception_met?: boolean | null
+  reception_note?: string | null
+  sampling_met?: boolean | null
+  sampling_note?: string | null
   category: string
   name: string
   duration_value: number | null
@@ -53,6 +61,8 @@ export interface OrderSample {
   collection_instructions: string | null
   required_volume_ml: number | null
   test_codes: string[]
+  area_route: string[]
+  labels_printed_at: string | null
   collected_at: string | null
   collected_by: string | null
 }
@@ -64,3 +74,5 @@ export interface OrderDetail {
   samples: OrderSample[]
 }
 export interface ApiErrorBody { code?: string; message?: string; details?: unknown }
+
+export interface StaffMember { id: string; name: string; job_title: string | null }
