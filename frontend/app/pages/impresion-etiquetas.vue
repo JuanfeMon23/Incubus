@@ -39,29 +39,25 @@
           <PriorityBadge :priority="current.priority" />
         </div>
 
-        <UiSection title="Tubos y etiquetas" description="Una etiqueta por tubo, en orden de extracción.">
-          <p v-if="loading" class="text-sm text-text-muted">Preparando tubos…</p>
-          <ul v-else class="space-y-2">
-            <li
-              v-for="s in order?.samples ?? []"
-              :key="s.id"
-              class="flex items-center gap-3 rounded-lg border border-border p-3"
-            >
-              <span
-                class="h-5 w-5 shrink-0 rounded-full border border-border-strong"
-                :style="{ backgroundColor: s.cap_color_hex || '#e4e4e7' }"
-              />
-              <div class="min-w-0 flex-1">
-                <p class="font-medium">
-                  {{ s.name }}
-                  <span v-if="formatVolume(s.required_volume_ml)" class="text-sm font-normal text-text-muted">
-                    · {{ formatVolume(s.required_volume_ml) }}
-                  </span>
-                </p>
-                <p class="text-xs text-text-muted">
-                  Exámenes: {{ s.test_codes.join(', ') }} · Ruta: {{ s.area_route.join(' > ') || '—' }}
-                </p>
-              </div>
+        <UiSection
+          title="Tubos y etiquetas"
+          description="Una etiqueta por tubo, en orden de extracción."
+        >
+          <div v-if="loading" class="flex justify-center py-8">
+            <UiSpinner size="lg" color="primary" label="Preparando tubos" />
+          </div>
+          <ul v-else class="space-y-3">
+            <li v-for="s in order?.samples ?? []" :key="s.id">
+              <SampleTubeCard :sample="s">
+                <LabelPreview
+                  class="mt-1"
+                  :patient-name="fullName(current.patient)"
+                  :document="`${current.patient.document_type} ${current.patient.document_number}`"
+                  :order-number="current.order_number ?? ''"
+                  :tube-name="s.name"
+                  :area-route="s.area_route"
+                />
+              </SampleTubeCard>
             </li>
           </ul>
         </UiSection>
@@ -74,11 +70,6 @@
             required
           />
         </UiFormField>
-        <UiCheckbox
-          :model-value="showAllStaff"
-          label="Mostrar todo el personal (no solo toma de muestras)"
-          @update:model-value="toggleStaff"
-        />
 
         <UiAlert v-if="error" variant="danger" :message="error" />
 
@@ -121,25 +112,14 @@ const loading = ref(false)
 const busy = ref(false)
 const error = ref('')
 
-// Por defecto solo el personal cuyo cargo incluye "toma de muestras".
-const STAFF_JOB_FILTER = 'toma de muestras'
-const showAllStaff = ref(false)
-
+// La API ya devuelve solo profesionales de toma de muestras.
 async function loadStaff() {
   try {
-    staff.value = await api<StaffMember[]>('/catalog/staff', {
-      query: showAllStaff.value ? {} : { job_title: STAFF_JOB_FILTER }
-    })
+    staff.value = await api<StaffMember[]>('/catalog/staff')
   } catch (e) {
     error.value = apiErrorMessage(e)
     toast.error(error.value)
   }
-}
-
-async function toggleStaff(value: boolean) {
-  showAllStaff.value = value
-  professionalId.value = ''
-  await loadStaff()
 }
 
 onMounted(loadStaff)
