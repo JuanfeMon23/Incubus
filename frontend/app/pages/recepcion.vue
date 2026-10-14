@@ -1,24 +1,29 @@
 <template>
   <div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
     <aside class="space-y-6">
-      <section>
-        <h2 class="mb-2 font-semibold">Esperando recepción ({{ waiting.length }})</h2>
-        <ul class="space-y-2">
-          <li v-for="e in waiting" :key="e.id">
-            <UiCard padding="sm" :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }">
-              <p class="truncate text-sm font-medium">{{ fullName(e.patient) }}</p>
-              <p class="text-xs text-text-muted">{{ e.patient.document_number }} · {{ waitingLabel(e.arrived_at) }}</p>
-              <div class="mt-2 flex items-center justify-between">
-                <PriorityBadge :priority="e.priority" />
-                <UiButton size="sm" :loading="claimingId === e.id" @click="claim(e)">Tomar</UiButton>
-              </div>
-            </UiCard>
-          </li>
-          <li v-if="listLoading" class="flex justify-center py-4">
-            <UiSpinner color="primary" label="Cargando cola" />
-          </li>
-          <li v-else-if="!waiting.length" class="text-sm text-text-muted">Nadie en espera.</li>
-        </ul>
+      <section class="space-y-3">
+        <div class="rounded-xl bg-primary-50 p-4 text-center">
+          <p class="text-3xl font-bold text-primary-700">{{ waiting.length }}</p>
+          <p class="text-sm text-primary-700">
+            {{ waiting.length === 1 ? 'paciente en espera' : 'pacientes en espera' }}
+          </p>
+          <UiButton
+            class="mt-3 w-full"
+            size="lg"
+            :disabled="!waiting.length"
+            :loading="calling"
+            @click="callNext"
+          >
+            Llamar al siguiente
+          </UiButton>
+          <p v-if="waiting[0]" class="mt-2 text-xs text-primary-700">
+            Sigue: prioridad {{ waiting[0].priority.name.toLowerCase() }} · espera
+            {{ waitingLabel(waiting[0].arrived_at) }}
+          </p>
+        </div>
+        <div v-if="listLoading" class="flex justify-center py-2">
+          <UiSpinner color="primary" label="Cargando cola" />
+        </div>
       </section>
 
       <section>
@@ -68,21 +73,74 @@
           <UiFormField name="address" label="Dirección de residencia" class="col-span-2" required><UiTextInput /></UiFormField>
         </div>
 
-        <UiSection title="Exámenes">
-          <UiTextInput v-model="search" placeholder="Buscar examen por nombre o código…" />
-          <ul v-if="results.length" class="mt-1 max-h-48 overflow-auto rounded-md border border-border">
+        <UiSection title="Exámenes" description="Busque por nombre, código o abreviatura.">
+          <div class="relative">
+            <UiTextInput v-model="search" placeholder="Ej.: colesterol, HBSAG, ACIDO_URICO…" />
+            <div
+              v-if="searching"
+              class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+            >
+              <UiSpinner size="sm" color="primary" label="Buscando" />
+            </div>
+          </div>
+
+          <ul
+            v-if="results.length"
+            class="mt-2 max-h-64 divide-y divide-border overflow-auto rounded-lg border border-border bg-surface shadow-sm"
+          >
             <li v-for="t in results" :key="t.code">
-              <button type="button" class="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-muted" @click="addTest(t)">
-                {{ t.name }} <span class="text-xs text-text-muted">{{ t.code }}</span>
+              <button
+                type="button"
+                class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-primary-50 disabled:opacity-50"
+                :disabled="isChosen(t.code)"
+                @click="addTest(t)"
+              >
+                <span class="shrink-0 rounded-md bg-default-100 px-2 py-0.5 font-mono text-xs font-semibold text-default-700">
+                  {{ t.code }}
+                </span>
+                <span class="min-w-0 flex-1 truncate">{{ t.name }}</span>
+                <span v-if="t.abbreviation" class="shrink-0 text-xs text-text-muted">{{ t.abbreviation }}</span>
+                <span v-if="isChosen(t.code)" class="shrink-0 text-xs font-medium text-success-700">Agregado</span>
+                <span v-else class="shrink-0 text-lg leading-none text-primary-600" aria-hidden="true">+</span>
               </button>
             </li>
           </ul>
-          <ul class="mt-3 flex flex-wrap gap-2">
-            <li v-for="t in chosen" :key="t.code" class="flex items-center gap-1 rounded-full bg-surface-muted px-3 py-1 text-sm">
-              {{ t.name }}
-              <button type="button" class="text-text-muted" :aria-label="`Quitar ${t.name}`" @click="removeTest(t.code)">×</button>
-            </li>
-          </ul>
+          <p
+            v-else-if="search.trim().length >= 2 && !searching"
+            class="mt-2 text-sm text-text-muted"
+          >
+            Sin resultados para «{{ search.trim() }}».
+          </p>
+
+          <div class="mt-4">
+            <p class="mb-2 text-sm font-medium">
+              Exámenes de la orden
+              <span class="ml-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700">{{ chosen.length }}</span>
+            </p>
+            <ul v-if="chosen.length" class="grid gap-2 sm:grid-cols-2">
+              <li
+                v-for="t in chosen"
+                :key="t.code"
+                class="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2"
+              >
+                <span class="shrink-0 rounded-md bg-white px-2 py-0.5 font-mono text-xs font-semibold text-primary-700">
+                  {{ t.code }}
+                </span>
+                <span class="min-w-0 flex-1 truncate text-sm">{{ t.name }}</span>
+                <button
+                  type="button"
+                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-primary-700 transition-colors hover:bg-primary-100"
+                  :aria-label="`Quitar ${t.name}`"
+                  @click="removeTest(t.code)"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </li>
+            </ul>
+            <p v-else class="rounded-lg border border-dashed border-border-strong p-3 text-center text-sm text-text-muted">
+              Aún no hay exámenes en la orden.
+            </p>
+          </div>
         </UiSection>
 
         <PreconditionChecklist
@@ -130,7 +188,7 @@ const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
-const claimingId = ref<string | null>(null)
+const calling = ref(false)
 const waiting = computed(() => entries.value.filter((e) => e.status === 'pre_recepcion'))
 const attending = computed(() => entries.value.filter((e) => e.status === 'en_atencion_recepcion'))
 
@@ -159,6 +217,8 @@ const checksOk = computed(() => checksComplete(keys.value, checks.value))
 
 const search = ref('')
 const results = ref<CatalogTest[]>([])
+const searching = ref(false)
+const isChosen = (code: string) => chosen.value.some((c) => c.code === code)
 const error = ref('')
 const orderNumber = ref('')
 const returning = ref(false)
@@ -188,30 +248,41 @@ async function restore(codes: string[]) {
   await loadPreconditions(chosen.value.map((t) => t.code)).catch(() => {})
 }
 
-async function claim(e: QueueEntry) {
+/** Llama al siguiente paciente según prioridad y orden de llegada. */
+async function callNext() {
   error.value = ''
-  claimingId.value = e.id
+  calling.value = true
   try {
-    await api(`/queue/${e.id}/claim`, { method: 'POST', body: { actor: ACTOR } })
+    const entry = await api<QueueEntry>('/queue/call-next', { method: 'POST', body: { actor: ACTOR } })
     await refresh()
-    const fresh = entries.value.find((x) => x.id === e.id)
-    if (fresh) select(fresh)
+    const fresh = entries.value.find((x) => x.id === entry.id)
+    select(fresh ?? entry)
+    toast.info(`Llamando a ${fullName(entry.patient)}.`)
   } catch (err) {
     error.value = apiErrorMessage(err)
     toast.error(error.value)
     await refresh()
   } finally {
-    claimingId.value = null
+    calling.value = false
   }
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(search, (q) => {
   clearTimeout(searchTimer)
+  if (q.trim().length < 2) {
+    results.value = []
+    return
+  }
   searchTimer = setTimeout(async () => {
-    results.value = q.trim().length >= 2
-      ? await api<CatalogTest[]>('/catalog/tests', { query: { q } })
-      : []
+    searching.value = true
+    try {
+      results.value = await api<CatalogTest[]>('/catalog/tests', { query: { q: q.trim() } })
+    } catch (e) {
+      toast.error(apiErrorMessage(e))
+    } finally {
+      searching.value = false
+    }
   }, 250)
 })
 

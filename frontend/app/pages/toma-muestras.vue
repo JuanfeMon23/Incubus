@@ -75,38 +75,24 @@
           :previous="receptionResults"
         />
 
-        <UiSection title="Tubos a tomar" description="En orden de extracción.">
-          <ul class="space-y-2">
-            <li
-              v-for="s in order.samples"
-              :key="s.id"
-              class="flex items-start gap-3 rounded-lg border border-border p-3"
-              :class="s.collected_at ? 'bg-success-50' : 'bg-surface'"
-            >
-              <span
-                class="mt-1 h-5 w-5 shrink-0 rounded-full border border-border-strong"
-                :style="{ backgroundColor: s.cap_color_hex || '#e4e4e7' }"
-              />
-              <div class="min-w-0 flex-1">
-                <p class="font-medium">
-                  {{ s.name }}
-                  <span v-if="formatVolume(s.required_volume_ml)" class="text-sm font-normal text-text-muted">
-                    · {{ formatVolume(s.required_volume_ml) }}
-                  </span>
-                </p>
-                <p class="text-xs text-text-muted">
-                  Exámenes: {{ s.test_codes.join(', ') }} · Ruta: {{ s.area_route.join(' > ') || '—' }}
-                </p>
-                <p v-if="s.collection_instructions" class="text-xs">{{ s.collection_instructions }}</p>
-              </div>
-              <UiCheckbox
-                :model-value="!!s.collected_at"
-                :disabled="togglingId === s.id"
-                label="Tomada"
-                @update:model-value="toggle(s, $event)"
-              />
+        <UiSection title="Tubos a tomar" description="En orden de extracción; marque cada tubo al tomarlo.">
+          <ul class="space-y-3">
+            <li v-for="s in order.samples" :key="s.id">
+              <SampleTubeCard :sample="s">
+                <template #actions>
+                  <UiCheckbox
+                    :model-value="!!s.collected_at"
+                    :disabled="togglingId === s.id"
+                    label="Tomado"
+                    @update:model-value="toggle(s, $event)"
+                  />
+                </template>
+              </SampleTubeCard>
             </li>
           </ul>
+          <p class="mt-2 text-xs text-text-muted">
+            {{ order.samples.filter((s) => s.collected_at).length }} de {{ order.samples.length }} tubos tomados
+          </p>
         </UiSection>
 
         <UiAlert v-if="error" variant="danger" :message="error" />
