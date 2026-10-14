@@ -6,6 +6,9 @@ export function useQueueList(statuses: QueueStatus[]) {
   const { version } = useQueueSocket()
   const entries = ref<QueueEntry[]>([])
   const error = ref('')
+  // `loading` es true solo mientras no hay datos aún (primera carga); las
+  // recargas por eventos en vivo no parpadean la lista.
+  const loading = ref(true)
 
   async function refresh() {
     try {
@@ -14,10 +17,12 @@ export function useQueueList(statuses: QueueStatus[]) {
       error.value = ''
     } catch (e) {
       error.value = apiErrorMessage(e)
+    } finally {
+      loading.value = false
     }
   }
 
   onMounted(refresh)
   watch(version, refresh)
-  return { entries, error, refresh }
+  return { entries, error, loading, refresh }
 }

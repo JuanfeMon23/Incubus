@@ -10,11 +10,14 @@
               <p class="text-xs text-text-muted">{{ e.patient.document_number }} · {{ waitingLabel(e.arrived_at) }}</p>
               <div class="mt-2 flex items-center justify-between">
                 <PriorityBadge :priority="e.priority" />
-                <UiButton size="sm" @click="claim(e)">Tomar</UiButton>
+                <UiButton size="sm" :loading="claimingId === e.id" @click="claim(e)">Tomar</UiButton>
               </div>
             </UiCard>
           </li>
-          <li v-if="!waiting.length" class="text-sm text-text-muted">Nadie en espera.</li>
+          <li v-if="listLoading" class="flex justify-center py-4">
+            <UiSpinner color="primary" label="Cargando cola" />
+          </li>
+          <li v-else-if="!waiting.length" class="text-sm text-text-muted">Nadie en espera.</li>
         </ul>
       </section>
 
@@ -50,19 +53,19 @@
         </div>
 
         <div class="grid grid-cols-2 gap-3">
-          <UiFormField label="Primer nombre"><UiTextInput v-model="demo.first_name" /></UiFormField>
+          <UiFormField label="Primer nombre" required><UiTextInput v-model="demo.first_name" /></UiFormField>
           <UiFormField label="Segundo nombre"><UiTextInput v-model="demo.second_name" /></UiFormField>
-          <UiFormField label="Primer apellido"><UiTextInput v-model="demo.first_last_name" /></UiFormField>
+          <UiFormField label="Primer apellido" required><UiTextInput v-model="demo.first_last_name" /></UiFormField>
           <UiFormField label="Segundo apellido"><UiTextInput v-model="demo.second_last_name" /></UiFormField>
-          <UiFormField label="Fecha de nacimiento"><UiTextInput v-model="demo.birth_date" type="date" /></UiFormField>
-          <UiFormField label="Lugar de nacimiento"><UiTextInput v-model="demo.birth_place" /></UiFormField>
-          <UiFormField label="Sexo">
+          <UiFormField label="Fecha de nacimiento" required><UiTextInput v-model="demo.birth_date" type="date" /></UiFormField>
+          <UiFormField label="Lugar de nacimiento" required><UiTextInput v-model="demo.birth_place" /></UiFormField>
+          <UiFormField label="Sexo" required>
             <UiSelect v-model="demo.sex" :options="sexOptions" empty-label="—" />
           </UiFormField>
-          <UiFormField label="Correo electrónico"><UiTextInput v-model="demo.email" type="email" /></UiFormField>
-          <UiFormField label="Teléfono"><UiTextInput v-model="demo.phone" /></UiFormField>
-          <UiFormField label="Aseguradora"><UiTextInput v-model="demo.insurer" /></UiFormField>
-          <UiFormField label="Dirección de residencia" class="col-span-2">
+          <UiFormField label="Correo electrónico" required><UiTextInput v-model="demo.email" type="email" /></UiFormField>
+          <UiFormField label="Teléfono" required><UiTextInput v-model="demo.phone" /></UiFormField>
+          <UiFormField label="Aseguradora" required><UiTextInput v-model="demo.insurer" /></UiFormField>
+          <UiFormField label="Dirección de residencia" class="col-span-2" required>
             <UiTextInput v-model="demo.address" />
           </UiFormField>
         </div>
@@ -91,6 +94,9 @@
           :items="preconditions"
         />
 
+        <UiAlert v-if="!demographicsOk" variant="warning" title="Faltan datos del paciente">
+          {{ missingDemographics.join(', ') }}
+        </UiAlert>
         <UiAlert v-if="error" variant="danger" :message="error" />
         <UiAlert v-if="orderNumber" variant="success">
           Orden generada: <strong class="font-mono text-base">{{ orderNumber }}</strong>
@@ -98,7 +104,7 @@
 
         <div class="flex justify-between">
           <UiButton variant="secondary" @click="returning = true">Devolver a pre-recepción</UiButton>
-          <UiButton :disabled="!chosen.length || !checksOk" :loading="busy" @click="close">Cerrar y generar orden</UiButton>
+          <UiButton :disabled="!chosen.length || !checksOk || !demographicsOk" :loading="busy" @click="close">Cerrar y generar orden</UiButton>
         </div>
       </div>
     </UiCard>
@@ -125,7 +131,9 @@ import type { CheckMap } from '../utils/checks'
 const ACTOR = 'recepcion'
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
-const { entries, refresh } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
+const toast = useToast()
+const { entries, loading: listLoading, refresh } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
+const claimingId = ref<string | null>(null)
 const waiting = computed(() => entries.value.filter((e) => e.status === 'pre_recepcion'))
 const attending = computed(() => entries.value.filter((e) => e.status === 'en_atencion_recepcion'))
 
@@ -137,11 +145,29 @@ const demo = reactive({
   first_name: '', second_name: '', first_last_name: '', second_last_name: '',
   birth_date: '', birth_place: '', sex: '', email: '', phone: '', insurer: '', address: ''
 })
+
+// Todos los campos son obligatorios salvo segundo nombre y segundo apellido.
+const REQUIRED_DEMOGRAPHICS: { key: keyof typeof demo; label: string }[] = [
+  { key: 'first_name', label: 'Primer nombre' },
+  { key: 'first_last_name', label: 'Primer apellido' },
+  { key: 'birth_date', label: 'Fecha de nacimiento' },
+  { key: 'birth_place', label: 'Lugar de nacimiento' },
+  { key: 'sex', label: 'Sexo' },
+  { key: 'email', label: 'Correo electrónico' },
+  { key: 'phone', label: 'Teléfono' },
+  { key: 'insurer', label: 'Aseguradora' },
+  { key: 'address', label: 'Dirección de residencia' }
+]
+const missingDemographics = computed(() =>
+  REQUIRED_DEMOGRAPHICS.filter((f) => !String(demo[f.key] ?? '').trim()).map((f) => f.label)
+)
+const demographicsOk = computed(() => missingDemographics.value.length === 0)
 const chosen = ref<CatalogTest[]>([])
 const preconditions = ref<OrderPrecondition[]>([])
 const checks = ref<CheckMap>({})
 const keys = computed(() => preconditions.value.map((p) => p.key))
 const checksOk = computed(() => checksComplete(keys.value, checks.value))
+
 const search = ref('')
 const results = ref<CatalogTest[]>([])
 const error = ref('')
@@ -178,6 +204,7 @@ async function restore(codes: string[]) {
 
 async function claim(e: QueueEntry) {
   error.value = ''
+  claimingId.value = e.id
   try {
     await api(`/queue/${e.id}/claim`, { method: 'POST', body: { actor: ACTOR } })
     await refresh()
@@ -185,7 +212,10 @@ async function claim(e: QueueEntry) {
     if (fresh) select(fresh)
   } catch (err) {
     error.value = apiErrorMessage(err)
+    toast.error(error.value)
     await refresh()
+  } finally {
+    claimingId.value = null
   }
 }
 
@@ -219,6 +249,7 @@ async function sync() {
     await loadPreconditions(codes)
   } catch (e) {
     error.value = apiErrorMessage(e)
+    toast.error(error.value)
   }
 }
 
@@ -256,10 +287,12 @@ async function close() {
       }
     })
     orderNumber.value = res.order_number
+    toast.success(`Orden ${res.order_number} generada. Pasa a impresión de etiquetas.`)
     currentId.value = null
     await refresh()
   } catch (e) {
     error.value = apiErrorMessage(e)
+    toast.error(error.value)
   } finally {
     busy.value = false
   }
@@ -271,10 +304,12 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
   try {
     await saveDemographics()
     await api(`/queue/${current.value.id}/return`, { method: 'POST', body: { ...payload, actor: ACTOR } })
+    toast.info('Paciente devuelto a pre-recepción.')
     currentId.value = null
     await refresh()
   } catch (e) {
     error.value = apiErrorMessage(e)
+    toast.error(error.value)
   }
 }
 </script>

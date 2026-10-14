@@ -50,6 +50,7 @@
     <section>
       <h2 class="mb-3 text-lg font-semibold">En pre-recepción ({{ entries.length }})</h2>
       <UiAlert v-if="listError" variant="danger" :message="listError" class="mb-3" />
+      <div v-if="listLoading" class="flex justify-center py-6"><UiSpinner size="lg" color="primary" label="Cargando cola" /></div>
       <ul class="space-y-2">
         <li v-for="e in entries" :key="e.id">
           <UiCard padding="sm" :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }">
@@ -65,7 +66,7 @@
             </div>
           </UiCard>
         </li>
-        <li v-if="!entries.length" class="text-sm text-text-muted">Sin pacientes en espera.</li>
+        <li v-if="!entries.length && !listLoading" class="text-sm text-text-muted">Sin pacientes en espera.</li>
       </ul>
     </section>
 
@@ -85,7 +86,8 @@ import type { Patient, Priority, Reason } from '../types'
 
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
-const { entries, error: listError, refresh } = useQueueList(['pre_recepcion'])
+const toast = useToast()
+const { entries, error: listError, loading: listLoading, refresh } = useQueueList(['pre_recepcion'])
 
 const priorities = ref<Priority[]>([])
 const removalReasons = ref<Reason[]>([])
@@ -135,6 +137,7 @@ async function parseScan() {
     scan.value = ''
   } catch (e) {
     scanError.value = apiErrorMessage(e)
+    toast.error(scanError.value)
   }
 }
 
@@ -147,9 +150,11 @@ async function submit() {
   try {
     await api('/queue', { method: 'POST', body: { patient: clean, priority_id: priorityId.value } })
     Object.assign(form, blank())
+    toast.success('Paciente ingresado a la cola.')
     await refresh()
   } catch (e) {
     error.value = apiErrorMessage(e)
+    toast.error(error.value)
   } finally {
     busy.value = false
   }
@@ -160,9 +165,11 @@ async function remove(payload: { reason_id: string; note: string | null }) {
   try {
     await api(`/queue/${removing.value.id}/remove`, { method: 'POST', body: payload })
     removing.value = null
+    toast.success('Paciente retirado de la cola.')
     await refresh()
   } catch (e) {
     listError.value = apiErrorMessage(e)
+    toast.error(listError.value)
     removing.value = null
   }
 }
