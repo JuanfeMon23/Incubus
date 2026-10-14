@@ -1,84 +1,71 @@
 <template>
-  <div class="grid gap-6 lg:grid-cols-[22rem_1fr]">
-    <!-- Ingreso -->
-    <form class="space-y-3 rounded-xl border border-zinc-200 bg-white p-4" @submit.prevent="submit">
-      <h1 class="text-lg font-semibold">Ingreso de paciente</h1>
+  <div class="grid gap-6 lg:grid-cols-[24rem_1fr]">
+    <UiCard title="Ingreso de paciente" description="Escanee la cédula o digite los datos.">
+      <form class="space-y-3" @submit.prevent="submit">
+        <UiFormField label="Escanear cédula (código de barras)" :error="scanError">
+          <UiTextInput
+            v-model="scan"
+            autofocus
+            placeholder="Enfoque aquí y escanee"
+            @keydown.enter.prevent="parseScan"
+          />
+        </UiFormField>
 
-      <label class="block text-sm">
-        Escanear cédula (código de barras)
-        <input
-          ref="scanInput"
-          v-model="scan"
-          autofocus
-          placeholder="Enfoque aquí y escanee"
-          class="field"
-          @keydown.enter.prevent="parseScan"
-        >
-      </label>
-      <p v-if="scanError" class="text-sm text-red-600">{{ scanError }}</p>
-
-      <div class="grid grid-cols-2 gap-2">
-        <label class="text-sm">Documento<input v-model="form.document_number" required class="field"></label>
-        <label class="text-sm">Sexo
-          <select v-model="form.sex" class="field">
-            <option value="">—</option>
-            <option value="M">M</option>
-            <option value="F">F</option>
-          </select>
-        </label>
-        <label class="text-sm">Primer nombre<input v-model="form.first_name" required class="field"></label>
-        <label class="text-sm">Segundo nombre<input v-model="form.second_name" class="field"></label>
-        <label class="text-sm">Primer apellido<input v-model="form.first_last_name" required class="field"></label>
-        <label class="text-sm">Segundo apellido<input v-model="form.second_last_name" class="field"></label>
-        <label class="text-sm">Nacimiento<input v-model="form.birth_date" type="date" class="field"></label>
-        <label class="text-sm">RH<input v-model="form.blood_type" maxlength="3" class="field"></label>
-      </div>
-
-      <fieldset>
-        <legend class="text-sm">Prioridad</legend>
-        <div class="mt-1 grid grid-cols-2 gap-2">
-          <label
-            v-for="p in priorities"
-            :key="p.id"
-            class="flex cursor-pointer items-center gap-2 rounded-lg border p-2 text-sm"
-            :class="priorityId === p.id ? 'border-zinc-900' : 'border-zinc-200'"
-          >
-            <input v-model="priorityId" type="radio" :value="p.id" class="sr-only">
-            <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: p.color_hex }" />
-            {{ p.name }}
-          </label>
+        <div class="grid grid-cols-2 gap-3">
+          <UiFormField label="Documento" required><UiTextInput v-model="form.document_number" required /></UiFormField>
+          <UiFormField label="Sexo">
+            <UiSelect v-model="form.sex" :options="sexOptions" empty-label="—" />
+          </UiFormField>
+          <UiFormField label="Primer nombre" required><UiTextInput v-model="form.first_name" required /></UiFormField>
+          <UiFormField label="Segundo nombre"><UiTextInput v-model="form.second_name" /></UiFormField>
+          <UiFormField label="Primer apellido" required><UiTextInput v-model="form.first_last_name" required /></UiFormField>
+          <UiFormField label="Segundo apellido"><UiTextInput v-model="form.second_last_name" /></UiFormField>
+          <UiFormField label="Nacimiento"><UiTextInput v-model="form.birth_date" type="date" /></UiFormField>
+          <UiFormField label="RH"><UiTextInput v-model="form.blood_type" /></UiFormField>
         </div>
-      </fieldset>
 
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-      <button class="w-full rounded-lg bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50" :disabled="!priorityId || busy">
-        Ingresar a la cola
-      </button>
-    </form>
+        <fieldset>
+          <legend class="mb-1 text-sm font-medium">Prioridad</legend>
+          <div class="grid grid-cols-2 gap-2">
+            <label
+              v-for="p in priorities"
+              :key="p.id"
+              class="flex cursor-pointer items-center gap-2 rounded-md border-2 p-2 text-sm transition-colors"
+              :class="priorityId === p.id ? 'border-primary-500 bg-primary-50' : 'border-border'"
+            >
+              <input v-model="priorityId" type="radio" :value="p.id" class="sr-only">
+              <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: p.color_hex }" />
+              {{ p.name }}
+            </label>
+          </div>
+        </fieldset>
 
-    <!-- Cola -->
+        <UiAlert v-if="error" variant="danger" :message="error" />
+        <UiButton type="submit" class="w-full" :disabled="!priorityId" :loading="busy">
+          Ingresar a la cola
+        </UiButton>
+      </form>
+    </UiCard>
+
     <section>
       <h2 class="mb-3 text-lg font-semibold">En pre-recepción ({{ entries.length }})</h2>
-      <p v-if="listError" class="text-sm text-red-600">{{ listError }}</p>
+      <UiAlert v-if="listError" variant="danger" :message="listError" class="mb-3" />
       <ul class="space-y-2">
-        <li
-          v-for="e in entries"
-          :key="e.id"
-          class="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3"
-          :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }"
-        >
-          <div class="min-w-0 flex-1">
-            <p class="truncate font-medium">{{ fullName(e.patient) }}</p>
-            <p class="text-xs text-zinc-500">
-              {{ e.patient.document_type }} {{ e.patient.document_number }} · espera {{ waitingLabel(e.arrived_at) }}
-            </p>
-          </div>
-          <PriorityBadge :priority="e.priority" />
-          <button class="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700" @click="removing = e">
-            Retirar
-          </button>
+        <li v-for="e in entries" :key="e.id">
+          <UiCard padding="sm" :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }">
+            <div class="flex items-center gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium">{{ fullName(e.patient) }}</p>
+                <p class="text-xs text-text-muted">
+                  {{ e.patient.document_type }} {{ e.patient.document_number }} · espera {{ waitingLabel(e.arrived_at) }}
+                </p>
+              </div>
+              <PriorityBadge :priority="e.priority" />
+              <UiButton size="sm" variant="danger-ghost" @click="removing = e">Retirar</UiButton>
+            </div>
+          </UiCard>
         </li>
-        <li v-if="!entries.length" class="text-sm text-zinc-500">Sin pacientes en espera.</li>
+        <li v-if="!entries.length" class="text-sm text-text-muted">Sin pacientes en espera.</li>
       </ul>
     </section>
 
@@ -96,6 +83,7 @@
 <script setup lang="ts">
 import type { Patient, Priority, Reason } from '../types'
 
+const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
 const { entries, error: listError, refresh } = useQueueList(['pre_recepcion'])
 
@@ -179,7 +167,3 @@ async function remove(payload: { reason_id: string; note: string | null }) {
   }
 }
 </script>
-
-<style scoped>
-.field { margin-top: 0.25rem; width: 100%; border: 1px solid #d4d4d8; border-radius: 0.5rem; padding: 0.4rem 0.5rem; }
-</style>

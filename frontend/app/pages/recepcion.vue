@@ -1,24 +1,20 @@
 <template>
   <div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
-    <!-- Cola -->
-    <aside class="space-y-5">
+    <aside class="space-y-6">
       <section>
         <h2 class="mb-2 font-semibold">Esperando recepción ({{ waiting.length }})</h2>
         <ul class="space-y-2">
-          <li
-            v-for="e in waiting"
-            :key="e.id"
-            class="rounded-xl border border-zinc-200 bg-white p-3"
-            :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }"
-          >
-            <p class="truncate text-sm font-medium">{{ fullName(e.patient) }}</p>
-            <p class="text-xs text-zinc-500">{{ e.patient.document_number }} · {{ waitingLabel(e.arrived_at) }}</p>
-            <div class="mt-2 flex items-center justify-between">
-              <PriorityBadge :priority="e.priority" />
-              <button class="rounded-lg bg-zinc-900 px-3 py-1 text-xs text-white" @click="claim(e)">Tomar</button>
-            </div>
+          <li v-for="e in waiting" :key="e.id">
+            <UiCard padding="sm" :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }">
+              <p class="truncate text-sm font-medium">{{ fullName(e.patient) }}</p>
+              <p class="text-xs text-text-muted">{{ e.patient.document_number }} · {{ waitingLabel(e.arrived_at) }}</p>
+              <div class="mt-2 flex items-center justify-between">
+                <PriorityBadge :priority="e.priority" />
+                <UiButton size="sm" @click="claim(e)">Tomar</UiButton>
+              </div>
+            </UiCard>
           </li>
-          <li v-if="!waiting.length" class="text-sm text-zinc-500">Nadie en espera.</li>
+          <li v-if="!waiting.length" class="text-sm text-text-muted">Nadie en espera.</li>
         </ul>
       </section>
 
@@ -27,99 +23,91 @@
         <ul class="space-y-2">
           <li v-for="e in attending" :key="e.id">
             <button
-              class="w-full rounded-xl border bg-white p-3 text-left text-sm"
-              :class="current?.id === e.id ? 'border-zinc-900' : 'border-zinc-200'"
+              type="button"
+              class="w-full rounded-lg border-2 bg-surface p-3 text-left text-sm shadow-sm transition-colors"
+              :class="current?.id === e.id ? 'border-primary-500' : 'border-transparent'"
               @click="select(e)"
             >
               <span class="block truncate font-medium">{{ fullName(e.patient) }}</span>
-              <span class="text-xs text-zinc-500">{{ e.claimed_by || 'sin asignar' }}</span>
+              <span class="text-xs text-text-muted">{{ e.claimed_by || 'sin asignar' }}</span>
             </button>
           </li>
         </ul>
       </section>
     </aside>
 
-    <!-- Atención -->
-    <section v-if="current" class="space-y-5 rounded-xl border border-zinc-200 bg-white p-5">
-      <header class="flex items-start justify-between">
-        <div>
-          <h1 class="text-lg font-semibold">{{ fullName(current.patient) }}</h1>
-          <p class="text-sm text-zinc-500">
-            {{ current.patient.document_type }} {{ current.patient.document_number }}
-            <template v-if="age !== null"> · {{ age }} años</template>
-          </p>
+    <UiCard v-if="current">
+      <div class="space-y-5">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h1 class="text-lg font-semibold">{{ fullName(current.patient) }}</h1>
+            <p class="text-sm text-text-muted">
+              {{ current.patient.document_type }} {{ current.patient.document_number }}
+              <template v-if="age !== null"> · {{ age }} años</template>
+            </p>
+          </div>
+          <PriorityBadge :priority="current.priority" />
         </div>
-        <PriorityBadge :priority="current.priority" />
-      </header>
 
-      <div class="grid grid-cols-2 gap-3 text-sm">
-        <label>Primer nombre<input v-model="demo.first_name" class="field"></label>
-        <label>Segundo nombre<input v-model="demo.second_name" class="field"></label>
-        <label>Primer apellido<input v-model="demo.first_last_name" class="field"></label>
-        <label>Segundo apellido<input v-model="demo.second_last_name" class="field"></label>
-        <label>Fecha de nacimiento<input v-model="demo.birth_date" type="date" class="field"></label>
-        <label>Lugar de nacimiento<input v-model="demo.birth_place" class="field"></label>
-        <label>Sexo
-          <select v-model="demo.sex" class="field"><option value="">—</option><option>M</option><option>F</option></select>
-        </label>
-        <label>Correo electrónico<input v-model="demo.email" type="email" class="field"></label>
-        <label>Teléfono<input v-model="demo.phone" class="field"></label>
-        <label>Aseguradora<input v-model="demo.insurer" class="field"></label>
-        <label class="col-span-2">Dirección de residencia<input v-model="demo.address" class="field"></label>
+        <div class="grid grid-cols-2 gap-3">
+          <UiFormField label="Primer nombre"><UiTextInput v-model="demo.first_name" /></UiFormField>
+          <UiFormField label="Segundo nombre"><UiTextInput v-model="demo.second_name" /></UiFormField>
+          <UiFormField label="Primer apellido"><UiTextInput v-model="demo.first_last_name" /></UiFormField>
+          <UiFormField label="Segundo apellido"><UiTextInput v-model="demo.second_last_name" /></UiFormField>
+          <UiFormField label="Fecha de nacimiento"><UiTextInput v-model="demo.birth_date" type="date" /></UiFormField>
+          <UiFormField label="Lugar de nacimiento"><UiTextInput v-model="demo.birth_place" /></UiFormField>
+          <UiFormField label="Sexo">
+            <UiSelect v-model="demo.sex" :options="sexOptions" empty-label="—" />
+          </UiFormField>
+          <UiFormField label="Correo electrónico"><UiTextInput v-model="demo.email" type="email" /></UiFormField>
+          <UiFormField label="Teléfono"><UiTextInput v-model="demo.phone" /></UiFormField>
+          <UiFormField label="Aseguradora"><UiTextInput v-model="demo.insurer" /></UiFormField>
+          <UiFormField label="Dirección de residencia" class="col-span-2">
+            <UiTextInput v-model="demo.address" />
+          </UiFormField>
+        </div>
+
+        <UiSection title="Exámenes">
+          <UiTextInput v-model="search" placeholder="Buscar examen por nombre o código…" />
+          <ul v-if="results.length" class="mt-1 max-h-48 overflow-auto rounded-md border border-border">
+            <li v-for="t in results" :key="t.code">
+              <button type="button" class="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-muted" @click="addTest(t)">
+                {{ t.name }} <span class="text-xs text-text-muted">{{ t.code }}</span>
+              </button>
+            </li>
+          </ul>
+          <ul class="mt-3 flex flex-wrap gap-2">
+            <li v-for="t in chosen" :key="t.code" class="flex items-center gap-1 rounded-full bg-surface-muted px-3 py-1 text-sm">
+              {{ t.name }}
+              <button type="button" class="text-text-muted" :aria-label="`Quitar ${t.name}`" @click="removeTest(t.code)">×</button>
+            </li>
+          </ul>
+        </UiSection>
+
+        <UiAlert v-if="preconditions.length" variant="warning" title="Preparación del paciente">
+          <ul class="space-y-1 text-sm">
+            <li v-for="p in preconditions" :key="p.category + p.name + p.patient_instructions">
+              <strong>{{ p.name }}</strong>
+              <span v-if="formatDuration(p.duration_value, p.duration_unit)"> — {{ formatDuration(p.duration_value, p.duration_unit) }}</span>
+              <span v-if="p.patient_instructions">: {{ p.patient_instructions }}</span>
+            </li>
+          </ul>
+        </UiAlert>
+
+        <UiAlert v-if="error" variant="danger" :message="error" />
+        <UiAlert v-if="orderNumber" variant="success">
+          Orden generada: <strong class="font-mono text-base">{{ orderNumber }}</strong>
+        </UiAlert>
+
+        <div class="flex justify-between">
+          <UiButton variant="secondary" @click="returning = true">Devolver a pre-recepción</UiButton>
+          <UiButton :disabled="!chosen.length" :loading="busy" @click="close">Cerrar y generar orden</UiButton>
+        </div>
       </div>
-
-      <!-- Exámenes -->
-      <div>
-        <h2 class="mb-2 font-semibold">Exámenes</h2>
-        <input v-model="search" placeholder="Buscar examen por nombre o código…" class="field">
-        <ul v-if="results.length" class="mt-1 max-h-48 overflow-auto rounded-lg border border-zinc-200">
-          <li v-for="t in results" :key="t.code">
-            <button class="w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-100" @click="addTest(t)">
-              {{ t.name }} <span class="text-xs text-zinc-500">{{ t.code }}</span>
-            </button>
-          </li>
-        </ul>
-        <ul class="mt-3 flex flex-wrap gap-2">
-          <li v-for="t in chosen" :key="t.code" class="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm">
-            {{ t.name }}
-            <button class="text-zinc-500" :aria-label="`Quitar ${t.name}`" @click="removeTest(t.code)">×</button>
-          </li>
-        </ul>
-      </div>
-
-      <!-- Preanalíticos unificados -->
-      <div v-if="preconditions.length" class="rounded-lg border border-amber-200 bg-amber-50 p-3">
-        <h2 class="mb-2 text-sm font-semibold text-amber-900">Preparación del paciente</h2>
-        <ul class="space-y-1 text-sm">
-          <li v-for="p in preconditions" :key="p.category + p.name + p.patient_instructions">
-            <strong>{{ p.name }}</strong>
-            <span v-if="formatDuration(p.duration_value, p.duration_unit)"> — {{ formatDuration(p.duration_value, p.duration_unit) }}</span>
-            <span v-if="p.patient_instructions" class="text-zinc-600">: {{ p.patient_instructions }}</span>
-          </li>
-        </ul>
-      </div>
-
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-      <p v-if="orderNumber" class="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
-        Orden generada: <strong class="font-mono text-base">{{ orderNumber }}</strong>
-      </p>
-
-      <footer class="flex justify-between">
-        <button class="rounded-lg border border-zinc-300 px-3 py-2 text-sm" @click="returning = true">
-          Devolver a pre-recepción
-        </button>
-        <button
-          class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          :disabled="!chosen.length || busy"
-          @click="close"
-        >
-          Cerrar y generar orden
-        </button>
-      </footer>
-    </section>
-    <section v-else class="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500">
-      Tome un paciente de la cola para iniciar la atención.
-    </section>
+    </UiCard>
+    <UiCard v-else>
+      <p class="py-10 text-center text-sm text-text-muted">Tome un paciente de la cola para iniciar la atención.</p>
+    </UiCard>
 
     <ReasonDialog
       v-if="returning"
@@ -136,6 +124,7 @@
 import type { CatalogTest, OrderPrecondition, QueueEntry, Reason } from '../types'
 
 const ACTOR = 'recepcion'
+const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
 const { entries, refresh } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
 const waiting = computed(() => entries.value.filter((e) => e.status === 'pre_recepcion'))
@@ -279,7 +268,3 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
   }
 }
 </script>
-
-<style scoped>
-.field { margin-top: 0.25rem; width: 100%; border: 1px solid #d4d4d8; border-radius: 0.5rem; padding: 0.4rem 0.5rem; }
-</style>
