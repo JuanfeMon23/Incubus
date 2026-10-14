@@ -46,10 +46,23 @@ class CatalogClient:
         return (await self._get("/lab-tests", params))["items"]
 
     async def get_test_by_code(self, code: str) -> dict | None:
+        """Examen activo con sus precondiciones y tipos de muestra.
+
+        El listado `/lab-tests` de Vladimir no hidrata las asignaciones (llegan
+        vacias), asi que se piden a los sub-recursos del examen.
+        """
         items = await self.search_tests(code, limit=50)
-        return next(
+        test = next(
             (t for t in items if t["code"] == code and t.get("is_active", True)), None
         )
+        if test is None:
+            return None
+        base = f"/lab-tests/{test['id']}"
+        return {
+            **test,
+            "preconditions": await self._get(f"{base}/preconditions"),
+            "sample_types": await self._get(f"{base}/sample-types"),
+        }
 
     async def precondition_categories(self) -> dict[str, str]:
         """`id` de precondicion/item -> `category` (el examen no la expone)."""
@@ -59,6 +72,18 @@ class CatalogClient:
             result[root["id"]] = root["category"]
             for item in root.get("items") or []:
                 result[item["id"]] = item["category"]
+        return result
+
+    async def sample_types_by_id(self) -> dict[str, dict]:
+        """`id` del tipo de muestra -> detalle (nombre, color, orden de extraccion)."""
+        samples = await self._get("/samples", {"page_size": _PAGE_SIZE})
+        result: dict[str, dict] = {}
+        for sample in samples["items"]:
+            page = await self._get(
+                f"/samples/{sample['id']}/types", {"page_size": _PAGE_SIZE}
+            )
+            for item in page["items"]:
+                result[item["id"]] = item
         return result
 
 
