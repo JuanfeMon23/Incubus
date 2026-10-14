@@ -3,6 +3,7 @@ export type QueueStatus =
   | 'en_atencion_recepcion'
   | 'en_espera_toma_muestras'
   | 'en_atencion_toma_muestras'
+  | 'toma_finalizada'
   | 'retirado'
 
 export interface Priority { id: string; code: string; name: string; color_hex: string; rank: number }
@@ -42,5 +43,24 @@ export interface OrderPrecondition {
   duration_unit: string | null
   patient_instructions: string | null
   source_test_codes: string[]
+}
+export interface OrderSample {
+  id: string
+  sample_type_code: string
+  name: string
+  cap_color_hex: string | null
+  draw_order: number | null
+  collection_instructions: string | null
+  required_volume_ml: number | null
+  test_codes: string[]
+  collected_at: string | null
+  collected_by: string | null
+}
+export interface OrderDetail {
+  order_number: string
+  queue_entry_id: string
+  tests: { code: string; name: string }[]
+  preconditions: OrderPrecondition[]
+  samples: OrderSample[]
 }
 export interface ApiErrorBody { code?: string; message?: string; details?: unknown }

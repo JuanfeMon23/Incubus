@@ -5,6 +5,7 @@
         <span class="mr-4 text-lg font-semibold tracking-tight">Incubus</span>
         <UiButton to="/pre-recepcion" variant="ghost" size="sm">Pre-recepción</UiButton>
         <UiButton to="/recepcion" variant="ghost" size="sm">Recepción</UiButton>
+        <UiButton to="/toma-muestras" variant="ghost" size="sm">Toma de muestras</UiButton>
         <UiStatusBadge
           class="ml-auto"
           dot
