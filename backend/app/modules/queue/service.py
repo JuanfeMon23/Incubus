@@ -12,6 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
+
+
+class QueueEmptyError(NotFoundError):
+    code = "queue_empty"
+
+
 from app.modules.queue.models import (
     Patient,
     Priority,
@@ -238,3 +244,25 @@ __all__ = [
     "list_entries",
     "save_draft",
 ]
+
+
+async def claim_next(session: AsyncSession, actor: str | None) -> QueueEntry:
+    """Llama al siguiente paciente de pre-recepcion (prioridad y luego llegada).
+
+    `FOR UPDATE SKIP LOCKED`: dos secretarias que llaman a la vez reciben
+    pacientes distintos, nunca el mismo.
+    """
+    stmt = (
+        select(QueueEntry)
+        .join(Priority, Priority.id == QueueEntry.priority_id)
+        .where(QueueEntry.status == QueueStatus.PRE_RECEPCION.value)
+        .order_by(Priority.rank, QueueEntry.arrived_at)
+        .limit(1)
+        .with_for_update(skip_locked=True, of=QueueEntry)
+    )
+    entry = (await session.execute(stmt)).scalar_one_or_none()
+    if entry is None:
+        raise QueueEmptyError("No hay pacientes en espera de recepcion.")
+    return await change_status(
+        session, entry.id, QueueStatus.EN_ATENCION_RECEPCION, actor=actor
+    )

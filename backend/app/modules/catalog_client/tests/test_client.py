@@ -45,3 +45,22 @@ async def test_get_test_by_code_trae_precondiciones_y_tipos_de_muestra():
 
 async def test_get_test_by_code_inexistente():
     assert await make_client().get_test_by_code("NOPE") is None
+
+
+async def test_busqueda_por_codigo_con_guion_bajo_tolera_espacios():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        q = request.url.params.get("q", "")
+        seen.append(q)
+        items = (
+            [{"id": "t9", "code": "ACIDO_URICO", "name": "Urico", "is_active": True}]
+            if q == "ACIDO_URICO"
+            else []
+        )
+        return httpx.Response(200, json={"items": items})
+
+    client = CatalogClient("http://vladimir", transport=httpx.MockTransport(handler))
+    found = await client.search_tests("ACIDO URICO")
+    assert [t["code"] for t in found] == ["ACIDO_URICO"]
+    assert seen == ["ACIDO URICO", "ACIDO_URICO"]

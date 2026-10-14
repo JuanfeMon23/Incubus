@@ -8,7 +8,8 @@ El PDF es la salida basica; ZPL para impresora termica queda como mejora.
 from dataclasses import dataclass, field
 from io import BytesIO
 
-from reportlab.graphics.barcode import code128
+from reportlab.graphics import renderSVG
+from reportlab.graphics.barcode import code128, createBarcodeDrawing
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
@@ -115,3 +116,16 @@ def render_labels_zpl(
             )
         )
     return "\n".join(blocks) + "\n"
+
+
+def render_barcode_svg(value: str, *, bar_height_mm: float = 11) -> str:
+    """Code 128 como SVG (misma simbologia que el PDF y el ZPL)."""
+    drawing = createBarcodeDrawing(
+        "Code128",
+        value=value,
+        barHeight=bar_height_mm * mm,
+        barWidth=0.4 * mm,
+        quiet=False,
+        humanReadable=False,
+    )
+    return renderSVG.drawToString(drawing)

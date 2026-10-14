@@ -289,12 +289,20 @@ async def test_catalogo_de_personal(client, catalog):
     ]
 
 
-async def test_personal_se_filtra_por_cargo(client, catalog):
+async def test_solo_se_listan_profesionales_de_toma_de_muestras(client, catalog):
     catalog.add_staff(
         "s1", "Luis", "Perez", "Auxiliar de laboratorio - Toma de muestras"
     )
     catalog.add_staff("s2", "Ana", "Gil", "Bacterióloga")
-    res = (await client.get("/api/v1/catalog/staff?job_title=toma de muestras")).json()
+    catalog.add_staff("s3", "Eva", "Rey", "Recepcionista")
+    res = (await client.get("/api/v1/catalog/staff")).json()
     assert [s["id"] for s in res] == ["s1"]
-    todos = (await client.get("/api/v1/catalog/staff")).json()
-    assert len(todos) == 2
+
+
+async def test_codigo_de_barras_svg_de_la_orden(client):
+    res = await client.get("/api/v1/orders/barcode/26100001.svg")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("image/svg+xml")
+    assert "<svg" in res.text
+    bad = await client.get("/api/v1/orders/barcode/abc.svg")
+    assert bad.status_code == 422

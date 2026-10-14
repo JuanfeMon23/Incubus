@@ -8,10 +8,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationAppError
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders import service
-from app.modules.orders.labels import LabelData, render_labels_pdf, render_labels_zpl
+from app.modules.orders.labels import (
+    LabelData,
+    render_barcode_svg,
+    render_labels_pdf,
+    render_labels_zpl,
+)
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
 from app.modules.queue.models import Patient
 from app.modules.queue.router import _publish, _read
@@ -66,16 +71,17 @@ async def search_tests(
     ]
 
 
+# Solo profesionales de toma de muestras (por texto del cargo en Vladimir).
+SAMPLING_JOB_TITLE = "toma de muestras"
+
+
 @catalog_router.get("/staff")
-async def list_staff(
-    catalog: Catalog, job_title: Annotated[str | None, Query(max_length=100)] = None
-) -> list[dict]:
-    """Personal activo de Vladimir; `job_title` filtra por texto del cargo."""
+async def list_staff(catalog: Catalog) -> list[dict]:
+    """Profesionales de toma de muestras (personal activo con ese cargo)."""
     staff = await catalog.list_staff()
-    if job_title:
-        needle = job_title.casefold()
-        staff = [s for s in staff if needle in (s.get("job_title") or "").casefold()]
-    return staff
+    return [
+        s for s in staff if SAMPLING_JOB_TITLE in (s.get("job_title") or "").casefold()
+    ]
 
 
 @router.post("/preview")
@@ -287,6 +293,18 @@ async def _labels(
         )
         for t in tubes
     ]
+
+
+@router.get("/barcode/{order_number}.svg")
+async def barcode_svg(order_number: str) -> Response:
+    """Codigo de barras Code128 del numero de orden (vista previa de la etiqueta)."""
+    if not order_number.isdigit() or len(order_number) != 8:
+        raise ValidationAppError(
+            "El numero de orden debe tener 8 digitos.", {"order_number": order_number}
+        )
+    return Response(
+        content=render_barcode_svg(order_number), media_type="image/svg+xml"
+    )
 
 
 @router.get("/by-entry/{entry_id}/labels.pdf")
