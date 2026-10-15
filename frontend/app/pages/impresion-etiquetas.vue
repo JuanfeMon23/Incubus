@@ -2,25 +2,14 @@
   <div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
     <aside>
       <h2 class="mb-2 font-semibold">En espera de impresión ({{ entries.length }})</h2>
-      <ul class="space-y-2">
+      <ul class="space-y-3">
         <li v-for="e in entries" :key="e.id">
-          <button
-            type="button"
-            class="w-full rounded-lg border-2 bg-surface p-3 text-left text-sm shadow-sm transition-colors"
-            :class="current?.id === e.id ? 'border-primary-500' : 'border-transparent'"
-            :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }"
-            @click="select(e)"
-          >
-            <span class="block truncate font-medium">{{ fullName(e.patient) }}</span>
-            <span class="text-xs text-text-muted">
-              Orden {{ e.order_number }} · {{ waitingLabel(e.arrived_at) }}
-            </span>
-          </button>
+          <QueueEntryCard :entry="e" selectable :selected="current?.id === e.id" @select="select(e)" />
         </li>
         <li v-if="listLoading" class="flex justify-center py-4">
           <UiSpinner color="primary" label="Cargando cola" />
         </li>
-        <li v-else-if="!entries.length" class="text-sm text-text-muted">
+        <li v-else-if="!entries.length" class="rounded-xl border border-dashed border-border-strong p-8 text-center text-sm text-text-muted">
           Sin órdenes pendientes de impresión.
         </li>
       </ul>

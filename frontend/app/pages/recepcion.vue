@@ -24,22 +24,27 @@
         <div v-if="listLoading" class="flex justify-center py-2">
           <UiSpinner color="primary" label="Cargando cola" />
         </div>
+        <ul v-else-if="waiting.length" class="space-y-2">
+          <li v-for="(e, i) in waiting.slice(0, 3)" :key="e.id" :class="i === 0 ? '' : 'opacity-80'">
+            <QueueEntryCard :entry="e" compact>
+              <template v-if="i === 0" #chips>
+                <span class="rounded-full bg-primary-600 px-2 py-0.5 font-semibold text-white">Siguiente</span>
+              </template>
+            </QueueEntryCard>
+          </li>
+          <li v-if="waiting.length > 3" class="text-center text-xs text-text-muted">
+            y {{ waiting.length - 3 }} más en espera
+          </li>
+        </ul>
       </section>
 
       <section>
         <h2 class="mb-2 font-semibold">En atención ({{ attending.length }})</h2>
         <ul class="space-y-2">
           <li v-for="e in attending" :key="e.id">
-            <button
-              type="button"
-              class="w-full rounded-lg border-2 bg-surface p-3 text-left text-sm shadow-sm transition-colors"
-              :class="current?.id === e.id ? 'border-primary-500' : 'border-transparent'"
-              @click="select(e)"
-            >
-              <span class="block truncate font-medium">{{ fullName(e.patient) }}</span>
-              <span class="text-xs text-text-muted">{{ e.claimed_by || 'sin asignar' }}</span>
-            </button>
+            <QueueEntryCard :entry="e" compact selectable show-claimed-by :selected="current?.id === e.id" @select="select(e)" />
           </li>
+          <li v-if="!attending.length" class="text-sm text-text-muted">Nadie en atención.</li>
         </ul>
       </section>
     </aside>
@@ -58,18 +63,25 @@
         </div>
 
         <div class="grid grid-cols-2 gap-3">
+          <UiFormField name="document_type" label="Tipo de documento" required>
+            <UiSelect :options="documentTypeOptions" placeholder="Seleccione…" />
+          </UiFormField>
+          <UiFormField name="document_number" label="Número de documento" required><UiTextInput /></UiFormField>
           <UiFormField name="first_name" label="Primer nombre" required><UiTextInput /></UiFormField>
           <UiFormField name="second_name" label="Segundo nombre"><UiTextInput /></UiFormField>
           <UiFormField name="first_last_name" label="Primer apellido" required><UiTextInput /></UiFormField>
           <UiFormField name="second_last_name" label="Segundo apellido"><UiTextInput /></UiFormField>
-          <UiFormField name="birth_date" label="Fecha de nacimiento" required><UiTextInput type="date" /></UiFormField>
+          <UiFormField name="birth_date" label="Fecha de nacimiento" required><UiTextInput type="date" :max="today" /></UiFormField>
           <UiFormField name="birth_place" label="Lugar de nacimiento" required><UiTextInput /></UiFormField>
           <UiFormField name="sex" label="Sexo" required>
             <UiSelect :options="sexOptions" placeholder="Seleccione…" />
           </UiFormField>
+          <UiFormField name="blood_type" label="RH" required>
+            <UiSelect :options="bloodOptions" placeholder="Seleccione…" />
+          </UiFormField>
           <UiFormField name="email" label="Correo electrónico" required><UiTextInput type="email" /></UiFormField>
-          <UiFormField name="phone" label="Teléfono" required><UiTextInput /></UiFormField>
-          <UiFormField name="insurer" label="Aseguradora" required><UiTextInput /></UiFormField>
+          <UiFormField name="phone" label="Teléfono" required hint="Solo números."><UiTextInput inputmode="numeric" maxlength="15" /></UiFormField>
+          <UiFormField name="insurer" label="Aseguradora"><UiTextInput /></UiFormField>
           <UiFormField name="address" label="Dirección de residencia" class="col-span-2" required><UiTextInput /></UiFormField>
         </div>
 
@@ -180,10 +192,16 @@
 import type { CatalogTest, OrderPrecondition, QueueEntry, Reason } from '../types'
 import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
 import type { CheckMap } from '../utils/checks'
-import { receptionPatientSchema } from '../utils/patientSchemas'
+import { BLOOD_TYPES, digitsOnly, receptionPatientSchema, todayISO } from '../utils/patientSchemas'
 import type { ReceptionPatientInput } from '../utils/patientSchemas'
 
 const ACTOR = 'recepcion'
+const today = todayISO()
+const bloodOptions = BLOOD_TYPES.map((v) => ({ value: v, label: v }))
+const documentTypes = ref<Reason[]>([])
+const documentTypeOptions = computed(() =>
+  documentTypes.value.map((d) => ({ value: d.code, label: `${d.code} · ${d.name}` }))
+)
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
 const toast = useToast()
@@ -197,7 +215,7 @@ const current = computed(() => attending.value.find((e) => e.id === currentId.va
 const age = computed(() => ageFrom(current.value?.patient.birth_date ?? null))
 
 const DEMOGRAPHIC_FIELDS = [
-  'first_name', 'second_name', 'first_last_name', 'second_last_name', 'birth_date',
+  'document_type', 'document_number', 'first_name', 'second_name', 'first_last_name', 'second_last_name', 'birth_date',
   'birth_place', 'sex', 'blood_type', 'email', 'phone', 'insurer', 'address'
 ] as const
 
@@ -225,7 +243,10 @@ const returning = ref(false)
 const returnReasons = ref<Reason[]>([])
 
 onMounted(async () => {
-  returnReasons.value = await api<Reason[]>('/return-reasons')
+  ;[returnReasons.value, documentTypes.value] = await Promise.all([
+    api<Reason[]>('/return-reasons'),
+    api<Reason[]>('/document-types')
+  ])
 })
 
 function select(e: QueueEntry) {
@@ -330,6 +351,41 @@ async function saveDemographics() {
   )
   await api(`/patients/${current.value.patient.id}`, { method: 'PATCH', body })
 }
+
+// Teléfono: solo números (se descartan letras y símbolos al escribir o pegar).
+watch(
+  () => form.values.phone,
+  (v) => {
+    const clean = digitsOnly(String(v ?? ''))
+    if (clean !== (v ?? '')) form.setFieldValue('phone', clean)
+  }
+)
+
+// Si el documento digitado ya existe en la BD (otro paciente), se avisa y se
+// cargan sus datos de contacto; el paciente en atención conserva su registro.
+let lookupTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => [form.values.document_type, form.values.document_number] as const,
+  ([type, number]) => {
+    clearTimeout(lookupTimer)
+    const patient = current.value?.patient
+    if (!patient || !type || !number || String(number).trim().length < 3) return
+    if (type === patient.document_type && number === patient.document_number) return
+    lookupTimer = setTimeout(async () => {
+      try {
+        const found = await api<Record<string, string | null>>('/patients/lookup', {
+          query: { document_type: type, document_number: String(number).trim() }
+        })
+        if (found.id !== patient.id) {
+          toast.warning('Ese documento ya pertenece a otro paciente registrado. Se cargaron sus datos.')
+          form.setValues({ ...demographicsOf(found as Record<string, unknown>) })
+        }
+      } catch {
+        /* documento nuevo: se actualizará el del paciente en atención */
+      }
+    }, 450)
+  }
+)
 
 // Valida el formulario (zod); los errores del backend (p. ej. missing_fields) vuelven a los campos.
 const onClose = form.submit(async () => {
