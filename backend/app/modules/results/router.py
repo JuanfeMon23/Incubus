@@ -78,6 +78,19 @@ async def results_queue(
     return await service.results_queue(session, catalog, professional_id, q)
 
 
+@results_router.get("/orders/{entry_id}")
+async def get_order(
+    entry_id: UUID,
+    session: Session,
+    catalog: Catalog,
+    professional_id: Annotated[str, Query(max_length=64)],
+) -> dict:
+    """Examenes de la orden en las areas del profesional (validados incluidos)."""
+    return await service.order_for_professional(
+        session, catalog, entry_id, professional_id
+    )
+
+
 @results_router.get("/tests/{order_test_id}")
 async def get_test(
     order_test_id: UUID,

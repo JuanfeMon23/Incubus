@@ -316,6 +316,63 @@ async def validate_test(
     return detail, finalized
 
 
+# ---------------------------------------------------------------- orden
+
+
+async def order_for_professional(
+    session: AsyncSession, catalog: CatalogClient, entry_id: UUID, professional_id: str
+) -> dict:
+    """Examenes de la orden que corresponden a las areas del profesional,
+    incluidos los ya validados (se muestran como completados)."""
+    areas = await professional_area_ids(catalog, professional_id)
+    row = (
+        await session.execute(
+            select(Order, Patient)
+            .join(Patient, Patient.id == Order.patient_id)
+            .where(Order.queue_entry_id == entry_id)
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(
+            f"La entrada '{entry_id}' no tiene orden.",
+            {"queue_entry_id": str(entry_id)},
+        )
+    order, patient = row
+    tests = list(
+        (
+            await session.execute(
+                select(OrderTest)
+                .where(
+                    OrderTest.order_id == order.id, OrderTest.area_id.in_(areas or {""})
+                )
+                .order_by(OrderTest.test_code)
+            )
+        ).scalars()
+    )
+    if not tests:
+        raise ForbiddenError(
+            "La orden no tiene examenes de las areas que tienes asignadas.",
+            {"order_number": order.order_number},
+        )
+    return {
+        "entry_id": str(entry_id),
+        "order_number": order.order_number,
+        "patient": _patient_context(patient),
+        "tests": [
+            {
+                "order_test_id": str(t.id),
+                "code": t.test_code,
+                "name": t.test_name,
+                "area_code": t.area_code,
+                "validation_status": t.validation_status,
+                "validated_by": t.validated_by_name,
+                "validated_at": t.validated_at.isoformat() if t.validated_at else None,
+            }
+            for t in tests
+        ],
+    }
+
+
 # ---------------------------------------------------------------- colas
 
 
