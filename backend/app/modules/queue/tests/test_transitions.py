@@ -36,10 +36,29 @@ def test_finalizar_toma_es_un_avance():
     )
 
 
-def test_toma_finalizada_es_terminal():
-    for target in (S.EN_ESPERA_TOMA_MUESTRAS, S.PRE_RECEPCION, S.RETIRADO):
+def test_flujo_de_laboratorio():
+    assert (
+        resolve_transition(S.TOMA_FINALIZADA, S.EN_LABORATORIO)
+        is TransitionKind.ADVANCE
+    )
+    assert resolve_transition(S.EN_LABORATORIO, S.FINALIZADA) is TransitionKind.ADVANCE
+
+
+def test_toma_finalizada_no_retrocede_ni_se_retira():
+    for target in (
+        S.EN_ESPERA_TOMA_MUESTRAS,
+        S.PRE_RECEPCION,
+        S.RETIRADO,
+        S.FINALIZADA,
+    ):
         with pytest.raises(InvalidTransitionError):
             resolve_transition(S.TOMA_FINALIZADA, target)
+
+
+def test_finalizada_es_terminal():
+    for target in (S.EN_LABORATORIO, S.TOMA_FINALIZADA, S.RETIRADO):
+        with pytest.raises(InvalidTransitionError):
+            resolve_transition(S.FINALIZADA, target)
 
 
 def test_devoluciones_validas():

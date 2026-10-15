@@ -3,7 +3,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -46,6 +56,15 @@ class OrderTest(UUIDv7PK, Base):
     test_code: Mapped[str] = mapped_column(String(64), nullable=False)
     test_name: Mapped[str] = mapped_column(String(150), nullable=False)
     snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Area que valida el examen y estado de su validacion (pending|draft|validated).
+    area_id: Mapped[str | None] = mapped_column(String(64))
+    area_code: Mapped[str | None] = mapped_column(String(64))
+    validation_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'pending'")
+    )
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    validated_by_id: Mapped[str | None] = mapped_column(String(64))
+    validated_by_name: Mapped[str | None] = mapped_column(String(150))
 
 
 class OrderPrecondition(UUIDv7PK, Base):
@@ -99,3 +118,45 @@ class OrderSample(UUIDv7PK, Base):
     labels_printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     collected_by: Mapped[str | None] = mapped_column(String(120))
+    # Recepcion de la muestra en el laboratorio (check de entrada).
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_by: Mapped[str | None] = mapped_column(String(120))
+
+
+class OrderResult(UUIDv7PK, Base):
+    """Un analito de un examen de la orden: estructura de la plantilla (snapshot)
+    y el valor digitado por el profesional."""
+
+    __tablename__ = "order_results"
+
+    order_test_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_tests.id"), nullable=False
+    )
+    analyte_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    analyte_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    section_name: Mapped[str | None] = mapped_column(String(150))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    result_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(32))
+    decimals: Mapped[int | None] = mapped_column(Integer)
+    options: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    formula: Mapped[str | None] = mapped_column(Text)
+    is_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    is_reportable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    ranges: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    value: Mapped[dict | None] = mapped_column(JSONB)  # {"v": <valor tipado>}
+    flag: Mapped[str | None] = mapped_column(String(16))
+    entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    entered_by: Mapped[str | None] = mapped_column(String(120))
+
+    __table_args__ = (
+        UniqueConstraint("order_test_id", "analyte_code", name="analyte_per_test"),
+    )

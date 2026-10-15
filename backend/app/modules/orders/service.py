@@ -184,13 +184,17 @@ async def close_reception(
     )
     session.add(order)
     await session.flush()
+    area_codes = await catalog.areas_by_id() if tests else {}
     for test in tests:
+        area_id = test.get("area_id")
         session.add(
             OrderTest(
                 order_id=order.id,
                 test_code=test["code"],
                 test_name=test["name"],
                 snapshot=test,
+                area_id=str(area_id) if area_id else None,
+                area_code=area_codes.get(str(area_id)) if area_id else None,
             )
         )
     now = datetime.now(UTC)

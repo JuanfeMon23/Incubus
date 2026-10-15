@@ -20,6 +20,7 @@ from app.modules.orders.labels import (
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
 from app.modules.queue.models import Patient
 from app.modules.queue.router import _publish, _read
+from app.modules.results import service as results_service
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 Catalog = Annotated[CatalogClient, Depends(get_catalog_client)]
@@ -131,6 +132,8 @@ def sample_dict(s: OrderSample) -> dict:
         else None,
         "collected_at": s.collected_at.isoformat() if s.collected_at else None,
         "collected_by": s.collected_by,
+        "received_at": s.received_at.isoformat() if s.received_at else None,
+        "received_by": s.received_by,
     }
 
 
@@ -204,6 +207,29 @@ async def _set_collected(
 @router.post("/samples/{sample_id}/collect")
 async def collect_sample(sample_id: UUID, body: CollectInput, session: Session) -> dict:
     return await _set_collected(session, sample_id, body.actor, True)
+
+
+@router.post("/samples/{sample_id}/receive")
+async def receive_sample(sample_id: UUID, body: CollectInput, session: Session) -> dict:
+    """Check de entrada de un tubo al laboratorio; al ultimo la orden pasa a laboratorio."""
+    sample, status = await results_service.set_received(
+        session, sample_id, body.actor, True
+    )
+    await session.commit()
+    order = await session.get(Order, sample.order_id)
+    await _publish("status_changed", await _read(session, order.queue_entry_id))
+    return {**sample_dict(sample), "entry_status": status}
+
+
+@router.post("/samples/{sample_id}/unreceive")
+async def unreceive_sample(
+    sample_id: UUID, body: CollectInput, session: Session
+) -> dict:
+    sample, status = await results_service.set_received(
+        session, sample_id, body.actor, False
+    )
+    await session.commit()
+    return {**sample_dict(sample), "entry_status": status}
 
 
 @router.post("/samples/{sample_id}/uncollect")

@@ -10,6 +10,8 @@ class QueueStatus(StrEnum):
     EN_ESPERA_TOMA_MUESTRAS = "en_espera_toma_muestras"
     EN_ATENCION_TOMA_MUESTRAS = "en_atencion_toma_muestras"
     TOMA_FINALIZADA = "toma_finalizada"
+    EN_LABORATORIO = "en_laboratorio"
+    FINALIZADA = "finalizada"
     RETIRADO = "retirado"
 
 
@@ -40,6 +42,8 @@ _ADVANCES = {
     (S.EN_ESPERA_IMPRESION, S.EN_ESPERA_TOMA_MUESTRAS),
     (S.EN_ESPERA_TOMA_MUESTRAS, S.EN_ATENCION_TOMA_MUESTRAS),
     (S.EN_ATENCION_TOMA_MUESTRAS, S.TOMA_FINALIZADA),
+    (S.TOMA_FINALIZADA, S.EN_LABORATORIO),
+    (S.EN_LABORATORIO, S.FINALIZADA),
 }
 _RETURNS = {
     (S.EN_ATENCION_RECEPCION, S.PRE_RECEPCION),
