@@ -19,6 +19,7 @@ class QueueEmptyError(NotFoundError):
 
 
 from app.modules.queue.models import (
+    DocumentType,
     Patient,
     Priority,
     QueueEntry,
@@ -101,6 +102,18 @@ async def enter_queue(
     session: AsyncSession, patient_in: PatientIn, priority_id: UUID, actor: str | None
 ) -> QueueEntry:
     await _active_priority(session, priority_id)
+    doc_type = (
+        await session.execute(
+            select(DocumentType).where(
+                DocumentType.code == patient_in.document_type, DocumentType.is_active
+            )
+        )
+    ).scalar_one_or_none()
+    if doc_type is None:
+        raise ValidationAppError(
+            "El tipo de documento no existe o esta inactivo.",
+            {"document_type": patient_in.document_type},
+        )
     patient = (
         await session.execute(
             select(Patient).where(

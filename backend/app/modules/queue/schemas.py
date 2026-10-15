@@ -1,10 +1,13 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 Sex = Literal["M", "F"]
+BloodType = Literal["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+# Solo digitos (7 a 15): sin guiones, espacios ni letras.
+Phone = Annotated[str, Field(pattern=r"^\d{7,15}$")]
 QueueStatusLiteral = Literal[
     "pre_recepcion",
     "en_atencion_recepcion",
@@ -42,7 +45,7 @@ class PatientIn(BaseModel):
     second_last_name: str | None = Field(default=None, max_length=80)
     sex: Sex | None = None
     birth_date: date | None = None
-    blood_type: str | None = Field(default=None, max_length=3)
+    blood_type: BloodType | None = None
 
 
 class PatientUpdate(BaseModel):
@@ -55,9 +58,9 @@ class PatientUpdate(BaseModel):
     sex: Sex | None = None
     birth_date: date | None = None
     birth_place: str | None = Field(default=None, max_length=120)
-    blood_type: str | None = Field(default=None, max_length=3)
+    blood_type: BloodType | None = None
     email: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=32)
+    phone: Phone | None = None
     address: str | None = Field(default=None, max_length=255)
     insurer: str | None = Field(default=None, max_length=150)
 

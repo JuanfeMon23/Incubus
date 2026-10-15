@@ -27,8 +27,8 @@ from app.modules.queue.models import Patient
 from app.modules.queue.transitions import QueueStatus
 
 # Datos que debe tener el paciente para cerrar la recepcion (decision del usuario:
-# todos los campos del formulario). Los segundos nombre/apellido quedan fuera
-# porque pueden no existir.
+# todos los campos del formulario). Quedan fuera segundo nombre/apellido (pueden
+# no existir) y la aseguradora (opcional por ahora).
 REQUIRED_PATIENT_FIELDS = (
     "sex",
     "birth_date",
@@ -37,7 +37,6 @@ REQUIRED_PATIENT_FIELDS = (
     "email",
     "phone",
     "address",
-    "insurer",
 )
 
 

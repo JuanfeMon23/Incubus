@@ -4,6 +4,7 @@ Vladimir es la fuente del catalogo; Incubus solo lo consulta y guarda snapshot
 en la orden. El cliente es inyectable (`get_catalog_client`) para pruebas.
 """
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -12,6 +13,9 @@ from app.core.config import get_settings
 from app.core.exceptions import AppError
 
 _PAGE_SIZE = 200
+
+# (base_url, version_id) -> estructura de plantilla publicada (inmutable).
+_TEMPLATE_CACHE: dict[tuple[str, str], dict] = {}
 
 
 class CatalogUnavailableError(AppError):
@@ -129,43 +133,73 @@ class CatalogClient:
             )
         return out
 
+    async def warm_templates(self, version_ids: list[str]) -> None:
+        """Precarga plantillas en cache (en segundo plano, sin propagar errores)."""
+        results = await asyncio.gather(
+            *[self.template_structure(v) for v in dict.fromkeys(version_ids)],
+            return_exceptions=True,
+        )
+        del results
+
     async def template_structure(self, version_id: str) -> dict:
-        """Plantilla publicada de un examen: secciones, analitos, opciones y rangos."""
+        """Plantilla publicada de un examen: secciones, analitos, opciones y rangos.
+
+        Una version publicada es inmutable, asi que se guarda en memoria del
+        proceso; las llamadas internas se hacen en paralelo.
+        """
+        cached = _TEMPLATE_CACHE.get((self._base_url, version_id))
+        if cached is not None:
+            return cached
         version = await self._get(f"/result-template-versions/{version_id}")
         base = (
             f"/result-templates/{version['result_template_id']}/versions/{version_id}"
         )
-        sections = {s["id"]: s for s in await self._get(f"{base}/sections")}
-        template_analytes = await self._get(f"{base}/analytes")
-        analytes = {
-            a["id"]: a
-            for a in (await self._get("/analytes", {"page_size": _PAGE_SIZE}))["items"]
-        }
-        option_cache: dict[str, list[dict]] = {}
-        out = []
-        for ta in sorted(template_analytes, key=lambda x: x["sort_order"]):
-            if not ta.get("is_active", True):
-                continue
-            analyte = analytes.get(ta["analyte_id"], {})
-            options: list[dict] = []
-            set_id = ta.get("option_set_id")
-            if set_id:
-                if set_id not in option_cache:
-                    page = await self._get(
-                        f"/result-option-sets/{set_id}/options",
-                        {"page_size": _PAGE_SIZE},
+        sections_raw, template_analytes, analytes_page = await asyncio.gather(
+            self._get(f"{base}/sections"),
+            self._get(f"{base}/analytes"),
+            self._get("/analytes", {"page_size": _PAGE_SIZE}),
+        )
+        sections = {s["id"]: s for s in sections_raw}
+        analytes = {a["id"]: a for a in analytes_page["items"]}
+        active = [
+            ta
+            for ta in sorted(template_analytes, key=lambda x: x["sort_order"])
+            if ta.get("is_active", True)
+        ]
+        set_ids = sorted(
+            {ta["option_set_id"] for ta in active if ta.get("option_set_id")}
+        )
+        options_pages, ranges_lists = await asyncio.gather(
+            asyncio.gather(
+                *[
+                    self._get(
+                        f"/result-option-sets/{sid}/options", {"page_size": _PAGE_SIZE}
                     )
-                    option_cache[set_id] = [
-                        {
-                            "id": o["id"],
-                            "label": o["label"],
-                            "is_abnormal": o.get("is_abnormal", False),
-                        }
-                        for o in sorted(page["items"], key=lambda o: o["sort_order"])
-                        if o.get("is_active", True)
-                    ]
-                options = option_cache[set_id]
-            ranges = await self._get(f"{base}/analytes/{ta['id']}/reference-ranges")
+                    for sid in set_ids
+                ]
+            ),
+            asyncio.gather(
+                *[
+                    self._get(f"{base}/analytes/{ta['id']}/reference-ranges")
+                    for ta in active
+                ]
+            ),
+        )
+        options_by_set = {
+            sid: [
+                {
+                    "id": o["id"],
+                    "label": o["label"],
+                    "is_abnormal": o.get("is_abnormal", False),
+                }
+                for o in sorted(page["items"], key=lambda o: o["sort_order"])
+                if o.get("is_active", True)
+            ]
+            for sid, page in zip(set_ids, options_pages, strict=True)
+        }
+        out = []
+        for ta, ranges in zip(active, ranges_lists, strict=True):
+            analyte = analytes.get(ta["analyte_id"], {})
             section = sections.get(ta.get("section_id") or "", {})
             out.append(
                 {
@@ -176,14 +210,17 @@ class CatalogClient:
                     "result_type": ta["result_type"],
                     "unit": ta.get("unit"),
                     "decimals": ta.get("decimals"),
-                    "options": options,
+                    "options": options_by_set.get(ta.get("option_set_id") or "", []),
                     "formula": ta.get("formula"),
                     "is_required": ta.get("is_required", True),
                     "is_reportable": ta.get("is_reportable", True),
                     "ranges": [r for r in ranges if r.get("is_active", True)],
                 }
             )
-        return {"version_id": version_id, "analytes": out}
+        structure = {"version_id": version_id, "analytes": out}
+        if version.get("status", "published") == "published":
+            _TEMPLATE_CACHE[(self._base_url, version_id)] = structure
+        return structure
 
 
 def get_catalog_client() -> CatalogClient:

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -26,6 +27,7 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 Catalog = Annotated[CatalogClient, Depends(get_catalog_client)]
 
 router = APIRouter(tags=["orders"])
+_BACKGROUND: set[asyncio.Task] = set()
 catalog_router = APIRouter(tags=["catalog"])
 
 
@@ -210,7 +212,9 @@ async def collect_sample(sample_id: UUID, body: CollectInput, session: Session) 
 
 
 @router.post("/samples/{sample_id}/receive")
-async def receive_sample(sample_id: UUID, body: CollectInput, session: Session) -> dict:
+async def receive_sample(
+    sample_id: UUID, body: CollectInput, session: Session, catalog: Catalog
+) -> dict:
     """Check de entrada de un tubo al laboratorio; al ultimo la orden pasa a laboratorio."""
     sample, status = await results_service.set_received(
         session, sample_id, body.actor, True
@@ -218,6 +222,22 @@ async def receive_sample(sample_id: UUID, body: CollectInput, session: Session) 
     await session.commit()
     order = await session.get(Order, sample.order_id)
     await _publish("status_changed", await _read(session, order.queue_entry_id))
+    if status == "en_laboratorio":
+        # Al entrar a laboratorio se precargan las plantillas de sus examenes
+        # para que la validacion abra al instante.
+        tests = (
+            await session.execute(
+                select(OrderTest).where(OrderTest.order_id == order.id)
+            )
+        ).scalars()
+        versions = [
+            str(t.snapshot.get("result_template_version_id"))
+            for t in tests
+            if t.snapshot and t.snapshot.get("result_template_version_id")
+        ]
+        task = asyncio.create_task(catalog.warm_templates(versions))
+        _BACKGROUND.add(task)
+        task.add_done_callback(_BACKGROUND.discard)
     return {**sample_dict(sample), "entry_status": status}
 
 

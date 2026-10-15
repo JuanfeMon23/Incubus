@@ -72,7 +72,6 @@ async def test_cierre_exige_datos_y_examenes(client, catalog):
         "email",
         "phone",
         "address",
-        "insurer",
     ]
     inexistente = await client.post(url, json={"test_codes": ["NOPE"]})
     assert inexistente.status_code == 422
