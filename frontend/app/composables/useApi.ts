@@ -1,11 +1,9 @@
-import type { ApiErrorBody } from '../types'
-
-/** Mensaje legible de un error de la API (`{code, message}` o 422 de schema). */
+/**
+ * Mensaje legible para el usuario (regla de todas las apps: nunca el texto
+ * crudo de fetch ni de la API). Delegado a `toUserMessage` de Andromeda.
+ */
 export function apiErrorMessage(err: unknown): string {
-  const data = (err as { data?: ApiErrorBody & { detail?: { msg: string }[] } })?.data
-  if (data?.message) return data.message
-  if (data?.detail?.length) return data.detail.map((d) => d.msg).join('; ')
-  return (err as Error)?.message || 'Error inesperado.'
+  return toUserMessage(err)
 }
 
 export function useApi() {
