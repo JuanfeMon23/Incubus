@@ -13,6 +13,12 @@ from app.modules.queue.router import (
     queue_router,
     ws_router,
 )
+from app.modules.results.router import (
+    delivery_router,
+    lab_router,
+    results_router,
+    validators_router,
+)
 
 app = FastAPI(title="Incubus API", version="0.1.0")
 
@@ -31,4 +37,8 @@ app.include_router(patients_router, prefix="/api/v1/patients")
 app.include_router(queue_router, prefix="/api/v1/queue")
 app.include_router(orders_router, prefix="/api/v1/orders")
 app.include_router(catalog_router, prefix="/api/v1/catalog")
+app.include_router(validators_router, prefix="/api/v1/catalog")
+app.include_router(lab_router, prefix="/api/v1/lab")
+app.include_router(results_router, prefix="/api/v1/results")
+app.include_router(delivery_router, prefix="/api/v1/delivery")
 app.include_router(ws_router)

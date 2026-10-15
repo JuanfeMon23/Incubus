@@ -68,10 +68,57 @@ class FakeCatalog:
         self.categories: dict[str, str] = {}
         self.sample_types: dict[str, dict] = {}
         self.areas: dict[str, str] = {}
+        self.managers: dict[str, str | None] = {}
+        self.templates: dict[str, dict] = {}
         self.staff: list[dict] = []
 
-    def add_area(self, area_id: str, code: str) -> None:
+    def add_area(
+        self, area_id: str, code: str, manager_staff_id: str | None = None
+    ) -> None:
         self.areas[area_id] = code
+        self.managers[area_id] = manager_staff_id
+
+    def add_template(self, version_id: str, analytes: list[dict]) -> None:
+        rows = []
+        for i, a in enumerate(analytes):
+            rows.append(
+                {
+                    "code": a["code"],
+                    "name": a["name"],
+                    "section": a.get("section"),
+                    "sort_order": i + 1,
+                    "result_type": a["result_type"],
+                    "unit": a.get("unit"),
+                    "decimals": a.get("decimals"),
+                    "options": a.get("options", []),
+                    "formula": a.get("formula"),
+                    "is_required": a.get("is_required", True),
+                    "is_reportable": True,
+                    "ranges": [
+                        {
+                            "is_active": True,
+                            **{
+                                k: None
+                                for k in (
+                                    "age_min",
+                                    "age_max",
+                                    "age_unit",
+                                    "low",
+                                    "high",
+                                    "critical_low",
+                                    "critical_high",
+                                    "expected_option_id",
+                                    "expected_boolean",
+                                    "display_text",
+                                )
+                            },
+                            **r,
+                        }
+                        for r in a.get("ranges", [])
+                    ],
+                }
+            )
+        self.templates[version_id] = {"version_id": version_id, "analytes": rows}
 
     def add_staff(self, staff_id: str, first: str, last: str, job_title: str) -> None:
         self.staff.append(
@@ -98,6 +145,7 @@ class FakeCatalog:
         preconditions: list[dict],
         sample_types: list[tuple] | None = None,
         area_id: str | None = None,
+        template: str | None = None,
     ) -> None:
         pres = []
         for i, p in enumerate(preconditions):
@@ -120,6 +168,7 @@ class FakeCatalog:
             "name": name,
             "is_active": True,
             "area_id": area_id,
+            "result_template_version_id": template,
             "preconditions": pres,
             "sample_types": [
                 {
@@ -153,6 +202,22 @@ class FakeCatalog:
 
     async def list_staff(self) -> list[dict]:
         return self.staff
+
+    async def areas_with_managers(self) -> list[dict]:
+        names = {s["id"]: s["name"] for s in self.staff}
+        return [
+            {
+                "id": area_id,
+                "code": code,
+                "name": code,
+                "manager_staff_id": self.managers.get(area_id),
+                "manager_name": names.get(self.managers.get(area_id) or ""),
+            }
+            for area_id, code in self.areas.items()
+        ]
+
+    async def template_structure(self, version_id: str) -> dict:
+        return self.templates[version_id]
 
 
 @pytest_asyncio.fixture

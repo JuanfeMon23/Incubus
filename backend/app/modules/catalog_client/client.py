@@ -112,6 +112,79 @@ class CatalogClient:
             for s in page["items"]
         ]
 
+    async def areas_with_managers(self) -> list[dict]:
+        """Areas con su encargado actual (el profesional que valida)."""
+        page = await self._get("/lab-areas", {"page_size": _PAGE_SIZE})
+        out = []
+        for area in page["items"]:
+            manager = area.get("current_manager") or {}
+            out.append(
+                {
+                    "id": area["id"],
+                    "code": area["code"],
+                    "name": area["name"],
+                    "manager_staff_id": manager.get("staff_id"),
+                    "manager_name": manager.get("staff_name"),
+                }
+            )
+        return out
+
+    async def template_structure(self, version_id: str) -> dict:
+        """Plantilla publicada de un examen: secciones, analitos, opciones y rangos."""
+        version = await self._get(f"/result-template-versions/{version_id}")
+        base = (
+            f"/result-templates/{version['result_template_id']}/versions/{version_id}"
+        )
+        sections = {s["id"]: s for s in await self._get(f"{base}/sections")}
+        template_analytes = await self._get(f"{base}/analytes")
+        analytes = {
+            a["id"]: a
+            for a in (await self._get("/analytes", {"page_size": _PAGE_SIZE}))["items"]
+        }
+        option_cache: dict[str, list[dict]] = {}
+        out = []
+        for ta in sorted(template_analytes, key=lambda x: x["sort_order"]):
+            if not ta.get("is_active", True):
+                continue
+            analyte = analytes.get(ta["analyte_id"], {})
+            options: list[dict] = []
+            set_id = ta.get("option_set_id")
+            if set_id:
+                if set_id not in option_cache:
+                    page = await self._get(
+                        f"/result-option-sets/{set_id}/options",
+                        {"page_size": _PAGE_SIZE},
+                    )
+                    option_cache[set_id] = [
+                        {
+                            "id": o["id"],
+                            "label": o["label"],
+                            "is_abnormal": o.get("is_abnormal", False),
+                        }
+                        for o in sorted(page["items"], key=lambda o: o["sort_order"])
+                        if o.get("is_active", True)
+                    ]
+                options = option_cache[set_id]
+            ranges = await self._get(f"{base}/analytes/{ta['id']}/reference-ranges")
+            section = sections.get(ta.get("section_id") or "", {})
+            out.append(
+                {
+                    "code": analyte.get("code", ta["analyte_id"]),
+                    "name": analyte.get("name", ta["analyte_id"]),
+                    "section": section.get("name"),
+                    "sort_order": ta["sort_order"],
+                    "result_type": ta["result_type"],
+                    "unit": ta.get("unit"),
+                    "decimals": ta.get("decimals"),
+                    "options": options,
+                    "formula": ta.get("formula"),
+                    "is_required": ta.get("is_required", True),
+                    "is_reportable": ta.get("is_reportable", True),
+                    "ranges": [r for r in ranges if r.get("is_active", True)],
+                }
+            )
+        return {"version_id": version_id, "analytes": out}
+
 
 def get_catalog_client() -> CatalogClient:
     return CatalogClient(get_settings().vladimir_api_url)
