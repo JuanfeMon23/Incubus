@@ -148,3 +148,25 @@ export interface ResultTestDetail {
   }
   results: ResultRow[]
 }
+
+export interface OrderValidationTest {
+  order_test_id: string
+  code: string
+  name: string
+  area_code: string | null
+  validation_status: 'pending' | 'draft' | 'validated'
+  validated_by: string | null
+  validated_at: string | null
+}
+export interface OrderValidationView {
+  entry_id: string
+  order_number: string
+  patient: {
+    name: string
+    document_type: string
+    document_number: string
+    sex: string | null
+    age_years: number | null
+  }
+  tests: OrderValidationTest[]
+}
