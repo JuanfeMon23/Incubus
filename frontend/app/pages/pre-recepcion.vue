@@ -12,7 +12,10 @@
         </UiFormField>
 
         <div class="grid grid-cols-2 gap-3">
-          <UiFormField name="document_number" label="Documento" required><UiTextInput /></UiFormField>
+          <UiFormField name="document_type" label="Tipo de documento" required>
+            <UiSelect :options="documentTypeOptions" placeholder="Seleccione…" />
+          </UiFormField>
+          <UiFormField name="document_number" label="Número de documento" required><UiTextInput /></UiFormField>
           <UiFormField name="sex" label="Sexo">
             <UiSelect :options="sexOptions" empty-label="—" />
           </UiFormField>
@@ -20,8 +23,10 @@
           <UiFormField name="second_name" label="Segundo nombre"><UiTextInput /></UiFormField>
           <UiFormField name="first_last_name" label="Primer apellido" required><UiTextInput /></UiFormField>
           <UiFormField name="second_last_name" label="Segundo apellido"><UiTextInput /></UiFormField>
-          <UiFormField name="birth_date" label="Nacimiento"><UiTextInput type="date" /></UiFormField>
-          <UiFormField name="blood_type" label="RH"><UiTextInput /></UiFormField>
+          <UiFormField name="birth_date" label="Nacimiento"><UiTextInput type="date" :max="today" /></UiFormField>
+          <UiFormField name="blood_type" label="RH">
+            <UiSelect :options="bloodOptions" empty-label="—" />
+          </UiFormField>
         </div>
 
         <fieldset>
@@ -52,22 +57,17 @@
       <h2 class="mb-3 text-lg font-semibold">En pre-recepción ({{ entries.length }})</h2>
       <UiAlert v-if="listError" variant="danger" :message="listError" class="mb-3" />
       <div v-if="listLoading" class="flex justify-center py-6"><UiSpinner size="lg" color="primary" label="Cargando cola" /></div>
-      <ul class="space-y-2">
+      <ul class="space-y-3">
         <li v-for="e in entries" :key="e.id">
-          <UiCard padding="sm" :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }">
-            <div class="flex items-center gap-3">
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-medium">{{ fullName(e.patient) }}</p>
-                <p class="text-xs text-text-muted">
-                  {{ e.patient.document_type }} {{ e.patient.document_number }} · espera {{ waitingLabel(e.arrived_at) }}
-                </p>
-              </div>
-              <PriorityBadge :priority="e.priority" />
+          <QueueEntryCard :entry="e">
+            <template #actions>
               <UiButton size="sm" variant="danger-ghost" @click="removing = e">Retirar</UiButton>
-            </div>
-          </UiCard>
+            </template>
+          </QueueEntryCard>
         </li>
-        <li v-if="!entries.length && !listLoading" class="text-sm text-text-muted">Sin pacientes en espera.</li>
+        <li v-if="!entries.length && !listLoading" class="rounded-xl border border-dashed border-border-strong p-8 text-center text-sm text-text-muted">
+          Sin pacientes en espera.
+        </li>
       </ul>
     </section>
 
@@ -84,8 +84,14 @@
 
 <script setup lang="ts">
 import type { Priority, Reason } from '../types'
-import { intakePatientSchema } from '../utils/patientSchemas'
+import { BLOOD_TYPES, intakePatientSchema, todayISO } from '../utils/patientSchemas'
 
+const today = todayISO()
+const bloodOptions = BLOOD_TYPES.map((v) => ({ value: v, label: v }))
+const documentTypes = ref<Reason[]>([])
+const documentTypeOptions = computed(() =>
+  documentTypes.value.map((d) => ({ value: d.code, label: `${d.code} · ${d.name}` }))
+)
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useApi()
 const toast = useToast()
@@ -94,14 +100,16 @@ const { entries, error: listError, loading: listLoading, refresh } = useQueueLis
 const priorities = ref<Priority[]>([])
 const removalReasons = ref<Reason[]>([])
 onMounted(async () => {
-  ;[priorities.value, removalReasons.value] = await Promise.all([
+  ;[priorities.value, removalReasons.value, documentTypes.value] = await Promise.all([
     api<Priority[]>('/priorities'),
-    api<Reason[]>('/removal-reasons')
+    api<Reason[]>('/removal-reasons'),
+    api<Reason[]>('/document-types')
   ])
   priorityId.value = priorities.value.find((p) => p.code === 'media')?.id ?? ''
 })
 
 const blank = () => ({
+  document_type: 'CC',
   document_number: '',
   first_name: '',
   second_name: '',
@@ -129,6 +137,7 @@ async function parseScan() {
       body: { raw: scan.value }
     })
     form.setValues({
+      document_type: 'CC',
       document_number: data.document_number ?? '',
       first_name: data.first_name ?? '',
       second_name: data.second_name ?? '',
@@ -144,6 +153,36 @@ async function parseScan() {
     toast.error(scanError.value)
   }
 }
+
+// Si el documento ya existe en la BD, se cargan todos sus datos automáticamente.
+let lookupTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => [form.values.document_type, form.values.document_number] as const,
+  ([type, number]) => {
+    clearTimeout(lookupTimer)
+    if (!type || !number || String(number).trim().length < 3) return
+    lookupTimer = setTimeout(async () => {
+      try {
+        const found = await api<Record<string, string | null>>('/patients/lookup', {
+          query: { document_type: type, document_number: String(number).trim() }
+        })
+        const text = (k: string) => found[k] ?? ''
+        form.setValues({
+          first_name: text('first_name'),
+          second_name: text('second_name'),
+          first_last_name: text('first_last_name'),
+          second_last_name: text('second_last_name'),
+          sex: text('sex') as '' | 'M' | 'F',
+          birth_date: text('birth_date'),
+          blood_type: text('blood_type')
+        })
+        toast.info('El paciente ya existe: se cargaron sus datos.')
+      } catch {
+        /* no existe: se digitan los datos */
+      }
+    }, 450)
+  }
+)
 
 const onSubmit = form.submit(async (values) => {
   const { priority_id: priorityValue, ...patient } = values

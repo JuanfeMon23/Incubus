@@ -127,6 +127,7 @@ export interface ResultRow {
   is_required: boolean
   is_reportable: boolean
   reference: string | null
+  range: { low: number | null; high: number | null; critical_low: number | null; critical_high: number | null } | null
   value: string | number | boolean | null
   flag: string | null
 }

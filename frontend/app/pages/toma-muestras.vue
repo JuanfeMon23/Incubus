@@ -10,25 +10,20 @@
       </UiFormField>
       <section>
         <h2 class="mb-2 font-semibold">Mi cola de espera ({{ waiting.length }})</h2>
-        <ul class="space-y-2">
+        <ul class="space-y-3">
           <li v-for="e in waiting" :key="e.id">
-            <UiCard padding="sm" :style="{ borderLeft: `6px solid ${e.priority.color_hex}` }">
-              <p class="truncate text-sm font-medium">{{ fullName(e.patient) }}</p>
-              <p class="text-xs text-text-muted">
-                Orden {{ e.order_number }} · {{ waitingLabel(e.arrived_at) }}
-              </p>
-              <div class="mt-2 flex items-center justify-between">
-                <PriorityBadge :priority="e.priority" />
+            <QueueEntryCard :entry="e">
+              <template #actions>
                 <UiButton size="sm" :disabled="!professionalId" :loading="claimingId === e.id" @click="claim(e)">
-                  Tomar
+                  Tomar paciente
                 </UiButton>
-              </div>
-            </UiCard>
+              </template>
+            </QueueEntryCard>
           </li>
           <li v-if="listLoading" class="flex justify-center py-4">
             <UiSpinner color="primary" label="Cargando cola" />
           </li>
-          <li v-else-if="!waiting.length" class="text-sm text-text-muted">
+          <li v-else-if="!waiting.length" class="rounded-xl border border-dashed border-border-strong p-6 text-center text-sm text-text-muted">
             {{ professionalId ? 'Sin pacientes asignados.' : 'Seleccione un profesional.' }}
           </li>
         </ul>
@@ -36,20 +31,24 @@
 
       <section>
         <h2 class="mb-2 font-semibold">En atención ({{ attending.length }})</h2>
-        <ul class="space-y-2">
+        <ul class="space-y-3">
           <li v-for="e in attending" :key="e.id">
-            <button
-              type="button"
-              class="w-full rounded-lg border-2 bg-surface p-3 text-left text-sm shadow-sm transition-colors"
-              :class="current?.id === e.id ? 'border-primary-500' : 'border-transparent'"
-              @click="select(e)"
-            >
-              <span class="block truncate font-medium">{{ fullName(e.patient) }}</span>
-              <span class="text-xs text-text-muted">
-                Orden {{ e.order_number }} · {{ e.claimed_by || 'sin asignar' }}
-              </span>
-            </button>
+            <QueueEntryCard :entry="e" selectable show-claimed-by :selected="current?.id === e.id" @select="select(e)">
+              <div v-if="current?.id === e.id && order" class="mt-1">
+                <div class="mb-1 flex justify-between text-xs text-text-muted">
+                  <span>Tubos tomados</span>
+                  <span>{{ collectedCount }} / {{ order.samples.length }}</span>
+                </div>
+                <div class="h-2 overflow-hidden rounded-full bg-default-200">
+                  <div
+                    class="h-full rounded-full bg-success-500 transition-all"
+                    :style="{ width: `${order.samples.length ? (collectedCount / order.samples.length) * 100 : 0}%` }"
+                  />
+                </div>
+              </div>
+            </QueueEntryCard>
           </li>
+          <li v-if="!attending.length" class="text-sm text-text-muted">Nadie en atención.</li>
         </ul>
       </section>
     </aside>
@@ -76,23 +75,23 @@
         />
 
         <UiSection title="Tubos a tomar" description="En orden de extracción; marque cada tubo al tomarlo.">
-          <ul class="space-y-3">
-            <li v-for="s in order.samples" :key="s.id">
-              <SampleTubeCard :sample="s">
+          <ul class="space-y-4">
+            <li v-for="(s, i) in order.samples" :key="s.id">
+              <SampleTubeCard :sample="s" variant="collect" :index="i" :total="order.samples.length">
                 <template #actions>
-                  <UiCheckbox
-                    :model-value="!!s.collected_at"
-                    :disabled="togglingId === s.id"
-                    label="Tomado"
-                    @update:model-value="toggle(s, $event)"
-                  />
+                  <UiButton
+                    class="w-full"
+                    size="lg"
+                    :variant="s.collected_at ? 'secondary' : 'primary'"
+                    :loading="togglingId === s.id"
+                    @click="toggle(s, !s.collected_at)"
+                  >
+                    {{ s.collected_at ? 'Deshacer toma' : 'Marcar como tomado' }}
+                  </UiButton>
                 </template>
               </SampleTubeCard>
             </li>
           </ul>
-          <p class="mt-2 text-xs text-text-muted">
-            {{ order.samples.filter((s) => s.collected_at).length }} de {{ order.samples.length }} tubos tomados
-          </p>
         </UiSection>
 
         <UiAlert v-if="error" variant="danger" :message="error" />
@@ -146,6 +145,7 @@ const waiting = computed(() => mine.value.filter((e) => e.status === 'en_espera_
 const attending = computed(() => mine.value.filter((e) => e.status === 'en_atencion_toma_muestras'))
 
 const checks = ref<CheckMap>({})
+const collectedCount = computed(() => order.value?.samples.filter((s) => s.collected_at).length ?? 0)
 const checkKeys = computed(() => order.value?.preconditions.map((p) => p.key) ?? [])
 const checksOk = computed(() => checksComplete(checkKeys.value, checks.value))
 const receptionResults = computed(() =>
