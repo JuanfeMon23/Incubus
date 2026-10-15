@@ -13,7 +13,13 @@ from app.modules.orders.models import Order, OrderSample
 from app.modules.orders.service import unanswered_checks
 from app.modules.patients.cedula import CedulaParseError, parse_cedula_barcode
 from app.modules.queue import service
-from app.modules.queue.models import Patient, Priority, RemovalReason, ReturnReason
+from app.modules.queue.models import (
+    DocumentType,
+    Patient,
+    Priority,
+    RemovalReason,
+    ReturnReason,
+)
 from app.modules.queue.schemas import (
     CatalogRead,
     ClaimInput,
@@ -43,6 +49,15 @@ ws_router = APIRouter()
 @catalogs_router.get("/priorities", response_model=list[PriorityRead])
 async def list_priorities(session: Session) -> list[Priority]:
     stmt = select(Priority).where(Priority.is_active).order_by(Priority.rank)
+    return list((await session.execute(stmt)).scalars())
+
+
+@catalogs_router.get("/document-types", response_model=list[CatalogRead])
+async def list_document_types(session: Session) -> list[DocumentType]:
+    """Tipos de documento de identidad parametrizados en BD (CC, TI, CE, PA...)."""
+    stmt = (
+        select(DocumentType).where(DocumentType.is_active).order_by(DocumentType.code)
+    )
     return list((await session.execute(stmt)).scalars())
 
 
@@ -85,6 +100,29 @@ async def parse_cedula(body: dict) -> dict:
         "birth_date": data.birth_date.isoformat(),
         "blood_type": data.blood_type,
     }
+
+
+@patients_router.get("/lookup", response_model=PatientRead)
+async def lookup_patient(
+    session: Session,
+    document_number: Annotated[str, Query(min_length=3, max_length=20)],
+    document_type: Annotated[str, Query(max_length=8)] = "CC",
+) -> Patient:
+    """Paciente existente por documento (para autocompletar el formulario)."""
+    patient = (
+        await session.execute(
+            select(Patient).where(
+                Patient.document_type == document_type,
+                Patient.document_number == document_number,
+            )
+        )
+    ).scalar_one_or_none()
+    if patient is None:
+        raise NotFoundError(
+            "No hay un paciente registrado con ese documento.",
+            {"document_type": document_type, "document_number": document_number},
+        )
+    return patient
 
 
 @patients_router.patch("/{patient_id}", response_model=PatientRead)

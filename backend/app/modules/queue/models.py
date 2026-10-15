@@ -48,6 +48,12 @@ class ReturnReason(CatalogMixin, Base):
     __tablename__ = "return_reasons"
 
 
+class DocumentType(CatalogMixin, Base):
+    """Tipo de documento de identidad parametrizado (CC, TI, CE, PA...)."""
+
+    __tablename__ = "document_types"
+
+
 class Patient(UUIDv7PK, Timestamps, Base):
     __tablename__ = "patients"
 

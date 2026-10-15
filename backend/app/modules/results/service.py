@@ -149,6 +149,11 @@ def _row_dict(row: OrderResult, patient: Patient) -> dict:
         "is_required": row.is_required,
         "is_reportable": row.is_reportable,
         "reference": reference_text(rng),
+        "range": (
+            {k: rng.get(k) for k in ("low", "high", "critical_low", "critical_high")}
+            if rng
+            else None
+        ),
         "value": value,
         "flag": row.flag,
     }

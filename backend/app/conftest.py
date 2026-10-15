@@ -219,6 +219,9 @@ class FakeCatalog:
     async def template_structure(self, version_id: str) -> dict:
         return self.templates[version_id]
 
+    async def warm_templates(self, version_ids: list[str]) -> None:
+        return None
+
 
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession]:
