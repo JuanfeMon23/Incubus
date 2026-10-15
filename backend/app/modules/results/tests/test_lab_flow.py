@@ -375,3 +375,49 @@ async def test_entrega_json_y_pdf_de_la_orden_finalizada(client, catalog):
     assert pdf.status_code == 200
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF")
+
+
+async def test_orden_con_todos_sus_examenes_del_area_incluye_los_validados(
+    client, catalog
+):
+    entry_id, number = await order_in_laboratory(client, catalog)
+    glu = await _test_id(client, QC, "GLU")
+
+    before = await client.get(
+        f"/api/v1/results/orders/{entry_id}", params={"professional_id": QC}
+    )
+    assert before.status_code == 200
+    data = before.json()
+    assert data["order_number"] == number
+    assert {t["code"] for t in data["tests"]} == {"GLU", "LIP"}  # solo su area
+    assert all(t["validation_status"] == "pending" for t in data["tests"])
+
+    await client.post(
+        f"/api/v1/results/tests/{glu}/validate",
+        json={
+            "professional_id": QC,
+            "professional_name": "Paola",
+            "values": {"GLU": "90"},
+        },
+    )
+    after = (
+        await client.get(
+            f"/api/v1/results/orders/{entry_id}", params={"professional_id": QC}
+        )
+    ).json()
+    by_code = {t["code"]: t for t in after["tests"]}
+    assert by_code["GLU"]["validation_status"] == "validated"
+    assert by_code["GLU"]["validated_by"] == "Paola"
+    assert by_code["GLU"]["validated_at"]
+    assert by_code["LIP"]["validation_status"] == "pending"
+    # el listado general ya no ofrece el validado
+    queue = await _queue(client, QC)
+    assert [t["code"] for t in queue[0]["tests"]] == ["LIP"]
+
+
+async def test_orden_sin_examenes_en_el_area_del_profesional(client, catalog):
+    entry_id, _ = await order_in_laboratory(client, catalog, test_codes=("GLU",))
+    res = await client.get(
+        f"/api/v1/results/orders/{entry_id}", params={"professional_id": HEM}
+    )
+    assert res.status_code == 403
