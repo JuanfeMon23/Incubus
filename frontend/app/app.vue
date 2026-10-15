@@ -7,6 +7,8 @@
         <UiButton to="/recepcion" variant="ghost" size="sm">Recepción</UiButton>
         <UiButton to="/impresion-etiquetas" variant="ghost" size="sm">Impresión de etiquetas</UiButton>
         <UiButton to="/toma-muestras" variant="ghost" size="sm">Toma de muestras</UiButton>
+        <UiButton to="/recepcion-laboratorio" variant="ghost" size="sm">Recepción laboratorio</UiButton>
+        <UiButton to="/resultados" variant="ghost" size="sm">Resultados</UiButton>
         <UiStatusBadge
           class="ml-auto"
           dot

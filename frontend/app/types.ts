@@ -5,6 +5,8 @@ export type QueueStatus =
   | 'en_espera_toma_muestras'
   | 'en_atencion_toma_muestras'
   | 'toma_finalizada'
+  | 'en_laboratorio'
+  | 'finalizada'
   | 'retirado'
 
 export interface Priority { id: string; code: string; name: string; color_hex: string; rank: number }
@@ -76,3 +78,72 @@ export interface OrderDetail {
 export interface ApiErrorBody { code?: string; message?: string; details?: unknown }
 
 export interface StaffMember { id: string; name: string; job_title: string | null }
+
+export interface LabReceptionSample {
+  id: string
+  name: string
+  cap_color_hex: string | null
+  test_codes: string[]
+  area_route: string[]
+  received_at: string | null
+  received_by: string | null
+}
+export interface LabReceptionOrder {
+  entry_id: string
+  order_number: string
+  patient_name: string
+  document: string
+  pending: number
+  samples: LabReceptionSample[]
+}
+export interface ValidatorStaff {
+  id: string
+  name: string
+  areas: { id: string; code: string; name: string }[]
+}
+export interface ResultsQueueTest {
+  order_test_id: string
+  code: string
+  name: string
+  area_code: string | null
+  validation_status: 'pending' | 'draft' | 'validated'
+}
+export interface ResultsQueueOrder {
+  entry_id: string
+  order_number: string
+  patient_name: string
+  document: string
+  tests: ResultsQueueTest[]
+}
+export interface ResultRow {
+  code: string
+  name: string
+  section: string | null
+  result_type: 'numeric' | 'boolean' | 'qualitative' | 'semi_quantitative' | 'titer' | 'text' | 'calculated'
+  unit: string | null
+  decimals: number | null
+  options: { id: string; label: string }[]
+  formula: string | null
+  is_required: boolean
+  is_reportable: boolean
+  reference: string | null
+  value: string | number | boolean | null
+  flag: string | null
+}
+export interface ResultTestDetail {
+  order_test_id: string
+  order_number: string
+  code: string
+  name: string
+  area_code: string | null
+  validation_status: 'pending' | 'draft' | 'validated'
+  validated_by: string | null
+  patient: {
+    name: string
+    document_type: string
+    document_number: string
+    sex: string | null
+    age_years: number | null
+  }
+  results: ResultRow[]
+}
