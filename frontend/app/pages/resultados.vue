@@ -55,7 +55,7 @@
                   :variant="t.validation_status === 'draft' ? 'warning' : 'neutral'"
                   :label="t.validation_status === 'draft' ? 'Borrador' : 'Pendiente'"
                 />
-                <UiButton size="sm" @click="openTest(t.order_test_id)">Validar</UiButton>
+                <UiButton size="sm" @click="openOrder(o.entry_id, t.order_test_id)">Validar</UiButton>
               </li>
             </ul>
           </div>
@@ -67,12 +67,12 @@
     </ul>
 
     <ValidationModal
-      v-if="openId && professional"
-      :order-test-id="openId"
+      v-if="openEntry && professional"
+      :entry-id="openEntry"
+      :focus-test-id="openFocus"
       :professional-id="professional.id"
       :professional-name="professional.name"
-      @close="closeTest"
-      @validated="onValidated"
+      @close="closeModal"
     />
   </div>
 </template>
@@ -92,7 +92,8 @@ const professional = computed(() => validators.value.find((v) => v.id === profes
 const orders = ref<ResultsQueueOrder[]>([])
 const loading = ref(false)
 const search = ref('')
-const openId = ref<string | null>(null)
+const openEntry = ref<string | null>(null)
+const openFocus = ref<string | null>(null)
 
 onMounted(async () => {
   try {
@@ -130,7 +131,7 @@ watch(professionalId, (id) => {
   void load()
 })
 watch(version, () => {
-  if (!openId.value) void load() // no recarga la cola mientras se valida
+  if (!openEntry.value) void load() // no recarga la cola mientras se valida
 })
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(search, () => {
@@ -138,17 +139,14 @@ watch(search, () => {
   timer = setTimeout(load, 250)
 })
 
-function openTest(id: string) {
-  openId.value = id
+function openOrder(entryId: string, testId: string) {
+  openEntry.value = entryId
+  openFocus.value = testId
 }
 
-async function closeTest() {
-  openId.value = null
-  await load()
-}
-
-async function onValidated() {
-  openId.value = null
+async function closeModal() {
+  openEntry.value = null
+  openFocus.value = null
   await load()
 }
 </script>
