@@ -10,8 +10,8 @@ from app.core.database import get_session
 from app.core.exceptions import NotFoundError
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders.models import Order, OrderResult, OrderTest
+from app.modules.queue import events
 from app.modules.queue.models import Patient, QueueEntry
-from app.modules.queue.router import _publish, _read
 from app.modules.queue.transitions import QueueStatus
 from app.modules.results import service
 from app.modules.results.flags import age_in_years, pick_range, reference_text
@@ -133,9 +133,14 @@ async def validate_test(
     )
     await session.commit()
     if finalized:
-        test = await session.get(OrderTest, order_test_id)
-        order = await session.get(Order, test.order_id)
-        await _publish("status_changed", await _read(session, order.queue_entry_id))
+        entry_id = (
+            await session.execute(
+                select(Order.queue_entry_id)
+                .join(OrderTest, OrderTest.order_id == Order.id)
+                .where(OrderTest.id == order_test_id)
+            )
+        ).scalar_one()
+        await events.publish_entry(session, entry_id, events.STATUS_CHANGED)
     return {**detail, "order_finalized": finalized}
 
 

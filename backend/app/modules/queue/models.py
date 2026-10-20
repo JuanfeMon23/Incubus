@@ -2,11 +2,13 @@
 
 import uuid
 from datetime import date, datetime
+from typing import ClassVar
 
 from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Index,
     Integer,
@@ -108,6 +110,17 @@ class QueueEntry(UUIDv7PK, Timestamps, Base):
     arrived_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Version monotona: la incrementa el trigger `trg_queue_entries_bump_version`
+    # en cada UPDATE (la app nunca la escribe). `eager_defaults` la trae de vuelta
+    # con RETURNING tras el flush.
+    version: Mapped[int] = mapped_column(
+        Integer,
+        server_default=text("0"),
+        server_onupdate=FetchedValue(),
+        nullable=False,
+    )
+
+    __mapper_args__: ClassVar[dict] = {"eager_defaults": True}
 
     __table_args__ = (
         CheckConstraint(f"status IN ({_STATUS_IN})", name="status_values"),

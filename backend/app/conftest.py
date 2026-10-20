@@ -52,6 +52,7 @@ from collections.abc import AsyncGenerator
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.database import engine
@@ -255,3 +256,43 @@ async def client(
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def committed_client(catalog: FakeCatalog) -> AsyncGenerator[AsyncClient]:
+    """Cliente con sesiones REALES por request (commit de verdad), para probar
+    concurrencia entre transacciones. Limpia las tablas de datos al terminar
+    (solo la BD `_test`; los catalogos parametrizados se conservan)."""
+    app.dependency_overrides[get_catalog_client] = lambda: catalog
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.clear()
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "TRUNCATE queue_status_history, order_results, order_samples, "
+                    "order_preconditions, order_tests, orders, order_counters, "
+                    "queue_entries, patients RESTART IDENTITY CASCADE"
+                )
+            )
+        await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def published(monkeypatch) -> list[dict]:
+    """Captura los mensajes que `publish_entry` entrega (antes de proyectarlos a
+    la vista minima de cada transporte) en lugar de enviarlos a clientes.
+
+    Tras la peticion, `await events.drain()` espera a que se entreguen."""
+    from app.modules.queue import events
+
+    sent: list[dict] = []
+
+    async def record(message: dict) -> None:
+        sent.append(message)
+
+    monkeypatch.setattr(events, "_deliver", record)
+    return sent

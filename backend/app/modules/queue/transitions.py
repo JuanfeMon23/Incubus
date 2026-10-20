@@ -50,6 +50,16 @@ _RETURNS = {
     (S.EN_ATENCION_TOMA_MUESTRAS, S.EN_ESPERA_TOMA_MUESTRAS),
 }
 
+# Derivados de los mapas de arriba (unica fuente de verdad):
+# `claim` toma al paciente desde pre-recepcion o espera de toma de muestras;
+# `return` deshace una atencion volviendo a la fila anterior.
+CLAIM_TARGET: dict[QueueStatus, QueueStatus] = {
+    origin: target
+    for origin, target in _ADVANCES
+    if origin in (S.PRE_RECEPCION, S.EN_ESPERA_TOMA_MUESTRAS)
+}
+RETURN_TARGET: dict[QueueStatus, QueueStatus] = dict(_RETURNS)
+
 
 def resolve_transition(origin: QueueStatus, target: QueueStatus) -> TransitionKind:
     if (origin, target) in _ADVANCES:
