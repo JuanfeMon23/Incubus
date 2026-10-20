@@ -8,11 +8,21 @@ import asyncio
 from typing import Any
 
 import httpx
+from leo_sdk import (
+    LeoClient,
+    LeoError,
+    LeoSettings,
+    ServiceAccessDenied,
+    ServiceTokenProvider,
+)
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 
 _PAGE_SIZE = 200
+
+# Slug de la app de Vladimir en Leo: audiencia del token de servicio.
+VLADIMIR_AUDIENCE = "vladimir"
 
 # (base_url, version_id) -> estructura de plantilla publicada (inmutable).
 _TEMPLATE_CACHE: dict[tuple[str, str], dict] = {}
@@ -23,21 +33,50 @@ class CatalogUnavailableError(AppError):
     code = "catalog_unavailable"
 
 
+class CatalogForbiddenError(AppError):
+    status_code = 502
+    code = "catalog_forbidden"
+
+
+_FORBIDDEN_MESSAGE = (
+    "Incubus no tiene permiso para consultar el catálogo de Vladimir. "
+    "Pídele a un administrador de Leo que le conceda acceso."
+)
+
+
 class CatalogClient:
     def __init__(
-        self, base_url: str, transport: httpx.AsyncBaseTransport | None = None
+        self,
+        base_url: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+        auth: httpx.Auth | None = None,
     ):
         self._base_url = base_url.rstrip("/")
         self._transport = transport
+        self._auth = auth
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         try:
             async with httpx.AsyncClient(
-                base_url=self._base_url, timeout=10.0, transport=self._transport
+                base_url=self._base_url,
+                timeout=10.0,
+                transport=self._transport,
+                auth=self._auth,
             ) as http:
                 response = await http.get(f"/api/v1{path}", params=params)
+                if response.status_code in (401, 403):
+                    raise CatalogForbiddenError(_FORBIDDEN_MESSAGE, {"path": path})
                 response.raise_for_status()
                 return response.json()
+        except ServiceAccessDenied as exc:
+            raise CatalogForbiddenError(_FORBIDDEN_MESSAGE, {"path": path}) from exc
+        except LeoError as exc:  # Leo caido o credenciales de la app rechazadas
+            raise CatalogUnavailableError(
+                "No se pudo autenticar con Leo para consultar el catalogo de "
+                "Vladimir. Revisa que Leo este disponible y las credenciales de "
+                "Incubus.",
+                {"path": path},
+            ) from exc
         except httpx.HTTPError as exc:
             raise CatalogUnavailableError(
                 "No se pudo consultar el catalogo de Vladimir.", {"path": path}
@@ -223,5 +262,28 @@ class CatalogClient:
         return structure
 
 
+_leo: tuple[LeoClient, ServiceTokenProvider] | None = None
+
+
+def _service_token_provider() -> ServiceTokenProvider:
+    """Un unico proveedor de tokens de servicio por proceso (perezoso)."""
+    global _leo
+    if _leo is None:
+        leo = LeoClient(LeoSettings())
+        _leo = (leo, ServiceTokenProvider(leo))
+    return _leo[1]
+
+
+async def close_token_provider() -> None:
+    """Cierra el cliente HTTP de Leo (apagado de la app)."""
+    global _leo
+    if _leo is not None:
+        leo, _leo = _leo[0], None
+        await leo.aclose()
+
+
 def get_catalog_client() -> CatalogClient:
-    return CatalogClient(get_settings().vladimir_api_url)
+    return CatalogClient(
+        get_settings().vladimir_api_url,
+        auth=_service_token_provider().auth(VLADIMIR_AUDIENCE),
+    )

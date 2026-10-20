@@ -1,5 +1,8 @@
 """App FastAPI de Incubus: registra routers y CORS."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.realtime import QUEUE_NAMESPACE, sio
+from app.modules.catalog_client.client import close_token_provider
 from app.modules.orders.router import catalog_router
 from app.modules.orders.router import router as orders_router
 from app.modules.queue.router import catalogs_router, patients_router, queue_router
@@ -18,7 +22,14 @@ from app.modules.results.router import (
     validators_router,
 )
 
-app = FastAPI(title="Incubus API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    yield
+    await close_token_provider()
+
+
+app = FastAPI(title="Incubus API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
