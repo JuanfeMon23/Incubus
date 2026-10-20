@@ -1,28 +1,24 @@
 import type { QueueEntry, QueueStatus } from '../types'
+import { createQueueList } from '../utils/queueList'
+import type { QueueListDeps } from '../utils/queueList'
 
-/** Lista de la cola filtrada por estados; se refresca con cada evento en vivo. */
-export function useQueueList(statuses: QueueStatus[]) {
+/**
+ * Lista de la cola filtrada por estados. Se carga por REST al montar y luego se
+ * mantiene con los diffs de Socket.IO (no recarga completa por evento).
+ * `refresh()` fuerza la recarga completa (tras acciones propias).
+ */
+export function useQueueList(statuses: QueueStatus[], opts: Pick<QueueListDeps, 'onEvent'> = {}) {
   const api = useApi()
-  const { version } = useQueueSocket()
-  const entries = ref<QueueEntry[]>([])
-  const error = ref('')
-  // `loading` es true solo mientras no hay datos aún (primera carga); las
-  // recargas por eventos en vivo no parpadean la lista.
-  const loading = ref(true)
-
-  async function refresh() {
-    try {
-      const qs = statuses.map((s) => `status=${s}`).join('&')
-      entries.value = await api<QueueEntry[]>(`/queue?${qs}`)
-      error.value = ''
-    } catch (e) {
-      error.value = apiErrorMessage(e)
-    } finally {
-      loading.value = false
-    }
-  }
-
-  onMounted(refresh)
-  watch(version, refresh)
+  const { subscribe } = useQueueSocket()
+  const list = createQueueList(statuses, {
+    subscribe,
+    fetchList: (s) => api<QueueEntry[]>(`/queue?${s.map((x) => `status=${x}`).join('&')}`),
+    fetchOne: (id) => api<QueueEntry>(`/queue/${id}`),
+    toMessage: apiErrorMessage,
+    onEvent: opts.onEvent
+  })
+  onMounted(list.start)
+  onBeforeUnmount(list.stop)
+  const { entries, error, loading, refresh } = list
   return { entries, error, loading, refresh }
 }

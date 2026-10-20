@@ -1,37 +1,32 @@
-import { wsUrlFromApiBase } from '../utils/format'
+import { io } from 'socket.io-client'
+import { createQueueRealtime, openQueueSocket } from '../utils/queueRealtime'
+import type { QueueRealtime, SocketLike } from '../utils/queueRealtime'
 
-// Estado compartido de la conexion y contador de eventos: las vistas observan
-// `version` y vuelven a listar (el servidor es la fuente del orden).
-const live = ref(false)
-const version = ref(0)
-let socket: WebSocket | null = null
-let retry: ReturnType<typeof setTimeout> | null = null
-let attempts = 0
+let realtime: QueueRealtime | null = null
 
-function connect(apiBase: string) {
-  retry = null
-  socket = new WebSocket(wsUrlFromApiBase(apiBase))
-  socket.onopen = () => {
-    live.value = true
-    attempts = 0
-    version.value++ // re-sincroniza al (re)conectar
-  }
-  socket.onmessage = () => {
-    version.value++
-  }
-  socket.onclose = () => {
-    live.value = false
-    socket = null
-    attempts++
-    retry = setTimeout(() => connect(apiBase), Math.min(1000 * 2 ** attempts, 15000))
-  }
-  socket.onerror = () => socket?.close()
+// Punto de extensión para Leo: `setQueueSocketAuth(() => ({ token }))` antes de
+// la primera conexión; se evalúa en cada (re)conexión. Hoy el servidor lo ignora.
+let authPayload: () => Record<string, unknown> = () => ({})
+export function setQueueSocketAuth(fn: () => Record<string, unknown>) {
+  authPayload = fn
 }
 
-export function useQueueSocket() {
-  if (import.meta.client && !socket && !retry) {
-    const base = useRuntimeConfig().public.apiBase
-    if (base) connect(base)
+/**
+ * Conexión Socket.IO compartida (singleton por app) al namespace `/queue`.
+ * Solo avisa de cambios; las acciones siguen siendo REST. Las pantallas no la
+ * usan directo: `useQueueList` / `useQueueRefresh` se suscriben por ellas.
+ * Expone `connected`, `reconnecting` y `error` (texto legible) para el indicador.
+ */
+export function useQueueSocket(): QueueRealtime {
+  if (!realtime) {
+    let socket: SocketLike | null = null
+    if (import.meta.client) {
+      const base = useRuntimeConfig().public.apiBase
+      if (base) {
+        socket = openQueueSocket(io as never, base, () => authPayload())
+      }
+    }
+    realtime = createQueueRealtime(socket)
   }
-  return { live, version }
+  return realtime
 }

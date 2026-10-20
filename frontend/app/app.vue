@@ -10,14 +10,14 @@
         <UiStatusBadge
           v-if="!collapsed"
           dot
-          :variant="live ? 'success' : 'warning'"
-          :label="live ? 'En vivo' : 'Reconectando…'"
+          :variant="connected ? 'success' : 'warning'"
+          :label="liveLabel"
         />
         <span
           v-else
           class="h-3 w-3 rounded-full"
-          :class="live ? 'bg-success-500' : 'bg-warning-500'"
-          :title="live ? 'En vivo' : 'Reconectando…'"
+          :class="connected ? 'bg-success-500' : 'bg-warning-500'"
+          :title="liveLabel"
         />
       </template>
     </UiSidebar>
@@ -35,7 +35,10 @@
 <script setup lang="ts">
 import type { UiSidebarItem } from '#andromeda/components/ui/UiSidebar.vue'
 
-const { live } = useQueueSocket()
+const { connected, reconnecting } = useQueueSocket()
+const liveLabel = computed(() =>
+  connected.value ? 'En vivo' : reconnecting.value ? 'Sin conexión en tiempo real, reconectando…' : 'Conectando…'
+)
 
 // Iconos de trazo 24×24 (atributo `d` del path).
 const ICONS = {

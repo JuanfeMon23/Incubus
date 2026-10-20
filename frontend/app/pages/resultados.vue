@@ -82,7 +82,6 @@ import type { ResultsQueueOrder, ValidatorStaff } from '../types'
 
 const api = useApi()
 const toast = useToast()
-const { version } = useQueueSocket()
 
 const validators = ref<ValidatorStaff[]>([])
 const validatorOptions = computed(() => validators.value.map((v) => ({ value: v.id, label: v.name })))
@@ -130,9 +129,8 @@ watch(professionalId, (id) => {
   }
   void load()
 })
-watch(version, () => {
-  if (!openEntry.value) void load() // no recarga la cola mientras se valida
-})
+// No recarga la cola mientras se valida (closeModal la recarga).
+useQueueRefresh(['en_laboratorio'], load, { enabled: () => !openEntry.value })
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(search, () => {
   clearTimeout(timer)
