@@ -6,7 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Todas obligatorias, sin defaults (ningun valor de entorno en el codigo)."""
+    """Obligatorias, sin defaults (ningun valor de entorno en el codigo), salvo las
+    opcionales de tiempo real de abajo, que traen un valor seguro."""
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
@@ -15,6 +16,16 @@ class Settings(BaseSettings):
     database_url: str
     cors_origins: str
     vladimir_api_url: str
+
+    # Tiempo real (opcionales).
+    # Clientes sin cabecera `Origin` (no navegadores): rechazados salvo que se
+    # active (desarrollo / herramientas internas).
+    socketio_allow_no_origin: bool = False
+    # Maximo de rooms por socket (una pantalla suscribe varios estados).
+    socketio_max_rooms: int = 20
+    # Si se define, varios procesos comparten los rooms por Redis. Requiere el
+    # paquete `redis` (`uv add redis`), que NO se instala por defecto.
+    socketio_redis_url: str | None = None
 
     @property
     def cors_origins_list(self) -> list[str]:

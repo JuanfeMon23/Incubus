@@ -1,5 +1,4 @@
 import asyncio
-from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -19,8 +18,8 @@ from app.modules.orders.labels import (
     render_labels_zpl,
 )
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
+from app.modules.queue import events
 from app.modules.queue.models import Patient
-from app.modules.queue.router import _publish, _read
 from app.modules.results import service as results_service
 
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -110,7 +109,7 @@ async def close_reception(
         [c.model_dump() for c in body.precondition_checks],
     )
     await session.commit()
-    await _publish("status_changed", await _read(session, entry_id))
+    await events.publish_entry(session, entry_id, events.STATUS_CHANGED)
     return {"order_number": order.order_number, "order_id": str(order.id)}
 
 
@@ -195,14 +194,11 @@ async def get_order_by_entry(entry_id: UUID, session: Session) -> dict:
 async def _set_collected(
     session: AsyncSession, sample_id: UUID, actor: str | None, collected: bool
 ) -> dict:
-    sample = await session.get(OrderSample, sample_id)
-    if sample is None:
-        raise NotFoundError(
-            f"No existe la muestra '{sample_id}'.", {"id": str(sample_id)}
-        )
-    sample.collected_at = datetime.now(UTC) if collected else None
-    sample.collected_by = actor if collected else None
+    sample, entry_id = await service.set_collected(session, sample_id, actor, collected)
     await session.commit()
+    await events.publish_entry(
+        session, entry_id, events.SAMPLE_UPDATED, sample_id=sample_id
+    )
     return sample_dict(sample)
 
 
@@ -221,8 +217,11 @@ async def receive_sample(
     )
     await session.commit()
     order = await session.get(Order, sample.order_id)
-    await _publish("status_changed", await _read(session, order.queue_entry_id))
+    await events.publish_entry(
+        session, order.queue_entry_id, events.SAMPLE_UPDATED, sample_id=sample_id
+    )
     if status == "en_laboratorio":
+        await events.publish_entry(session, order.queue_entry_id, events.STATUS_CHANGED)
         # Al entrar a laboratorio se precargan las plantillas de sus examenes
         # para que la validacion abra al instante.
         tests = (
@@ -249,6 +248,10 @@ async def unreceive_sample(
         session, sample_id, body.actor, False
     )
     await session.commit()
+    order = await session.get(Order, sample.order_id)
+    await events.publish_entry(
+        session, order.queue_entry_id, events.SAMPLE_UPDATED, sample_id=sample_id
+    )
     return {**sample_dict(sample), "entry_status": status}
 
 
@@ -285,7 +288,7 @@ async def print_labels(
         body.actor,
     )
     await session.commit()
-    await _publish("status_changed", await _read(session, entry_id))
+    await events.publish_entry(session, entry_id, events.STATUS_CHANGED)
     return await _order_detail(session, order)
 
 
@@ -392,6 +395,7 @@ async def precondition_checks(
         session, entry_id, body.stage, [c.model_dump() for c in body.checks], body.actor
     )
     await session.commit()
+    await events.publish_entry(session, entry_id, events.ENTRY_UPDATED)
     return await _order_detail(session, await _entry_order(session, entry_id))
 
 

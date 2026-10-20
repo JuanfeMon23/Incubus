@@ -273,6 +273,13 @@ async def validate_test(
     values: dict,
 ) -> tuple[dict, bool]:
     """Valida el examen; devuelve su detalle y si la orden quedo finalizada."""
+    # Bloquea la entrada ANTES de guardar y contar pendientes: dos validaciones
+    # de los ultimos examenes se serializan y la segunda ve a la primera.
+    locked = await session.get(OrderTest, order_test_id)
+    if locked is not None:
+        parent = await session.get(Order, locked.order_id)
+        await queue_service.get_entry(session, parent.queue_entry_id, lock=True)
+        await session.refresh(locked)
     await save_values(
         session, catalog, order_test_id, professional_id, professional_name, values
     )
@@ -510,9 +517,13 @@ async def set_received(
             "La orden no esta esperando recepcion en laboratorio.",
             {"status": entry.status},
         )
+    await session.refresh(
+        sample
+    )  # puede haber cambiado mientras se esperaba el bloqueo
     sample.received_at = datetime.now(UTC) if received else None
     sample.received_by = actor if received else None
     await session.flush()
+    await queue_service.touch_entry(session, entry.id)
     status = entry.status
     if received:
         pending = (

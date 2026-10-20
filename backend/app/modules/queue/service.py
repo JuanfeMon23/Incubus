@@ -7,7 +7,7 @@ cambio de estado).
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ class QueueEmptyError(NotFoundError):
     code = "queue_empty"
 
 
+from app.modules.orders.models import Order
 from app.modules.queue.models import (
     DocumentType,
     Patient,
@@ -29,6 +30,8 @@ from app.modules.queue.models import (
 )
 from app.modules.queue.schemas import PatientIn
 from app.modules.queue.transitions import (
+    CLAIM_TARGET,
+    RETURN_TARGET,
     InvalidTransitionError,
     QueueStatus,
     TransitionKind,
@@ -62,7 +65,10 @@ async def get_entry(
 ) -> QueueEntry:
     stmt = select(QueueEntry).where(QueueEntry.id == entry_id)
     if lock:
-        stmt = stmt.with_for_update()
+        # `populate_existing`: si la sesion ya tenia la entrada cargada (lectura
+        # previa sin bloqueo), se refresca con el estado confirmado por quien
+        # solto el bloqueo; si no, se validaria contra datos viejos.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     entry = (await session.execute(stmt)).scalar_one_or_none()
     if entry is None:
         raise NotFoundError(
@@ -194,27 +200,42 @@ async def change_status(
     return entry
 
 
-async def list_entries(
-    session: AsyncSession, statuses: list[QueueStatus]
-) -> list[tuple[QueueEntry, Patient, Priority]]:
-    stmt = (
-        select(QueueEntry, Patient, Priority)
+_READ_COLUMNS = (QueueEntry, Patient, Priority, Order.order_number)
+
+
+def _read_query():
+    """Entrada + paciente + prioridad + numero de orden en UNA consulta."""
+    return (
+        select(*_READ_COLUMNS)
         .join(Patient, Patient.id == QueueEntry.patient_id)
         .join(Priority, Priority.id == QueueEntry.priority_id)
+        .outerjoin(Order, Order.queue_entry_id == QueueEntry.id)
+    )
+
+
+async def list_entries(
+    session: AsyncSession,
+    statuses: list[QueueStatus],
+    professional_id: str | None = None,
+) -> list[tuple[QueueEntry, Patient, Priority, str | None]]:
+    stmt = (
+        _read_query()
         .where(QueueEntry.status.in_([s.value for s in statuses]))
         .order_by(Priority.rank, QueueEntry.arrived_at)
     )
+    if professional_id is not None:
+        stmt = stmt.where(QueueEntry.assigned_professional_id == professional_id)
     return [tuple(r) for r in (await session.execute(stmt)).all()]
 
 
 async def get_entry_full(
     session: AsyncSession, entry_id: UUID
-) -> tuple[QueueEntry, Patient, Priority]:
+) -> tuple[QueueEntry, Patient, Priority, str | None]:
+    """Lectura fresca (ignora lo cacheado en la sesion: `version` al dia)."""
     stmt = (
-        select(QueueEntry, Patient, Priority)
-        .join(Patient, Patient.id == QueueEntry.patient_id)
-        .join(Priority, Priority.id == QueueEntry.priority_id)
+        _read_query()
         .where(QueueEntry.id == entry_id)
+        .execution_options(populate_existing=True)
     )
     row = (await session.execute(stmt)).one_or_none()
     if row is None:
@@ -222,6 +243,68 @@ async def get_entry_full(
             f"No existe la entrada de cola '{entry_id}'.", {"id": str(entry_id)}
         )
     return tuple(row)
+
+
+async def touch_entry(session: AsyncSession, entry_id: UUID) -> None:
+    """UPDATE sin cambios: el trigger sube `version` cuando cambia algo que
+    cuelga de la entrada (tubos, verificaciones) y hay que avisar a los clientes."""
+    await session.execute(
+        update(QueueEntry)
+        .where(QueueEntry.id == entry_id)
+        .values(status=QueueEntry.status)
+        .execution_options(synchronize_session=False)
+    )
+
+
+async def claim(
+    session: AsyncSession,
+    entry_id: UUID,
+    *,
+    actor: str | None,
+    professional_id: str | None,
+) -> QueueEntry:
+    """Toma al paciente validando con la fila bloqueada (sin TOCTOU)."""
+    entry = await get_entry(session, entry_id, lock=True)
+    target = CLAIM_TARGET.get(QueueStatus(entry.status))
+    if target is None:
+        raise ConflictError(
+            f"No se puede tomar un paciente en «{entry.status}».",
+            {"status": entry.status},
+        )
+    if (
+        target is QueueStatus.EN_ATENCION_TOMA_MUESTRAS
+        and entry.assigned_professional_id != professional_id
+    ):
+        raise ConflictError(
+            "El paciente esta asignado a otro profesional de toma de muestras.",
+            {"assigned_professional_id": entry.assigned_professional_id},
+        )
+    return await change_status(session, entry_id, target, actor=actor)
+
+
+async def return_entry(
+    session: AsyncSession,
+    entry_id: UUID,
+    *,
+    actor: str | None,
+    reason_id: UUID,
+    note: str | None,
+) -> QueueEntry:
+    entry = await get_entry(session, entry_id, lock=True)
+    back = RETURN_TARGET.get(QueueStatus(entry.status))
+    if back is None:
+        raise ConflictError(
+            f"No se puede devolver un paciente en «{entry.status}».",
+            {"status": entry.status},
+        )
+    return await change_status(
+        session,
+        entry_id,
+        back,
+        actor=actor,
+        return_reason_id=reason_id,
+        note=note,
+    )
 
 
 async def save_draft(
@@ -248,14 +331,34 @@ async def history(session: AsyncSession, entry_id: UUID) -> list[QueueStatusHist
     return list((await session.execute(stmt)).scalars())
 
 
+async def previous_status(
+    session: AsyncSession, entry_id: UUID, current: str
+) -> str | None:
+    """Etapa de la que vino la entrada en su ultimo cambio a `current` (historial)."""
+    stmt = (
+        select(QueueStatusHistory.from_status)
+        .where(
+            QueueStatusHistory.queue_entry_id == entry_id,
+            QueueStatusHistory.to_status == current,
+        )
+        .order_by(QueueStatusHistory.changed_at.desc())
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 __all__ = [
     "change_status",
+    "claim",
     "enter_queue",
     "get_entry",
     "get_entry_full",
     "history",
     "list_entries",
+    "previous_status",
+    "return_entry",
     "save_draft",
+    "touch_entry",
 ]
 
 

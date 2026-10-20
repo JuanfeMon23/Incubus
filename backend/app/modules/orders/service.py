@@ -6,7 +6,12 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AppError, ValidationAppError
+from app.core.exceptions import (
+    AppError,
+    ConflictError,
+    NotFoundError,
+    ValidationAppError,
+)
 from app.modules.catalog_client.client import CatalogClient
 from app.modules.orders.errors import NoteRequiredError, UnansweredPreconditionsError
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
@@ -346,6 +351,7 @@ async def save_checks(
         setattr(row, f"{stage}_checked_at", now)
         setattr(row, f"{stage}_checked_by", actor)
     await session.flush()
+    await queue_service.touch_entry(session, entry_id)
 
 
 async def unanswered_checks(
@@ -362,3 +368,30 @@ async def unanswered_checks(
             )
         ).scalars()
     )
+
+
+async def set_collected(
+    session: AsyncSession, sample_id: UUID, actor: str | None, collected: bool
+) -> tuple[OrderSample, UUID]:
+    """Marca/desmarca un tubo con la entrada bloqueada y en atencion de toma.
+
+    Devuelve el tubo y el id de la entrada (para publicar el evento)."""
+    sample = await session.get(OrderSample, sample_id)
+    if sample is None:
+        raise NotFoundError(
+            f"No existe la muestra '{sample_id}'.", {"id": str(sample_id)}
+        )
+    order = await session.get(Order, sample.order_id)
+    entry = await queue_service.get_entry(session, order.queue_entry_id, lock=True)
+    if entry.status != QueueStatus.EN_ATENCION_TOMA_MUESTRAS:
+        raise ConflictError(
+            "Los tubos solo se marcan con el paciente en atencion de toma de muestras.",
+            {"status": entry.status},
+        )
+    # refresca el tubo: otra transaccion pudo cambiarlo mientras se esperaba el bloqueo
+    await session.refresh(sample)
+    sample.collected_at = datetime.now(UTC) if collected else None
+    sample.collected_by = actor if collected else None
+    await session.flush()
+    await queue_service.touch_entry(session, entry.id)
+    return sample, entry.id

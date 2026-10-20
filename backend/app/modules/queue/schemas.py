@@ -113,6 +113,28 @@ class QueueEntryRead(BaseModel):
     patient: PatientRead
     priority: PriorityRead
     order_number: str | None = None
+    # Contador monotono por entrada (trigger en BD): el cliente descarta eventos viejos.
+    version: int
+
+
+class QueueEntryLive(BaseModel):
+    """Vista MINIMA de una entrada para el tiempo real: sin datos personales ni
+    clinicos (ni paciente, ni borrador, ni nombre del profesional). Es lo que
+    viaja en los eventos y en el snapshot de `sync`; el detalle se pide por REST."""
+
+    id: UUID
+    status: QueueStatusLiteral
+    version: int
+    priority_id: UUID
+    assigned_professional_id: str | None = None
+    order_number: str | None = None
+
+
+class QueueEntryEvent(QueueEntryLive):
+    """Payload de un evento: la vista minima + la etapa de la que viene."""
+
+    previous_status: QueueStatusLiteral | None = None
+    sample_id: str | None = None
 
 
 class HistoryRead(BaseModel):
