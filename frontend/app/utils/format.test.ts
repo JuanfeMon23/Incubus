@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageFrom, formatDuration, fullName, waitingLabel, wsUrlFromApiBase } from './format'
+import { ageFrom, formatDuration, fullName, waitingLabel, originFromApiBase } from './format'
 
 describe('format', () => {
   it('formatDuration', () => {
@@ -21,9 +21,9 @@ describe('format', () => {
     expect(ageFrom(null, today)).toBeNull()
   })
 
-  it('wsUrlFromApiBase', () => {
-    expect(wsUrlFromApiBase('http://localhost:8001/api/v1')).toBe('ws://localhost:8001/ws/queue')
-    expect(wsUrlFromApiBase('https://api.lab.co/api/v1')).toBe('wss://api.lab.co/ws/queue')
+  it('originFromApiBase', () => {
+    expect(originFromApiBase('http://localhost:8001/api/v1')).toBe('http://localhost:8001')
+    expect(originFromApiBase('https://api.lab.co/api/v1')).toBe('https://api.lab.co')
   })
 
   it('waitingLabel', () => {

@@ -39,6 +39,7 @@ export interface QueueEntry {
   patient: Patient
   priority: Priority
   order_number: string | null
+  version: number
 }
 export interface CatalogTest { code: string; name: string; abbreviation: string | null }
 export interface OrderPrecondition {

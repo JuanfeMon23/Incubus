@@ -25,11 +25,9 @@ export function ageFrom(birthDate: string | null, today = new Date()): number | 
   return age
 }
 
-/** `http://host/api/v1` -> `ws://host/ws/queue`. */
-export function wsUrlFromApiBase(apiBase: string): string {
-  const u = new URL(apiBase)
-  const proto = u.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${u.host}/ws/queue`
+/** `http://host:8001/api/v1` -> `http://host:8001` (origen del backend, para Socket.IO). */
+export function originFromApiBase(apiBase: string): string {
+  return new URL(apiBase).origin
 }
 
 export function waitingLabel(arrivedAt: string, now = Date.now()): string {

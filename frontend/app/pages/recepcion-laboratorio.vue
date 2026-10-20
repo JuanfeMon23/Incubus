@@ -94,7 +94,6 @@ import type { LabReceptionOrder, LabReceptionSample, OrderSample } from '../type
 const ACTOR = 'recepcion-laboratorio'
 const api = useApi()
 const toast = useToast()
-const { version } = useQueueSocket()
 
 const orders = ref<LabReceptionOrder[]>([])
 const loading = ref(true)
@@ -117,7 +116,8 @@ async function load() {
 }
 
 onMounted(load)
-watch(version, load)
+// Tubos recibidos o cambios de etapa (toma finalizada -> laboratorio) refrescan la lista.
+useQueueRefresh(['toma_finalizada', 'en_laboratorio'], load)
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(search, () => {
   clearTimeout(timer)

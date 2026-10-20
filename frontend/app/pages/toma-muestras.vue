@@ -125,11 +125,16 @@
 import type { OrderDetail, OrderSample, QueueEntry, Reason, StaffMember } from '../types'
 import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
 import type { CheckMap } from '../utils/checks'
+import { sampleToggleError } from '../utils/queueLive'
+import type { LiveEvent, LiveEventName } from '../utils/queueLive'
 
 const ACTOR = 'toma-muestras'
 const api = useApi()
 const toast = useToast()
-const { entries, loading: listLoading, refresh } = useQueueList(['en_espera_toma_muestras', 'en_atencion_toma_muestras'])
+const { entries, loading: listLoading, refresh } = useQueueList(
+  ['en_espera_toma_muestras', 'en_atencion_toma_muestras'],
+  { onEvent: onLiveEvent }
+)
 const claimingId = ref<string | null>(null)
 const togglingId = ref<string | null>(null)
 
@@ -179,6 +184,18 @@ watch(professionalId, (id) => {
     /* almacenamiento no disponible */
   }
 })
+
+/** Otro puesto marcó un tubo del paciente abierto: actualiza solo los tubos. */
+function onLiveEvent(name: LiveEventName, ev: LiveEvent) {
+  if (name !== 'sample:updated' || ev.id !== currentId.value || togglingId.value) return
+  api<OrderDetail>(`/orders/by-entry/${ev.id}`)
+    .then((fresh) => {
+      if (order.value && currentId.value === ev.id) order.value = { ...order.value, samples: fresh.samples }
+    })
+    .catch(() => {
+      /* la próxima acción o sincronización lo corrige */
+    })
+}
 
 async function select(e: QueueEntry) {
   currentId.value = e.id
@@ -233,8 +250,9 @@ async function toggle(sample: OrderSample, collected: boolean) {
     }
     if (collected) toast.success(`Tubo «${sample.name}» marcado como tomado.`)
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = sampleToggleError(err, apiErrorMessage)
     toast.error(error.value)
+    await refresh() // el paciente pudo cambiar de etapa: re-sincroniza la lista
   } finally {
     togglingId.value = null
   }
