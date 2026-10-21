@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { io } from 'socket.io-client'
 import { createFakeSocket } from './fakeSocket'
-import { buildSocketOptions, createQueueRealtime, openQueueSocket, SYNC_FAILED_MESSAGE } from './queueRealtime'
+import {
+  buildSocketOptions,
+  createQueueRealtime,
+  openQueueSocket,
+  REFUSED_MESSAGE,
+  SESSION_ENDED_MESSAGE,
+  SYNC_FAILED_MESSAGE
+} from './queueRealtime'
 import type { RealtimeSubscriber } from './queueRealtime'
 
 // Nunca se abre una conexión real: `io` devuelve el doble.
@@ -28,6 +35,19 @@ describe('openQueueSocket', () => {
     const cb = vi.fn()
     opts.auth(cb)
     expect(cb).toHaveBeenCalledWith({ token: 't' })
+  })
+  it('auth puede ser asíncrona: entrega la prueba nueva de cada (re)conexión', async () => {
+    vi.mocked(io).mockReturnValue(createFakeSocket().socket as never)
+    let n = 0
+    openQueueSocket(io as never, 'http://localhost:8001/api/v1', async () => ({ dpop: `jws-${++n}` }))
+    const [, opts] = vi.mocked(io).mock.calls.at(-1) as unknown as [string, Record<string, any>]
+    const first = vi.fn()
+    const second = vi.fn()
+    opts.auth(first)
+    opts.auth(second)
+    await flush()
+    expect(first).toHaveBeenCalledWith({ dpop: 'jws-1' })
+    expect(second).toHaveBeenCalledWith({ dpop: 'jws-2' })
   })
   it('el backoff es configurable', () => {
     expect(buildSocketOptions({ reconnectionDelayMax: 5000 }).reconnectionDelayMax).toBe(5000)
@@ -116,5 +136,110 @@ describe('createQueueRealtime', () => {
     rt.subscribe(sub(['stage:x']))
     await new Promise((r) => setTimeout(r, 20))
     expect(rt.error.value).toBe(SYNC_FAILED_MESSAGE)
+  })
+
+  it('forbidden en la suscripción dice que no tiene permiso para esa etapa', async () => {
+    const f = createFakeSocket({ subscribe: () => ({ ok: false, error: 'forbidden' }) })
+    f.fire('connect')
+    const rt = createQueueRealtime(f.socket)
+    rt.subscribe(sub(['stage:x']))
+    await flush()
+    expect(rt.error.value).toBe('No tienes permiso para ver esta etapa.')
+  })
+
+  it('autoConnect:false no conecta hasta open() (solo con sesión)', () => {
+    const f = createFakeSocket()
+    const rt = createQueueRealtime(f.socket, { autoConnect: false })
+    expect(f.calls.connect).toBe(0)
+    rt.open()
+    expect(f.calls.connect).toBe(1)
+  })
+})
+
+describe('sesión del socket (Leo)', () => {
+  it('session_expired: renueva la sesión y reconecta (con prueba nueva)', async () => {
+    const f = createFakeSocket({ subscribe: () => ({ ok: false, error: 'session_expired' }) })
+    f.fire('connect')
+    const refreshSession = vi.fn().mockResolvedValue(true)
+    const rt = createQueueRealtime(f.socket, { autoConnect: false, refreshSession })
+    rt.subscribe(sub(['stage:x']))
+    await flush()
+    expect(refreshSession).toHaveBeenCalledTimes(1)
+    expect(f.calls.connect).toBe(1)
+    expect(rt.error.value).toMatch(/sesión/)
+  })
+
+  it('session_expired con la sesión terminada: no reconecta y avisa', async () => {
+    const f = createFakeSocket({ sync: () => ({ ok: false, error: 'session_expired' }), subscribe: () => ({ ok: true }) })
+    f.fire('connect')
+    const rt = createQueueRealtime(f.socket, { autoConnect: false, refreshSession: async () => false })
+    rt.subscribe(sub(['stage:x']))
+    await flush()
+    expect(f.calls.connect).toBe(0)
+    expect(rt.error.value).toBe(SESSION_ENDED_MESSAGE)
+    expect(rt.reconnecting.value).toBe(false)
+  })
+
+  it('el servidor desconecta (io server disconnect): renueva y reconecta', async () => {
+    const f = createFakeSocket()
+    f.fire('connect')
+    const refreshSession = vi.fn().mockResolvedValue(true)
+    createQueueRealtime(f.socket, { autoConnect: false, refreshSession })
+    f.fire('disconnect', 'io server disconnect')
+    await flush()
+    expect(refreshSession).toHaveBeenCalledTimes(1)
+    expect(f.calls.connect).toBe(1)
+  })
+
+  it('una desconexión de red no renueva la sesión (socket.io reintenta solo)', async () => {
+    const f = createFakeSocket()
+    f.fire('connect')
+    const refreshSession = vi.fn().mockResolvedValue(true)
+    createQueueRealtime(f.socket, { autoConnect: false, refreshSession })
+    f.fire('disconnect', 'transport close')
+    await flush()
+    expect(refreshSession).not.toHaveBeenCalled()
+  })
+
+  it('conexión rechazada (sin reintento automático): renueva y reintenta; tras dos rechazos para y avisa', async () => {
+    const f = createFakeSocket()
+    const refreshSession = vi.fn().mockResolvedValue(true)
+    const rt = createQueueRealtime(f.socket, { autoConnect: false, refreshSession })
+    f.refuse()
+    await flush()
+    f.refuse()
+    await flush()
+    expect(f.calls.connect).toBe(2)
+    f.refuse()
+    await flush()
+    expect(f.calls.connect).toBe(2)
+    expect(refreshSession).toHaveBeenCalledTimes(2)
+    expect(rt.error.value).toBe(REFUSED_MESSAGE)
+    expect(rt.reconnecting.value).toBe(false)
+  })
+
+  it('un rechazo sin sesión válida avisa que la sesión terminó', async () => {
+    const f = createFakeSocket()
+    const rt = createQueueRealtime(f.socket, { autoConnect: false, refreshSession: async () => false })
+    f.refuse()
+    await flush()
+    expect(f.calls.connect).toBe(0)
+    expect(rt.error.value).toBe(SESSION_ENDED_MESSAGE)
+  })
+
+  it('al conectar bien se reinicia el conteo de rechazos y se limpia el aviso', async () => {
+    const f = createFakeSocket(okResponders)
+    const rt = createQueueRealtime(f.socket, { autoConnect: false, refreshSession: async () => true })
+    rt.subscribe(sub(['stage:x']))
+    f.refuse()
+    await flush()
+    f.fire('connect')
+    await flush()
+    expect(rt.error.value).toBe('')
+    f.refuse()
+    await flush()
+    f.refuse()
+    await flush()
+    expect(f.calls.connect).toBe(3) // 1 antes de conectar + 2 reintentos (el conteo se reinició)
   })
 })

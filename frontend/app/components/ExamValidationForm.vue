@@ -112,11 +112,15 @@
     </div>
 
 
-    <div v-if="detail" class="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-      <UiButton variant="secondary" :loading="saving" :disabled="readonly || finishing" @click="saveNow">
+    <UiAlert v-if="detail && !canWork" variant="info" class="mt-4">
+      Solo lectura: no tienes permiso para «{{ enterName }}» ni «{{ validateName }}».
+    </UiAlert>
+
+    <div v-if="detail && canWork" class="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+      <UiButton v-if="canEnter" variant="secondary" :loading="saving" :disabled="readonly || finishing" @click="saveNow">
         Guardar borrador
       </UiButton>
-      <UiButton :loading="finishing" :disabled="readonly || loading" @click="finish">
+      <UiButton v-if="canValidate" :loading="finishing" :disabled="readonly || loading" @click="finish">
         Finalizar validación de {{ detail.name }}
       </UiButton>
     </div>
@@ -148,7 +152,13 @@ const form = reactive<Record<string, string | number | boolean | null>>({})
 const dirty = ref(false)
 const lastSaved = ref<Date | null>(null)
 
-const readonly = computed(() => detail.value?.validation_status === 'validated')
+// results.enter guarda borradores; results.validate valida (y envía los valores). Sin ninguno, solo lectura.
+const canEnter = useCan(TAGS.results.enter)
+const canValidate = useCan(TAGS.results.validate)
+const canWork = computed(() => canEnter.value || canValidate.value)
+const enterName = permissionName(TAGS.results.enter)
+const validateName = permissionName(TAGS.results.validate)
+const readonly = computed(() => detail.value?.validation_status === 'validated' || !canWork.value)
 const savingLabel = computed(() => {
   if (saving.value) return 'Guardando borrador…'
   if (dirty.value) return 'Cambios sin guardar'
@@ -274,7 +284,8 @@ function setValue(code: string, value: unknown) {
   form[code] = row?.result_type === 'boolean' && value !== '' ? value === 'true' : (value as string)
   dirty.value = true
   clearTimeout(timer)
-  timer = setTimeout(() => void save(true), 900)
+  // El borrador automático exige `enter`; con solo `validate` los valores viajan al validar.
+  if (canEnter.value) timer = setTimeout(() => void save(true), 900)
 }
 
 async function saveNow() {
@@ -285,7 +296,7 @@ async function saveNow() {
 /** El modal padre lo llama al cerrar: el borrador se conserva. */
 async function flush() {
   clearTimeout(timer)
-  if (dirty.value) await save(true)
+  if (dirty.value && canEnter.value) await save(true)
 }
 defineExpose({ flush })
 
