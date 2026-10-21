@@ -19,6 +19,7 @@ class QueueEmptyError(NotFoundError):
     code = "queue_empty"
 
 
+from app.core.permissions import SUPERVISE_BY_STATUS
 from app.modules.orders.models import Order
 from app.modules.queue.models import (
     DocumentType,
@@ -313,7 +314,7 @@ async def return_entry(
 ) -> QueueEntry:
     entry = await get_entry(session, entry_id, lock=True)
     _ensure_expected(entry, expected_status)
-    if entry.status == QueueStatus.EN_ATENCION_TOMA_MUESTRAS:
+    if entry.status in SUPERVISE_BY_STATUS:
         ensure_turn_owner(
             entry, actor, supervisor=supervisor, action="devolver al paciente"
         )
@@ -334,7 +335,12 @@ async def return_entry(
 
 
 async def save_draft(
-    session: AsyncSession, entry_id: UUID, test_codes: list[str]
+    session: AsyncSession,
+    entry_id: UUID,
+    test_codes: list[str],
+    *,
+    actor: Actor,
+    supervisor: bool = False,
 ) -> QueueEntry:
     entry = await get_entry(session, entry_id, lock=True)
     if entry.status != QueueStatus.EN_ATENCION_RECEPCION:
@@ -342,19 +348,52 @@ async def save_draft(
             "El borrador solo se edita en atencion de recepcion.",
             {"status": entry.status},
         )
+    ensure_turn_owner(entry, actor, supervisor=supervisor, action="editar la atención")
     entry.draft = {**entry.draft, "test_codes": list(dict.fromkeys(test_codes))}
     await session.flush()
     return entry
 
 
-async def history(session: AsyncSession, entry_id: UUID) -> list[QueueStatusHistory]:
+async def ensure_patient_turn_owner(
+    session: AsyncSession, patient_id: UUID, actor: Actor, *, supervisor: bool
+) -> None:
+    """Si el paciente esta en atencion de recepcion, solo quien la tomo (o un
+    supervisor) edita sus datos; sin turno en atencion no hay duenio."""
+    entry = (
+        await session.execute(
+            select(QueueEntry)
+            .where(
+                QueueEntry.patient_id == patient_id,
+                QueueEntry.status == QueueStatus.EN_ATENCION_RECEPCION.value,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if entry is not None:
+        ensure_turn_owner(
+            entry,
+            actor,
+            supervisor=supervisor,
+            action="editar los datos del paciente",
+        )
+
+
+async def history(
+    session: AsyncSession, entry_id: UUID
+) -> list[tuple[QueueStatusHistory, str | None, str | None]]:
+    """Historial con el NOMBRE de cada motivo (una sola consulta, sin N+1)."""
     await get_entry(session, entry_id)
     stmt = (
-        select(QueueStatusHistory)
+        select(QueueStatusHistory, RemovalReason.name, ReturnReason.name)
+        .outerjoin(
+            RemovalReason, RemovalReason.id == QueueStatusHistory.removal_reason_id
+        )
+        .outerjoin(ReturnReason, ReturnReason.id == QueueStatusHistory.return_reason_id)
         .where(QueueStatusHistory.queue_entry_id == entry_id)
         .order_by(QueueStatusHistory.changed_at)
     )
-    return list((await session.execute(stmt)).scalars())
+    return [tuple(r) for r in (await session.execute(stmt)).all()]
 
 
 async def previous_status(
@@ -376,6 +415,7 @@ async def previous_status(
 __all__ = [
     "change_status",
     "claim",
+    "ensure_patient_turn_owner",
     "enter_queue",
     "get_entry",
     "get_entry_full",

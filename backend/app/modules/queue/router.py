@@ -17,7 +17,6 @@ from app.core.permissions import (
     REMOVE_BY_STATUS,
     RETURN_BY_STATUS,
     SAM_FINISH,
-    SAM_RETURN,
     STAGE_VIEW,
     CanCallNext,
     CanClaim,
@@ -177,8 +176,19 @@ async def lookup_patient(
 
 @patients_router.patch("/{patient_id}", response_model=PatientRead)
 async def update_patient(
-    patient_id: UUID, body: PatientUpdate, session: Session, user: CanEditPatient
+    patient_id: UUID,
+    body: PatientUpdate,
+    request: Request,
+    session: Session,
+    user: CanEditPatient,
 ) -> Patient:
+    async with audit_not_owner(request, user, REC_EDIT_PATIENT):
+        await service.ensure_patient_turn_owner(
+            session,
+            patient_id,
+            Actor.of(user),
+            supervisor=can_supervise(user, QueueStatus.EN_ATENCION_RECEPCION.value),
+        )
     patient = await session.get(Patient, patient_id)
     if patient is None:
         raise NotFoundError(
@@ -271,8 +281,15 @@ async def get_entry(
 
 
 @queue_router.get("/{entry_id}/history", response_model=list[HistoryRead])
-async def entry_history(entry_id: UUID, session: Session, _user: CanViewAnyStage):
-    return await service.history(session, entry_id)
+async def entry_history(
+    entry_id: UUID, session: Session, _user: CanViewAnyStage
+) -> list[HistoryRead]:
+    return [
+        HistoryRead.model_validate(row).model_copy(
+            update={"removal_reason_name": removal, "return_reason_name": returned}
+        )
+        for row, removal, returned in await service.history(session, entry_id)
+    ]
 
 
 @queue_router.post("/{entry_id}/claim", response_model=QueueEntryRead)
@@ -317,7 +334,7 @@ async def return_entry(
     expected = await _authorize_for_status(
         request, user, session, entry_id, RETURN_BY_STATUS
     )
-    async with audit_not_owner(request, user, SAM_RETURN):
+    async with audit_not_owner(request, user, RETURN_BY_STATUS.get(expected, "")):
         await service.return_entry(
             session,
             entry_id,
@@ -325,7 +342,7 @@ async def return_entry(
             reason_id=body.reason_id,
             note=body.note,
             expected_status=expected,
-            supervisor=can_supervise(user),
+            supervisor=can_supervise(user, expected),
         )
     await session.commit()
     return await events.publish_entry(
@@ -388,7 +405,7 @@ async def finish_sampling(
         ensure_turn_owner(
             entry,
             Actor.of(user),
-            supervisor=can_supervise(user),
+            supervisor=can_supervise(user, entry.status),
             action="finalizar la toma",
         )
     pending = list(
@@ -424,9 +441,20 @@ async def finish_sampling(
 
 @queue_router.put("/{entry_id}/draft", response_model=QueueEntryRead)
 async def save_draft(
-    entry_id: UUID, body: DraftInput, session: Session, user: CanEditPatient
+    entry_id: UUID,
+    body: DraftInput,
+    request: Request,
+    session: Session,
+    user: CanEditPatient,
 ) -> QueueEntryRead:
-    await service.save_draft(session, entry_id, body.test_codes)
+    async with audit_not_owner(request, user, REC_EDIT_PATIENT):
+        await service.save_draft(
+            session,
+            entry_id,
+            body.test_codes,
+            actor=Actor.of(user),
+            supervisor=can_supervise(user, QueueStatus.EN_ATENCION_RECEPCION.value),
+        )
     await session.commit()
     return await events.publish_entry(
         session,

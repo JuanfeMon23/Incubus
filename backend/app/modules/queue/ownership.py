@@ -1,9 +1,11 @@
-"""Propiedad del turno de toma de muestras.
+"""Propiedad del turno (recepcion y toma de muestras).
 
-Quien tomo el turno (`claim` en espera de toma) es quien lo devuelve, lo
-finaliza y marca/desmarca sus tubos; otra persona solo con el permiso
-`incubus.sampling.supervise`. La comparacion es por id de usuario de Leo
-(`queue_entries.claimed_by_user_id`).
+Quien toma el turno (`call-next`/`claim` en pre-recepcion, `claim` en espera de
+toma) es quien lo trabaja: en recepcion lo edita, devuelve y cierra; en toma lo
+devuelve, finaliza y marca/desmarca sus tubos. Otra persona solo con el permiso
+de supervisor de esa etapa (`SUPERVISE_BY_STATUS`: `reception.supervise` o
+`sampling.supervise`). Retirar no exige ser dueno. La comparacion es por id de
+usuario de Leo (`queue_entries.claimed_by_user_id`).
 
 Turno LEGADO: tomado antes de la migracion 0007 (`claimed_by` con nombre pero
 `claimed_by_user_id` NULL) = propietario desconocido; no se puede comparar, asi
@@ -19,15 +21,17 @@ from leo_sdk import LeoUser
 
 from app.core.exceptions import ForbiddenError
 from app.core.leo import Actor, audit_denied
-from app.core.permissions import SAM_SUPERVISE
+from app.core.permissions import SUPERVISE_BY_STATUS
 
 
 class NotTurnOwnerError(ForbiddenError):
     code = "not_turn_owner"
 
 
-def can_supervise(user: LeoUser) -> bool:
-    return user.can(SAM_SUPERVISE)
+def can_supervise(user: LeoUser, status: str) -> bool:
+    """¿Es supervisor del turno de la etapa `status` (estado de atencion)?"""
+    tag = SUPERVISE_BY_STATUS.get(status)
+    return tag is not None and user.can(tag)
 
 
 def ensure_turn_owner(entry, actor: Actor, *, supervisor: bool, action: str) -> None:

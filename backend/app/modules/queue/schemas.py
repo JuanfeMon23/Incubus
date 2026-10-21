@@ -156,3 +156,6 @@ class HistoryRead(BaseModel):
     note: str | None
     removal_reason_id: UUID | None
     return_reason_id: UUID | None
+    # Nombre legible del motivo (catalogos de motivos); None si no aplica.
+    removal_reason_name: str | None = None
+    return_reason_name: str | None = None

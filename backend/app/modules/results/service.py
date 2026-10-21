@@ -157,6 +157,9 @@ def _row_dict(row: OrderResult, patient: Patient) -> dict:
         ),
         "value": value,
         "flag": row.flag,
+        # Quien capturo el valor (usuario de Leo): solo nombre e id.
+        "entered_by": row.entered_by,
+        "entered_by_user_id": uuid_str(row.entered_by_user_id),
     }
 
 
@@ -177,6 +180,7 @@ async def test_detail(
         "area_code": test.area_code,
         "validation_status": test.validation_status,
         "validated_by": test.validated_by_name,
+        "validated_by_user_id": uuid_str(test.validated_by_user_id),
         "patient": _patient_context(patient),
         "results": [_row_dict(r, patient) for r in rows],
     }
@@ -191,6 +195,20 @@ def _set_entered(row: OrderResult, at: datetime | None, actor: Actor | None) -> 
     row.entered_at = at
     row.entered_by = who.name
     row.entered_by_user_id = who.user_id
+
+
+def _store_value(row: OrderResult, typed: object, at: datetime, actor: Actor) -> None:
+    """Guarda el valor; el sello de captura solo cambia si el valor cambio
+    (reenviar el mismo valor, p. ej. al validar, conserva a quien lo capturo).
+    Un valor vacio limpia el sello."""
+    if typed is None:
+        row.value = None
+        _set_entered(row, None, None)
+        return
+    if row.value is not None and row.value.get("v") == typed:
+        return
+    row.value = {"v": typed}
+    _set_entered(row, at, actor)
 
 
 def _apply_values(
@@ -214,9 +232,7 @@ def _apply_values(
             )
         except ResultValueError as exc:
             raise InvalidResultError(str(exc), {"field": code}) from exc
-        row.value = None if typed is None else {"v": typed}
-        row.entered_at = now if typed is not None else None
-        _set_entered(row, now, actor if typed is not None else None)
+        _store_value(row, typed, now, actor)
 
     # calculados a partir de los valores numericos actuales
     numeric = {
@@ -233,14 +249,10 @@ def _apply_values(
             computed = evaluate_formula(row.formula, numeric)
         except FormulaError:
             computed = None
-        if computed is None:
-            row.value = None
-            _set_entered(row, None, None)
-        else:
-            if row.decimals is not None:
-                computed = round(computed, row.decimals)
-            row.value = {"v": computed}
-            _set_entered(row, now, actor)
+        if computed is not None and row.decimals is not None:
+            computed = round(computed, row.decimals)
+        _store_value(row, computed, now, actor)
+        if computed is not None:
             numeric[row.analyte_code] = computed
 
     age = age_in_years(patient.birth_date)
@@ -394,6 +406,7 @@ async def order_for_professional(
                 "area_code": t.area_code,
                 "validation_status": t.validation_status,
                 "validated_by": t.validated_by_name,
+                "validated_by_user_id": uuid_str(t.validated_by_user_id),
                 "validated_at": t.validated_at.isoformat() if t.validated_at else None,
             }
             for t in tests
