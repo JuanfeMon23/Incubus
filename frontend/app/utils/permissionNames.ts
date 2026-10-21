@@ -15,6 +15,7 @@ const PERMISSION_NAMES: Record<string, string> = {
   [TAGS.reception.closeReception]: 'Cerrar recepción de órdenes',
   [TAGS.reception.return]: 'Devolver pacientes a pre-recepción',
   [TAGS.reception.remove]: 'Retirar pacientes en recepción',
+  [TAGS.reception.supervise]: 'Gestionar turnos de otros recepcionistas',
   [TAGS.labelPrinting.view]: 'Consultar la impresión de etiquetas',
   [TAGS.labelPrinting.print]: 'Imprimir etiquetas de tubos',
   [TAGS.sampling.view]: 'Consultar la toma de muestras',

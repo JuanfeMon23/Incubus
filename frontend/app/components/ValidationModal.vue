@@ -47,7 +47,10 @@
                 <span class="ml-1 rounded bg-white/70 px-1.5 py-0.5 font-mono text-xs">{{ t.code }}</span>
               </p>
               <p class="text-xs text-success-700">
-                Validado por {{ t.validated_by || '—' }}<template v-if="t.validated_at"> · {{ timeLabel(t.validated_at) }}</template>
+                {{ validationLabels(t, user?.id).professional || 'Validado' }}<template v-if="t.validated_at"> · {{ timeLabel(t.validated_at) }}</template>
+              </p>
+              <p v-if="validationLabels(t, user?.id).executor" class="text-xs text-success-700">
+                {{ validationLabels(t, user?.id).executor }}
               </p>
             </div>
             <UiStatusBadge variant="success" label="Validado" dot />
@@ -109,6 +112,7 @@
 
 <script setup lang="ts">
 import type { OrderValidationView } from '../types'
+import { validationLabels } from '../utils/resultAuthorship'
 
 const props = defineProps<{
   entryId: string
@@ -122,6 +126,7 @@ const emit = defineEmits<{
 }>()
 
 const api = useApi()
+const user = useLeoUser()
 const toast = useToast()
 
 const order = ref<OrderValidationView | null>(null)

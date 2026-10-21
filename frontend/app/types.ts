@@ -132,6 +132,9 @@ export interface ResultRow {
   formula: string | null
   is_required: boolean
   is_reportable: boolean
+  /** Quién capturó el valor (nombre) y su usuario; opcionales. */
+  entered_by?: string | null
+  entered_by_user_id?: string | null
   reference: string | null
   range: { low: number | null; high: number | null; critical_low: number | null; critical_high: number | null } | null
   value: string | number | boolean | null
@@ -145,6 +148,10 @@ export interface ResultTestDetail {
   area_code: string | null
   validation_status: 'pending' | 'draft' | 'validated'
   validated_by: string | null
+  /** Usuario que EJECUTÓ la validación (distinto del profesional que firma, `validated_by`). */
+  validated_by_user_id?: string | null
+  /** Nombre de ese usuario, si el backend lo trae. */
+  validated_by_user?: string | null
   patient: {
     name: string
     document_type: string
@@ -162,6 +169,8 @@ export interface OrderValidationTest {
   area_code: string | null
   validation_status: 'pending' | 'draft' | 'validated'
   validated_by: string | null
+  validated_by_user_id?: string | null
+  validated_by_user?: string | null
   validated_at: string | null
 }
 export interface OrderValidationView {
@@ -189,4 +198,7 @@ export interface QueueHistoryRow {
   note: string | null
   removal_reason_id: string | null
   return_reason_id: string | null
+  /** Nombre del motivo de retiro / devolución (opcional según versión del backend). */
+  removal_reason_name?: string | null
+  return_reason_name?: string | null
 }

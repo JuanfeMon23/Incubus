@@ -55,6 +55,8 @@
                 </span>
               </div>
 
+              <p v-if="enteredBy(r)" class="text-xs text-text-muted">{{ enteredBy(r) }}</p>
+
               <RangeBar
                 v-if="r.range && typeof numericValue(r) === 'number' || (r.range && r.value === null)"
                 class="max-w-xs"
@@ -116,6 +118,11 @@
       Solo lectura: no tienes permiso para «{{ enterName }}» ni «{{ validateName }}».
     </UiAlert>
 
+    <div v-if="detail && (validation.professional || validation.executor)" class="mt-4 space-y-0.5 text-sm text-text-muted">
+      <p v-if="validation.professional">{{ validation.professional }}</p>
+      <p v-if="validation.executor">{{ validation.executor }}</p>
+    </div>
+
     <div v-if="detail && canWork" class="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
       <UiButton v-if="canEnter" variant="secondary" :loading="saving" :disabled="readonly || finishing" @click="saveNow">
         Guardar borrador
@@ -129,6 +136,7 @@
 
 <script setup lang="ts">
 import type { ResultRow, ResultTestDetail } from '../types'
+import { enteredByLabel, validationLabels } from '../utils/resultAuthorship'
 
 const props = defineProps<{
   orderTestId: string
@@ -140,6 +148,7 @@ const emit = defineEmits<{
 }>()
 
 const api = useApi()
+const user = useLeoUser()
 const toast = useToast()
 
 const detail = ref<ResultTestDetail | null>(null)
@@ -164,6 +173,11 @@ const savingLabel = computed(() => {
   if (dirty.value) return 'Cambios sin guardar'
   return lastSaved.value ? `Borrador guardado ${lastSaved.value.toLocaleTimeString()}` : ''
 })
+
+const enteredBy = (r: ResultRow) => enteredByLabel(r, user.value?.id)
+const validation = computed(() =>
+  detail.value ? validationLabels(detail.value, user.value?.id) : { professional: null, executor: null }
+)
 
 const groups = computed(() => {
   const map = new Map<string, ResultRow[]>()

@@ -17,7 +17,8 @@ export const TAGS = {
     editPatient: t('reception', 'edit-patient'),
     closeReception: t('reception', 'close-reception'),
     return: t('reception', 'return'),
-    remove: t('reception', 'remove')
+    remove: t('reception', 'remove'),
+    supervise: t('reception', 'supervise')
   },
   labelPrinting: {
     view: t('label-printing', 'view'),
