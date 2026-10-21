@@ -65,6 +65,7 @@ class OrderTest(UUIDv7PK, Base):
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     validated_by_id: Mapped[str | None] = mapped_column(String(64))
     validated_by_name: Mapped[str | None] = mapped_column(String(150))
+    validated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class OrderPrecondition(UUIDv7PK, Base):
@@ -88,12 +89,18 @@ class OrderPrecondition(UUIDv7PK, Base):
         DateTime(timezone=True)
     )
     reception_checked_by: Mapped[str | None] = mapped_column(String(120))
+    reception_checked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True)
+    )
     sampling_met: Mapped[bool | None] = mapped_column(Boolean)
     sampling_note: Mapped[str | None] = mapped_column(Text)
     sampling_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
     sampling_checked_by: Mapped[str | None] = mapped_column(String(120))
+    sampling_checked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True)
+    )
 
 
 class OrderSample(UUIDv7PK, Base):
@@ -118,9 +125,11 @@ class OrderSample(UUIDv7PK, Base):
     labels_printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     collected_by: Mapped[str | None] = mapped_column(String(120))
+    collected_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # Recepcion de la muestra en el laboratorio (check de entrada).
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     received_by: Mapped[str | None] = mapped_column(String(120))
+    received_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class OrderResult(UUIDv7PK, Base):
@@ -156,6 +165,7 @@ class OrderResult(UUIDv7PK, Base):
     flag: Mapped[str | None] = mapped_column(String(16))
     entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     entered_by: Mapped[str | None] = mapped_column(String(120))
+    entered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
     __table_args__ = (
         UniqueConstraint("order_test_id", "analyte_code", name="analyte_per_test"),

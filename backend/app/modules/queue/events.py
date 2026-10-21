@@ -39,11 +39,15 @@ anterior se entera por el `stage:` (limitacion conocida).
 
 import asyncio
 import logging
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from leo_sdk import LeoUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.leo import record_audit
 from app.core.realtime import emit_to_rooms
 from app.modules.queue import rooms, service
 from app.modules.queue.schemas import (
@@ -72,6 +76,21 @@ CLIENT_EVENT = {
 _STAGE_CHANGING = (STATUS_CHANGED, REMOVED)
 
 _PENDING: set[asyncio.Task] = set()
+
+
+@dataclass(frozen=True)
+class AuditInfo:
+    """Auditoria en Leo de la mutacion que se publica (opcional).
+
+    `before`/`after` solo con ids, estados y codigos (nunca datos personales).
+    `publish_entry` agrega el cambio de etapa cuando el evento la cambia.
+    """
+
+    user: LeoUser
+    tag: str
+    before: Mapping[str, Any] = field(default_factory=dict)
+    after: Mapping[str, Any] = field(default_factory=dict)
+    reason: str | None = None
 
 
 def to_read(
@@ -155,8 +174,11 @@ async def publish_entry(
     event: str,
     *,
     sample_id: UUID | str | None = None,
+    audit: AuditInfo | None = None,
 ) -> QueueEntryRead:
-    """Llamar DESPUES del commit. Devuelve la entrada leida (para la respuesta)."""
+    """Llamar DESPUES del commit. Devuelve la entrada leida (para la respuesta).
+
+    Con `audit`, registra el evento en Leo (nunca falla la operacion)."""
     read = await read_entry(session, entry_id)
     message: dict[str, Any] = {"event": event, "entry": read.model_dump(mode="json")}
     if event in _STAGE_CHANGING:
@@ -166,7 +188,27 @@ async def publish_entry(
     if sample_id is not None:
         message["sample_id"] = str(sample_id)
     _schedule(message)
+    if audit is not None:
+        await _audit(audit, entry_id, event, read.status, message)
     return read
+
+
+async def _audit(
+    audit: AuditInfo, entry_id: UUID, event: str, status: str, message: dict[str, Any]
+) -> None:
+    before, after = dict(audit.before), dict(audit.after)
+    if event == ENTRY_CREATED or event in _STAGE_CHANGING:
+        before["status"] = message.get("previous_status")
+        after["status"] = status
+    await record_audit(
+        audit.tag,
+        audit.user,
+        entity_type="queue_entry",
+        entity_id=entry_id,
+        before=before,
+        after=after,
+        reason=audit.reason,
+    )
 
 
 async def drain() -> None:

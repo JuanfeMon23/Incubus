@@ -23,7 +23,7 @@ async def test_llama_al_siguiente_por_prioridad_y_luego_llegada(client):
     assert first.status_code == 200
     assert first.json()["id"] == alta1  # mas urgente y mas antiguo
     assert first.json()["status"] == "en_atencion_recepcion"
-    assert first.json()["claimed_by"] == "ana"
+    assert first.json()["claimed_by"] == "Tester Uno"  # actor = sesion
 
     second = await client.post("/api/v1/queue/call-next", json={"actor": "ana"})
     assert second.json()["patient"]["document_number"] == "1003"
@@ -44,4 +44,4 @@ async def test_el_historial_registra_quien_llamo(client):
     ).json()
     hist = (await client.get(f"/api/v1/queue/{called['id']}/history")).json()
     assert hist[-1]["kind"] == "advance"
-    assert hist[-1]["actor"] == "ana"
+    assert hist[-1]["actor"] == "Tester Uno"

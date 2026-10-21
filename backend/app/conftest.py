@@ -48,17 +48,101 @@ def _prepare_test_database() -> None:
 
 _prepare_test_database()
 
+import time
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from leo_sdk import LeoError, LeoUnavailableError, LeoUser
+from leo_sdk.models import Introspection, IntrospectUser
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.database import engine
 from app.core.database import get_session as real_get_session
+from app.core.leo import auth
+from app.core.leo import catalog as leo_catalog
 from app.main import app
 from app.modules.catalog_client.client import get_catalog_client
+
+
+@dataclass
+class FakeLeo:
+    """Doble de Leo para los tests: usuario actual y eventos de auditoria.
+
+    `user=None` -> sin sesion (401). Por defecto el usuario tiene TODOS los tags
+    del catalogo; usar `grant(*tags)` para dar solo algunos. `down=True` simula
+    Leo caido al auditar.
+    """
+
+    user: LeoUser | None = None
+    events: list[dict[str, Any]] = field(default_factory=list)
+    down: bool = False
+    # Introspeccion (sockets): token de la cookie, llave DPoP ligada y llamadas.
+    access_token: str = "token-falso"
+    jkt: str | None = None
+    introspections: int = 0
+
+    def grant(self, *tags: str) -> None:
+        self.user = make_leo_user(tags)
+
+
+def make_leo_user(tags: Any, name: str = "Tester Uno") -> LeoUser:
+    return LeoUser(
+        id=uuid4(),
+        username="tester",
+        name=name,
+        email="tester@example.com",
+        permissions=frozenset(tags),
+        session_id=uuid4(),
+        access_token="token-falso",
+        jkt="jkt-falso",
+    )
+
+
+@pytest.fixture
+def leo(monkeypatch: pytest.MonkeyPatch) -> FakeLeo:
+    fake = FakeLeo(user=make_leo_user(leo_catalog.tags))
+
+    async def ingest_audit(payload: dict[str, Any]) -> None:
+        if fake.down:
+            raise LeoUnavailableError("down")
+        fake.events.append(payload)
+
+    async def introspect(token: str, jkt: str) -> Introspection:
+        fake.introspections += 1
+        user = fake.user
+        if user is None or token != fake.access_token or jkt != fake.jkt:
+            return Introspection(active=False)
+        return Introspection(
+            active=True,
+            user=IntrospectUser(
+                id=user.id, username=user.username, name=user.name, email=user.email
+            ),
+            permissions=sorted(user.permissions),
+            session_id=user.session_id,
+            exp=int(time.time()) + 3600,
+        )
+
+    monkeypatch.setattr(auth.client, "ingest_audit", ingest_audit)
+    monkeypatch.setattr(auth.client, "introspect", introspect)
+    auth.audit._queue.clear()
+    auth.sessions._cache.clear()
+    auth.sessions._replay._seen.clear()
+    return fake
+
+
+def _override_current_user(leo: FakeLeo) -> None:
+    async def current_user() -> LeoUser:
+        if leo.user is None:
+            raise LeoError("not_authenticated", "Inicia sesión para continuar.", 401)
+        return leo.user
+
+    app.dependency_overrides[auth.current_user] = current_user
 
 
 class FakeCatalog:
@@ -245,12 +329,13 @@ def catalog() -> FakeCatalog:
 
 @pytest_asyncio.fixture
 async def client(
-    session: AsyncSession, catalog: FakeCatalog
+    session: AsyncSession, catalog: FakeCatalog, leo: FakeLeo
 ) -> AsyncGenerator[AsyncClient]:
     async def override_get_session() -> AsyncGenerator[AsyncSession]:
         yield session
 
     app.dependency_overrides[real_get_session] = override_get_session
+    _override_current_user(leo)
     app.dependency_overrides[get_catalog_client] = lambda: catalog
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -259,11 +344,14 @@ async def client(
 
 
 @pytest_asyncio.fixture
-async def committed_client(catalog: FakeCatalog) -> AsyncGenerator[AsyncClient]:
+async def committed_client(
+    catalog: FakeCatalog, leo: FakeLeo
+) -> AsyncGenerator[AsyncClient]:
     """Cliente con sesiones REALES por request (commit de verdad), para probar
     concurrencia entre transacciones. Limpia las tablas de datos al terminar
     (solo la BD `_test`; los catalogos parametrizados se conservan)."""
     app.dependency_overrides[get_catalog_client] = lambda: catalog
+    _override_current_user(leo)
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

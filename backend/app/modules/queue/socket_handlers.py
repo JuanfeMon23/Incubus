@@ -12,6 +12,11 @@ Cliente -> servidor (todos responden con acknowledgement):
                 entradas ACTUALES de los rooms `stage:*` suscritos. Opcional: el
                 cliente puede preferir `GET /queue`. Emitirlo al (re)conectar
                 tras re-suscribirse.
+
+Autenticacion y autorizacion: ver `app.core.realtime` (cookie de Leo + prueba
+DPoP en `auth.dpop`). `subscribe`/`unsubscribe`/`sync` revalidan la sesion y,
+si ya no es valida, responden `{ok: false, error: "session_expired"}` y el
+servidor desconecta el socket.
 """
 
 from collections.abc import AsyncIterator
@@ -23,7 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
-from app.core.realtime import authenticate_socket, authorize_room
+from app.core.realtime import (
+    Principal,
+    authenticate_socket,
+    authorize_room,
+    is_expired,
+    refresh_principal,
+)
 from app.modules.queue import events, rooms, service
 
 
@@ -60,11 +71,42 @@ class QueueNamespace(socketio.AsyncNamespace):
             raise socketio.exceptions.ConnectionRefusedError("forbidden")
         await self.save_session(sid, {"principal": principal})
 
+    async def _principal(self, sid: str) -> Principal | None:
+        """Principal revalidado (permisos al dia); `None` = sesion terminada y
+        el socket se desconecta. Los rooms que ya no estan autorizados se dejan."""
+        current: Principal = (await self.get_session(sid))["principal"]
+        fresh = await refresh_principal(current)
+        if fresh is None:
+            # Despues de responder el ack (si se desconectara ya, el cliente
+            # nunca sabria por que).
+            self.server.start_background_task(self.disconnect, sid)
+            return None
+        if fresh != current:
+            await self.save_session(sid, {"principal": fresh})
+        for room in self._joined(sid):
+            if not authorize_room(fresh, room):
+                await self.leave_room(sid, room)
+        return fresh
+
+    async def disconnect_expired(self) -> int:
+        """Desconecta los sockets cuyo access token vencio (sin llamar a Leo)."""
+        gone = 0
+        for sid, _eio in list(
+            self.server.manager.get_participants(self.namespace, None)
+        ):
+            session = await self.get_session(sid)
+            if is_expired(session["principal"]):
+                await self.disconnect(sid)
+                gone += 1
+        return gone
+
     async def on_subscribe(self, sid: str, data: Any = None) -> dict[str, Any]:
         wanted = _parse_rooms(data)
         if wanted is None:
             return _error("invalid_rooms")
-        principal = (await self.get_session(sid))["principal"]
+        principal = await self._principal(sid)
+        if principal is None:
+            return _error("session_expired")
         if not all(authorize_room(principal, r) for r in wanted):
             return _error("forbidden")
         current = self._joined(sid)
@@ -78,11 +120,15 @@ class QueueNamespace(socketio.AsyncNamespace):
         unwanted = _parse_rooms(data)
         if unwanted is None:
             return _error("invalid_rooms")
+        if await self._principal(sid) is None:
+            return _error("session_expired")
         for room in unwanted:
             await self.leave_room(sid, room)
         return {"ok": True, "joined": self._joined(sid)}
 
     async def on_sync(self, sid: str, data: Any = None) -> dict[str, Any]:
+        if await self._principal(sid) is None:
+            return _error("session_expired")
         statuses = rooms.stage_statuses(self._joined(sid))
         if not statuses:
             return {"ok": True, "entries": []}

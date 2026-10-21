@@ -8,6 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError
+from app.core.leo import CatalogReader, actor_name, record_audit
+from app.core.permissions import (
+    RES_ENTER,
+    RES_VALIDATE,
+    CanEnterResults,
+    CanValidateResults,
+    CanViewDelivery,
+    CanViewLab,
+    CanViewResults,
+)
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders.models import Order, OrderResult, OrderTest
 from app.modules.queue import events
@@ -36,7 +46,7 @@ class ValuesInput(BaseModel):
 
 
 @validators_router.get("/validators")
-async def list_validators(catalog: Catalog) -> list[dict]:
+async def list_validators(catalog: Catalog, _user: CatalogReader) -> list[dict]:
     """Profesionales que validan: quienes son encargados de al menos un area."""
     by_staff: dict[str, dict] = {}
     for area in await catalog.areas_with_managers():
@@ -58,7 +68,9 @@ async def list_validators(catalog: Catalog) -> list[dict]:
 
 @lab_router.get("/reception")
 async def lab_reception(
-    session: Session, q: Annotated[str | None, Query(max_length=100)] = None
+    session: Session,
+    _user: CanViewLab,
+    q: Annotated[str | None, Query(max_length=100)] = None,
 ) -> list[dict]:
     """Cola de ordenes con tubos que esperan el check de entrada al laboratorio."""
     return await service.lab_reception_queue(session, q)
@@ -71,6 +83,7 @@ async def lab_reception(
 async def results_queue(
     session: Session,
     catalog: Catalog,
+    _user: CanViewResults,
     professional_id: Annotated[str, Query(max_length=64)],
     q: Annotated[str | None, Query(max_length=100)] = None,
 ) -> list[dict]:
@@ -83,6 +96,7 @@ async def get_order(
     entry_id: UUID,
     session: Session,
     catalog: Catalog,
+    _user: CanViewResults,
     professional_id: Annotated[str, Query(max_length=64)],
 ) -> dict:
     """Examenes de la orden en las areas del profesional (validados incluidos)."""
@@ -96,6 +110,7 @@ async def get_test(
     order_test_id: UUID,
     session: Session,
     catalog: Catalog,
+    _user: CanViewResults,
     professional_id: Annotated[str, Query(max_length=64)],
 ) -> dict:
     detail = await service.test_detail(session, catalog, order_test_id, professional_id)
@@ -105,8 +120,15 @@ async def get_test(
 
 @results_router.put("/tests/{order_test_id}/values")
 async def save_values(
-    order_test_id: UUID, body: ValuesInput, session: Session, catalog: Catalog
+    order_test_id: UUID,
+    body: ValuesInput,
+    session: Session,
+    catalog: Catalog,
+    user: CanEnterResults,
 ) -> dict:
+    """Guarda valores. `professional_*` identifica al profesional del area (se
+    conserva hasta enlazar usuarios de Leo con personal de Vladimir); quien
+    captura queda como el usuario autenticado."""
     detail = await service.save_values(
         session,
         catalog,
@@ -114,14 +136,31 @@ async def save_values(
         body.professional_id,
         body.professional_name,
         body.values,
+        actor_name(user),
     )
     await session.commit()
+    await record_audit(
+        RES_ENTER,
+        user,
+        entity_type="order_test",
+        entity_id=order_test_id,
+        after={
+            "validation_status": detail["validation_status"],
+            "analytes_with_value": sum(
+                1 for r in detail["results"] if r.get("value") is not None
+            ),
+        },
+    )
     return detail
 
 
 @results_router.post("/tests/{order_test_id}/validate")
 async def validate_test(
-    order_test_id: UUID, body: ValuesInput, session: Session, catalog: Catalog
+    order_test_id: UUID,
+    body: ValuesInput,
+    session: Session,
+    catalog: Catalog,
+    user: CanValidateResults,
 ) -> dict:
     detail, finalized = await service.validate_test(
         session,
@@ -130,8 +169,17 @@ async def validate_test(
         body.professional_id,
         body.professional_name,
         body.values,
+        actor_name(user),
     )
     await session.commit()
+    await record_audit(
+        RES_VALIDATE,
+        user,
+        entity_type="order_test",
+        entity_id=order_test_id,
+        before={"validation_status": "pending"},
+        after={"validation_status": "validated", "order_finalized": finalized},
+    )
     if finalized:
         entry_id = (
             await session.execute(
@@ -231,14 +279,18 @@ async def _delivery_payload(
 
 
 @delivery_router.get("/orders/{order_number}")
-async def delivery_order(order_number: str, session: Session) -> dict:
+async def delivery_order(
+    order_number: str, session: Session, _user: CanViewDelivery
+) -> dict:
     """Resultados finalizados de una orden (para el servicio de pacientes)."""
     order, patient = await _finalized_order(session, order_number)
     return await _delivery_payload(session, order, patient)
 
 
 @delivery_router.get("/orders/{order_number}/report.pdf")
-async def delivery_report(order_number: str, session: Session) -> Response:
+async def delivery_report(
+    order_number: str, session: Session, _user: CanViewDelivery
+) -> Response:
     order, patient = await _finalized_order(session, order_number)
     data = await _delivery_payload(session, order, patient)
     return Response(

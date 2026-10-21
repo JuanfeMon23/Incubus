@@ -48,4 +48,4 @@ async def test_marcar_en_atencion_de_toma_sigue_funcionando(client, catalog):
         f"/api/v1/orders/samples/{tube['id']}/collect", json={"actor": "luis"}
     )
     assert res.status_code == 200
-    assert res.json()["collected_by"] == "luis"
+    assert res.json()["collected_by"] == "Tester Uno"  # actor = sesion, no el body

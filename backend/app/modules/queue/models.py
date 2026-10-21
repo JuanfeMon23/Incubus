@@ -84,6 +84,11 @@ class Patient(UUIDv7PK, Timestamps, Base):
             unique=True,
         ),
         CheckConstraint("sex IN ('M', 'F')", name="sex_values"),
+        CheckConstraint(
+            "blood_type IS NULL OR blood_type IN "
+            "('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')",
+            name="blood_type",
+        ),
     )
 
 
@@ -100,6 +105,7 @@ class QueueEntry(UUIDv7PK, Timestamps, Base):
         String(32), server_default=text("'pre_recepcion'"), nullable=False
     )
     claimed_by: Mapped[str | None] = mapped_column(String(120))
+    claimed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     assigned_professional_id: Mapped[str | None] = mapped_column(String(64))
     assigned_professional_name: Mapped[str | None] = mapped_column(String(150))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -153,6 +159,7 @@ class QueueStatusHistory(UUIDv7PK, Base):
         DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
     )
     actor: Mapped[str | None] = mapped_column(String(120))
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     priority_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("priorities.id"), nullable=False
     )
@@ -171,4 +178,9 @@ class QueueStatusHistory(UUIDv7PK, Base):
         ),
         Index("ix_queue_status_history_entry", "queue_entry_id", "changed_at"),
         Index("ix_queue_status_history_status", "to_status", "changed_at"),
+        Index(
+            "ix_queue_status_history_actor_user_id_changed_at",
+            "actor_user_id",
+            "changed_at",
+        ),
     )
