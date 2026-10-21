@@ -14,11 +14,15 @@
             <UiButton
               size="sm"
               :variant="modelValue[p.key]?.met === true ? 'primary' : 'secondary'"
+              :disabled="disabled"
+              :title="disabled ? disabledHint : undefined"
               @click="set(p.key, true)"
             >Cumple</UiButton>
             <UiButton
               size="sm"
               :variant="modelValue[p.key]?.met === false ? 'danger' : 'secondary'"
+              :disabled="disabled"
+              :title="disabled ? disabledHint : undefined"
               @click="set(p.key, false)"
             >No cumple</UiButton>
           </div>
@@ -28,6 +32,7 @@
         </p>
         <UiTextInput
           v-if="modelValue[p.key]?.met === false"
+          :disabled="disabled"
           :model-value="modelValue[p.key]?.note ?? ''"
           placeholder="Nota obligatoria: por qué no cumple"
           @update:model-value="setNote(p.key, String($event ?? ''))"
@@ -54,6 +59,10 @@ const props = defineProps<{
   modelValue: CheckMap
   /** Resultado de la verificación anterior (recepción), por llave. */
   previous?: Record<string, boolean | null>
+  /** Solo lectura (p. ej. turno de otra persona). */
+  disabled?: boolean
+  /** Aviso (`title`) de los controles cuando están deshabilitados. */
+  disabledHint?: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: CheckMap] }>()
 

@@ -83,6 +83,8 @@
           title="Segunda verificación de la preparación del paciente"
           :items="order.preconditions"
           :previous="receptionResults"
+          :disabled="!ownsTurn"
+          :disabled-hint="turnHint('verificar la preparación')"
         />
 
         <UiSection title="Tubos a tomar" description="En orden de extracción; marque cada tubo al tomarlo.">
@@ -96,7 +98,7 @@
                     :variant="s.collected_at ? 'secondary' : 'primary'"
                     :loading="togglingId === s.id"
                     :disabled="!ownsTurn"
-                    :title="ownsTurn ? undefined : turnOwnerHint(current, 'marcar los tubos')"
+                    :title="ownsTurn ? undefined : turnHint('marcar los tubos')"
                     @click="toggle(s, !s.collected_at)"
                   >
                     {{ s.collected_at ? 'Deshacer toma' : 'Marcar como tomado' }}
@@ -115,14 +117,14 @@
             v-if="canReturn"
             variant="secondary"
             :disabled="!ownsTurn"
-            :title="ownsTurn ? undefined : turnOwnerHint(current, 'devolverlo a espera')"
+            :title="ownsTurn ? undefined : turnHint('devolverlo a espera')"
             @click="returning = true"
           >Devolver a espera</UiButton>
           <span v-else />
           <UiButton
             v-if="canFinish"
             :disabled="!ownsTurn || !allCollected(order.samples) || !checksOk"
-            :title="ownsTurn ? undefined : turnOwnerHint(current, 'finalizarlo')"
+            :title="ownsTurn ? undefined : turnHint('finalizarlo')"
             :loading="busy"
             @click="finish"
           >
@@ -153,7 +155,7 @@ import type { OrderDetail, OrderSample, QueueEntry, Reason, StaffMember } from '
 import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
 import type { CheckMap } from '../utils/checks'
 import { sampleToggleError } from '../utils/queueLive'
-import { canActOnTurn, isNotTurnOwnerError, turnOwnerHint } from '../utils/turnOwnership'
+import { isNotTurnOwnerError } from '../utils/turnOwnership'
 import type { LiveEvent, LiveEventName } from '../utils/queueLive'
 
 // Pantalla: sampling.view. Cada acción exige su tag; sin collect, tubos y verificación son de solo lectura.
@@ -162,9 +164,7 @@ const canClaim = useCan(TAGS.sampling.claim)
 const canCollect = useCan(TAGS.sampling.collect)
 const canFinish = useCan(TAGS.sampling.finish)
 const canReturn = useCan(TAGS.sampling.return)
-const canSupervise = useCan(TAGS.sampling.supervise)
 const collectName = permissionName(TAGS.sampling.collect)
-const user = useLeoUser()
 const api = useApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(
@@ -198,10 +198,8 @@ const currentId = ref<string | null>(null)
 const current = computed(() => attending.value.find((e) => e.id === currentId.value) ?? null)
 const order = ref<OrderDetail | null>(null)
 // Solo quien tomó el turno (o un supervisor) puede devolverlo, finalizarlo o marcar sus tubos.
-const ownsTurn = computed(() => !current.value || canActOnTurn(current.value, user.value, canSupervise.value))
-const ownerNotice = computed(() =>
-  current.value ? turnOwnerHint(current.value, 'devolverlo, finalizarlo o marcar sus tubos') : ''
-)
+const { ownsTurn, hint: turnHint } = useTurnOwnership(current)
+const ownerNotice = computed(() => turnHint('devolverlo, finalizarlo, marcar sus tubos o verificar la preparación'))
 const error = ref('')
 const busy = ref(false)
 const returning = ref(false)

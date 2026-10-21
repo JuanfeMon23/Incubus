@@ -3,9 +3,9 @@ import { forbiddenMessage, permissionName } from './permissionNames'
 import { ALL_TAGS, TAGS } from './tags'
 
 describe('catálogo de permisos', () => {
-  it('son los 24 tags del backend, con formato incubus.<módulo>.<acción>', () => {
-    expect(ALL_TAGS).toHaveLength(24)
-    expect(new Set(ALL_TAGS).size).toBe(24)
+  it('son los 25 tags del backend, con formato incubus.<módulo>.<acción>', () => {
+    expect(ALL_TAGS).toHaveLength(25)
+    expect(new Set(ALL_TAGS).size).toBe(25)
     for (const tag of ALL_TAGS) expect(tag).toMatch(/^incubus\.[a-z-]+\.[a-z-]+$/)
   })
 

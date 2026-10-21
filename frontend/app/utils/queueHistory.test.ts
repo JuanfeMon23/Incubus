@@ -64,3 +64,22 @@ describe('historyItems', () => {
     expect(historyItems([], 'u1')).toEqual([])
   })
 })
+
+describe('motivo del retiro / devolución', () => {
+  it('muestra el nombre del motivo y la nota', () => {
+    const i = historyItems([row({ kind: 'return', return_reason_id: 'r1', return_reason_name: 'Sin ayuno', note: 'Comió a las 8' })], 'u9')[0]!
+    expect(i.reason).toBe('Sin ayuno')
+    expect(i.note).toBe('Comió a las 8')
+  })
+  it('motivo de retiro', () => {
+    const i = historyItems([row({ kind: 'remove', removal_reason_id: 'x', removal_reason_name: 'Se fue' })], 'u9')[0]!
+    expect(i.reason).toBe('Se fue')
+    expect(i.note).toBeNull()
+  })
+  it('sin nombre cae a la nota y nunca muestra ids', () => {
+    const i = historyItems([row({ kind: 'return', return_reason_id: 'r-123', note: 'Paciente sin ayuno' })], 'u9')[0]!
+    expect(i.reason).toBeNull()
+    expect(i.note).toBe('Paciente sin ayuno')
+    expect(JSON.stringify(i)).not.toContain('r-123')
+  })
+})

@@ -13,7 +13,8 @@
         <p class="text-xs text-text-muted">{{ item.when }}</p>
         <p class="font-semibold">{{ item.action }}</p>
         <p v-if="item.transition" class="text-sm">{{ item.transition }}</p>
-        <p v-if="item.note" class="text-sm text-text-muted">Motivo: {{ item.note }}</p>
+        <p v-if="item.reason" class="text-sm text-text-muted">Motivo: {{ item.reason }}</p>
+        <p v-if="item.note" class="text-sm text-text-muted">{{ item.reason ? 'Nota' : 'Motivo' }}: {{ item.note }}</p>
         <p class="text-sm">Por: <span class="font-medium">{{ item.who }}</span></p>
       </li>
     </ol>

@@ -65,12 +65,17 @@
           <PriorityBadge :priority="current.priority" />
         </div>
 
+        <UiAlert :variant="ownsTurn ? 'info' : 'warning'">
+          <template v-if="ownsTurn">Atiende: {{ current.claimed_by || 'sin registro' }}.</template>
+          <template v-else>{{ hint('editar la atención, verificar la preparación, devolverlo o cerrar la recepción') }}</template>
+        </UiAlert>
+
         <UiAlert v-if="!canEdit" variant="info">
           Solo lectura: no tienes permiso para «{{ editPatientName }}».
         </UiAlert>
 
         <!-- Sin edit-patient todo el formulario queda en solo lectura (un fieldset deshabilitado apaga sus controles). -->
-        <fieldset :disabled="!canEdit" class="m-0 min-w-0 space-y-5 border-0 p-0">
+        <fieldset :disabled="!canEdit || !ownsTurn" class="m-0 min-w-0 space-y-5 border-0 p-0">
         <div class="grid grid-cols-2 gap-3">
           <UiFormField name="document_type" label="Tipo de documento" required>
             <UiSelect :options="documentTypeOptions" placeholder="Seleccione…" />
@@ -168,6 +173,8 @@
           v-if="preconditions.length"
           v-model="checks"
           title="Preparación del paciente: verifique cada condición"
+          :disabled="!ownsTurn"
+          :disabled-hint="hint('verificar la preparación')"
           :items="preconditions"
         />
         </fieldset>
@@ -178,9 +185,21 @@
         </UiAlert>
 
         <div class="flex justify-between">
-          <UiButton v-if="canReturn" variant="secondary" @click="returning = true">Devolver a pre-recepción</UiButton>
+          <UiButton
+            v-if="canReturn"
+            variant="secondary"
+            :disabled="!ownsTurn"
+            :title="ownsTurn ? undefined : hint('devolverlo a pre-recepción')"
+            @click="returning = true"
+          >Devolver a pre-recepción</UiButton>
           <span v-else />
-          <UiButton v-if="canClose" :disabled="!chosen.length || !checksOk" :loading="isSubmitting" @click="onClose">Cerrar y generar orden</UiButton>
+          <UiButton
+            v-if="canClose"
+            :disabled="!ownsTurn || !chosen.length || !checksOk"
+            :title="ownsTurn ? undefined : hint('cerrar la recepción')"
+            :loading="isSubmitting"
+            @click="onClose"
+          >Cerrar y generar orden</UiButton>
         </div>
       </div>
     </UiCard>
@@ -205,6 +224,7 @@ import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
 import type { CheckMap } from '../utils/checks'
 import { BLOOD_TYPES, digitsOnly, receptionPatientSchema, todayISO } from '../utils/patientSchemas'
 import type { ReceptionPatientInput } from '../utils/patientSchemas'
+import { isNotTurnOwnerError } from '../utils/turnOwnership'
 
 // Pantalla: reception.view. Cada acción exige su tag; sin edit-patient el formulario es de solo lectura.
 // La lista de espera (pre-recepción) solo se ve con pre-reception.view.
@@ -232,6 +252,8 @@ const attending = computed(() => entries.value.filter((e) => e.status === 'en_at
 
 const currentId = ref<string | null>(null)
 const current = computed(() => attending.value.find((e) => e.id === currentId.value) ?? null)
+// Solo quien llamó al paciente (o un supervisor) edita, verifica, devuelve o cierra; retirar no exige ser dueño.
+const { ownsTurn, hint } = useTurnOwnership(current)
 const age = computed(() => ageFrom(current.value?.patient.birth_date ?? null))
 
 const DEMOGRAPHIC_FIELDS = [
@@ -340,14 +362,13 @@ function removeTest(code: string) {
 
 // Preanalíticos unificados + guardado de borrador en cada cambio de exámenes.
 async function sync() {
-  if (!currentId.value) return
+  if (!currentId.value || !ownsTurn.value) return
   const codes = chosen.value.map((t) => t.code)
   try {
     await api(`/queue/${currentId.value}/draft`, { method: 'PUT', body: { test_codes: codes } })
     await loadPreconditions(codes)
   } catch (e) {
-    error.value = apiErrorMessage(e)
-    toast.error(error.value)
+    await failWith(e)
   }
 }
 
@@ -365,7 +386,7 @@ async function loadPreconditions(codes: string[]) {
 }
 
 async function saveDemographics() {
-  if (!current.value || !canEdit.value) return
+  if (!current.value || !canEdit.value || !ownsTurn.value) return
   const body = Object.fromEntries(
     Object.entries(form.values as Record<string, unknown>).map(([k, v]) => [k, v === '' ? null : v])
   )
@@ -426,6 +447,12 @@ const onClose = form.submit(async () => {
     await refresh()
   } catch (e) {
     toast.error(apiErrorMessage(e))
+    if (isNotTurnOwnerError(e)) {
+      // Mensaje del backend tal cual (el mapeo genérico del formulario lo reemplazaría) y re-sincroniza.
+      error.value = apiErrorMessage(e)
+      await refresh()
+      return
+    }
     throw e
   }
 })
@@ -440,8 +467,14 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
     currentId.value = null
     await refresh()
   } catch (e) {
-    error.value = apiErrorMessage(e)
-    toast.error(error.value)
+    await failWith(e)
   }
+}
+
+/** Muestra el error legible; si el turno es de otra persona (403 `not_turn_owner`), re-sincroniza la lista. */
+async function failWith(e: unknown) {
+  error.value = apiErrorMessage(e)
+  toast.error(error.value)
+  if (isNotTurnOwnerError(e)) await refresh()
 }
 </script>

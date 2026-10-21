@@ -48,6 +48,8 @@ export interface HistoryItem {
   when: string
   action: string
   transition: string
+  /** Nombre del motivo de retiro/devolución (nunca el id). */
+  reason: string | null
   note: string | null
   who: string
 }
@@ -59,6 +61,7 @@ export function historyItems(rows: QueueHistoryRow[], currentUserId: string | nu
     when: formatDateTime(r.changed_at),
     action: actionLabel(r.kind),
     transition: [stageName(r.from_status), stageName(r.to_status)].filter(Boolean).join(' → '),
+    reason: r.removal_reason_name?.trim() || r.return_reason_name?.trim() || null,
     note: r.note?.trim() || null,
     who: actorLabel(r, currentUserId)
   }))
