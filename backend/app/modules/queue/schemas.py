@@ -78,7 +78,7 @@ class PatientRead(PatientIn):
 
 # `actor` en los cuerpos de entrada esta DEPRECADO: se acepta y se IGNORA mientras
 # el frontend migra. El actor es siempre la persona autenticada en Leo
-# (`app.core.leo.actor_name`); quitar el campo cuando nadie lo envie.
+# (`app.core.leo.Actor.of`); quitar el campo cuando nadie lo envie.
 
 
 class QueueEntryCreate(BaseModel):
@@ -111,6 +111,8 @@ class QueueEntryRead(BaseModel):
     id: UUID
     status: QueueStatusLiteral
     claimed_by: str | None
+    # Id (Leo) de quien tomo el turno; NULL en turnos anteriores a la migracion 0007.
+    claimed_by_user_id: UUID | None = None
     assigned_professional_id: str | None = None
     assigned_professional_name: str | None = None
     arrived_at: datetime
@@ -150,6 +152,7 @@ class HistoryRead(BaseModel):
     kind: str
     changed_at: datetime
     actor: str | None
+    actor_user_id: UUID | None = None
     note: str | None
     removal_reason_id: UUID | None
     return_reason_id: UUID | None

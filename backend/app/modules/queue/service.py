@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
+from app.core.leo import NO_ACTOR, Actor
 
 
 class QueueEmptyError(NotFoundError):
@@ -28,6 +29,7 @@ from app.modules.queue.models import (
     RemovalReason,
     ReturnReason,
 )
+from app.modules.queue.ownership import ensure_turn_owner
 from app.modules.queue.schemas import PatientIn
 from app.modules.queue.transitions import (
     CLAIM_TARGET,
@@ -93,7 +95,7 @@ async def _write_history(
     *,
     from_status: str | None,
     kind: str,
-    actor: str | None,
+    actor: Actor,
     removal_reason_id: UUID | None = None,
     return_reason_id: UUID | None = None,
     note: str | None = None,
@@ -104,7 +106,8 @@ async def _write_history(
             from_status=from_status,
             to_status=entry.status,
             kind=kind,
-            actor=actor,
+            actor=actor.name,
+            actor_user_id=actor.user_id,
             priority_id=entry.priority_id,
             removal_reason_id=removal_reason_id,
             return_reason_id=return_reason_id,
@@ -115,7 +118,7 @@ async def _write_history(
 
 
 async def enter_queue(
-    session: AsyncSession, patient_in: PatientIn, priority_id: UUID, actor: str | None
+    session: AsyncSession, patient_in: PatientIn, priority_id: UUID, actor: Actor
 ) -> QueueEntry:
     await _active_priority(session, priority_id)
     doc_type = (
@@ -161,7 +164,7 @@ async def change_status(
     entry_id: UUID,
     target: QueueStatus,
     *,
-    actor: str | None = None,
+    actor: Actor = NO_ACTOR,
     removal_reason_id: UUID | None = None,
     return_reason_id: UUID | None = None,
     note: str | None = None,
@@ -187,17 +190,19 @@ async def change_status(
                 "La devolucion exige un motivo.", {"reason_id": None}
             )
         await _active_reason(session, ReturnReason, return_reason_id, "reason_id")
-    claimed = (
+    # El turno (nombre + id) solo existe mientras se atiende; al salir se limpia.
+    owner = (
         actor
         if target
         in (
             QueueStatus.EN_ATENCION_RECEPCION,
             QueueStatus.EN_ATENCION_TOMA_MUESTRAS,
         )
-        else None
+        else NO_ACTOR
     )
     entry.status = target.value
-    entry.claimed_by = claimed
+    entry.claimed_by = owner.name
+    entry.claimed_by_user_id = owner.user_id
     await session.flush()
     await _write_history(
         session,
@@ -272,7 +277,7 @@ async def claim(
     session: AsyncSession,
     entry_id: UUID,
     *,
-    actor: str | None,
+    actor: Actor,
     professional_id: str | None,
     expected_status: str | None = None,
 ) -> QueueEntry:
@@ -300,13 +305,18 @@ async def return_entry(
     session: AsyncSession,
     entry_id: UUID,
     *,
-    actor: str | None,
+    actor: Actor,
     reason_id: UUID,
     note: str | None,
     expected_status: str | None = None,
+    supervisor: bool = False,
 ) -> QueueEntry:
     entry = await get_entry(session, entry_id, lock=True)
     _ensure_expected(entry, expected_status)
+    if entry.status == QueueStatus.EN_ATENCION_TOMA_MUESTRAS:
+        ensure_turn_owner(
+            entry, actor, supervisor=supervisor, action="devolver al paciente"
+        )
     back = RETURN_TARGET.get(QueueStatus(entry.status))
     if back is None:
         raise ConflictError(
@@ -378,7 +388,7 @@ __all__ = [
 ]
 
 
-async def claim_next(session: AsyncSession, actor: str | None) -> QueueEntry:
+async def claim_next(session: AsyncSession, actor: Actor) -> QueueEntry:
     """Llama al siguiente paciente de pre-recepcion (prioridad y luego llegada).
 
     `FOR UPDATE SKIP LOCKED`: dos secretarias que llaman a la vez reciben

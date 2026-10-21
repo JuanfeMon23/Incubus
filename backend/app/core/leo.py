@@ -13,7 +13,9 @@ app. Se pueden cambiar con `ACCESS_COOKIE_NAME`, `REFRESH_COOKIE_NAME` y
 
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import Depends, Request
 from leo_sdk import Catalog, LeoAuth, LeoError, LeoSettings, LeoUser
@@ -40,6 +42,30 @@ auth = LeoAuth(settings, catalog=catalog)
 def actor_name(user: LeoUser) -> str:
     """Nombre con el que una persona queda en historiales y registros."""
     return user.name or user.username
+
+
+@dataclass(frozen=True, slots=True)
+class Actor:
+    """Quien ejecuta una accion: nombre (copia en el momento) + id de Leo.
+
+    Los servicios la reciben en lugar de strings sueltos y la graban en las
+    columnas hermanas `<x>_by` / `<x>_by_user_id`. Sin actor (`Actor()`), ambas
+    quedan NULL."""
+
+    name: str | None = None
+    user_id: UUID | None = None
+
+    @classmethod
+    def of(cls, user: LeoUser) -> "Actor":
+        return cls(actor_name(user), user.id)
+
+
+NO_ACTOR = Actor()
+
+
+def uuid_str(value: UUID | None) -> str | None:
+    """Id de usuario para respuestas JSON (None si la fila es anterior a 0007)."""
+    return None if value is None else str(value)
 
 
 async def record_audit(
@@ -74,8 +100,8 @@ async def record_audit(
 # --- Autorizacion mas alla de un solo tag fijo ---------------------------------
 
 
-async def deny(request: Request, user: LeoUser, tag: str, **details: Any) -> None:
-    """Evento `denied` en Leo (sin romper si falla) y 403 `forbidden`."""
+async def audit_denied(request: Request, user: LeoUser, tag: str) -> None:
+    """Evento `denied` en Leo (nunca propaga un fallo de la auditoria)."""
     try:
         await auth.audit.record(
             tag,
@@ -88,6 +114,11 @@ async def deny(request: Request, user: LeoUser, tag: str, **details: Any) -> Non
         )
     except Exception:
         logger.exception("No se pudo registrar el intento denegado de %s.", tag)
+
+
+async def deny(request: Request, user: LeoUser, tag: str, **details: Any) -> None:
+    """Evento `denied` en Leo y 403 `forbidden`."""
+    await audit_denied(request, user, tag)
     raise LeoError(
         "forbidden",
         "No tienes permiso para realizar esta acción.",

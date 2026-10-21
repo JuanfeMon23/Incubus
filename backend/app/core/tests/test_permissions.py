@@ -357,7 +357,7 @@ async def test_a_service_with_delivery_permission_reads_delivery(
 def test_catalog_declared_equals_used_tags() -> None:
     auth.check_catalog()  # ningun tag usado sin declarar
     assert set(catalog.tags) == set(auth.used_tags)
-    assert len(catalog.tags) == 23
+    assert len(catalog.tags) == 24
 
 
 def test_catalog_payload_has_readable_unique_names_per_module() -> None:
