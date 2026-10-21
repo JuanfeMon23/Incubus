@@ -1,6 +1,6 @@
 <template>
-  <div class="grid gap-6 lg:grid-cols-[24rem_1fr]">
-    <UiCard title="Ingreso de paciente" description="Escanee la cédula o digite los datos.">
+  <div class="grid gap-6" :class="{ 'lg:grid-cols-[24rem_1fr]': canEnqueue }">
+    <UiCard v-if="canEnqueue" title="Ingreso de paciente" description="Escanee la cédula o digite los datos.">
       <form class="space-y-3" novalidate @submit.prevent="onSubmit">
         <UiFormField label="Escanear cédula (código de barras)" :error="scanError">
           <UiTextInput
@@ -60,7 +60,7 @@
       <ul class="space-y-3">
         <li v-for="e in entries" :key="e.id">
           <QueueEntryCard :entry="e">
-            <template #actions>
+            <template v-if="canRemove" #actions>
               <UiButton size="sm" variant="danger-ghost" @click="removing = e">Retirar</UiButton>
             </template>
           </QueueEntryCard>
@@ -85,6 +85,11 @@
 <script setup lang="ts">
 import type { Priority, Reason } from '../types'
 import { BLOOD_TYPES, intakePatientSchema, todayISO } from '../utils/patientSchemas'
+
+// Pantalla: pre-reception.view. Sin enqueue no hay formulario de ingreso; sin remove, no "Retirar".
+definePageMeta({ leo: { tag: TAGS.preReception.view } })
+const canEnqueue = useCan(TAGS.preReception.enqueue)
+const canRemove = useCan(TAGS.preReception.remove)
 
 const today = todayISO()
 const bloodOptions = BLOOD_TYPES.map((v) => ({ value: v, label: v }))

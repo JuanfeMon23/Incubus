@@ -1,16 +1,19 @@
 <template>
   <div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
     <aside class="space-y-6">
-      <section class="space-y-3">
+      <section v-if="canCall || canSeeWaiting" class="space-y-3">
         <div class="rounded-xl bg-primary-50 p-4 text-center">
-          <p class="text-3xl font-bold text-primary-700">{{ waiting.length }}</p>
-          <p class="text-sm text-primary-700">
-            {{ waiting.length === 1 ? 'paciente en espera' : 'pacientes en espera' }}
-          </p>
+          <template v-if="canSeeWaiting">
+            <p class="text-3xl font-bold text-primary-700">{{ waiting.length }}</p>
+            <p class="text-sm text-primary-700">
+              {{ waiting.length === 1 ? 'paciente en espera' : 'pacientes en espera' }}
+            </p>
+          </template>
           <UiButton
+            v-if="canCall"
             class="mt-3 w-full"
             size="lg"
-            :disabled="!waiting.length"
+            :disabled="canSeeWaiting && !waiting.length"
             :loading="calling"
             @click="callNext"
           >
@@ -21,10 +24,10 @@
             {{ waitingLabel(waiting[0].arrived_at) }}
           </p>
         </div>
-        <div v-if="listLoading" class="flex justify-center py-2">
+        <div v-if="canSeeWaiting && listLoading" class="flex justify-center py-2">
           <UiSpinner color="primary" label="Cargando cola" />
         </div>
-        <ul v-else-if="waiting.length" class="space-y-2">
+        <ul v-else-if="canSeeWaiting && waiting.length" class="space-y-2">
           <li v-for="(e, i) in waiting.slice(0, 3)" :key="e.id" :class="i === 0 ? '' : 'opacity-80'">
             <QueueEntryCard :entry="e" compact>
               <template v-if="i === 0" #chips>
@@ -62,6 +65,12 @@
           <PriorityBadge :priority="current.priority" />
         </div>
 
+        <UiAlert v-if="!canEdit" variant="info">
+          Solo lectura: no tienes permiso para «{{ editPatientName }}».
+        </UiAlert>
+
+        <!-- Sin edit-patient todo el formulario queda en solo lectura (un fieldset deshabilitado apaga sus controles). -->
+        <fieldset :disabled="!canEdit" class="m-0 min-w-0 space-y-5 border-0 p-0">
         <div class="grid grid-cols-2 gap-3">
           <UiFormField name="document_type" label="Tipo de documento" required>
             <UiSelect :options="documentTypeOptions" placeholder="Seleccione…" />
@@ -86,7 +95,7 @@
         </div>
 
         <UiSection title="Exámenes" description="Busque por nombre, código o abreviatura.">
-          <div class="relative">
+          <div v-if="canEdit" class="relative">
             <UiTextInput v-model="search" placeholder="Ej.: colesterol, HBSAG, ACIDO_URICO…" />
             <div
               v-if="searching"
@@ -118,7 +127,7 @@
             </li>
           </ul>
           <p
-            v-else-if="search.trim().length >= 2 && !searching"
+            v-else-if="canEdit && search.trim().length >= 2 && !searching"
             class="mt-2 text-sm text-text-muted"
           >
             Sin resultados para «{{ search.trim() }}».
@@ -161,6 +170,7 @@
           title="Preparación del paciente: verifique cada condición"
           :items="preconditions"
         />
+        </fieldset>
         <UiAlert v-if="formError" variant="danger" :message="formError" />
         <UiAlert v-else-if="error" variant="danger" :message="error" />
         <UiAlert v-if="orderNumber" variant="success">
@@ -168,8 +178,9 @@
         </UiAlert>
 
         <div class="flex justify-between">
-          <UiButton variant="secondary" @click="returning = true">Devolver a pre-recepción</UiButton>
-          <UiButton :disabled="!chosen.length || !checksOk" :loading="isSubmitting" @click="onClose">Cerrar y generar orden</UiButton>
+          <UiButton v-if="canReturn" variant="secondary" @click="returning = true">Devolver a pre-recepción</UiButton>
+          <span v-else />
+          <UiButton v-if="canClose" :disabled="!chosen.length || !checksOk" :loading="isSubmitting" @click="onClose">Cerrar y generar orden</UiButton>
         </div>
       </div>
     </UiCard>
@@ -195,7 +206,16 @@ import type { CheckMap } from '../utils/checks'
 import { BLOOD_TYPES, digitsOnly, receptionPatientSchema, todayISO } from '../utils/patientSchemas'
 import type { ReceptionPatientInput } from '../utils/patientSchemas'
 
-const ACTOR = 'recepcion'
+// Pantalla: reception.view. Cada acción exige su tag; sin edit-patient el formulario es de solo lectura.
+// La lista de espera (pre-recepción) solo se ve con pre-reception.view.
+definePageMeta({ leo: { tag: TAGS.reception.view } })
+const canCall = useCan(TAGS.reception.callNext)
+const canEdit = useCan(TAGS.reception.editPatient)
+const canClose = useCan(TAGS.reception.closeReception)
+const canReturn = useCan(TAGS.reception.return)
+const canSeeWaiting = useCan(TAGS.preReception.view)
+const editPatientName = permissionName(TAGS.reception.editPatient)
+
 const today = todayISO()
 const bloodOptions = BLOOD_TYPES.map((v) => ({ value: v, label: v }))
 const documentTypes = ref<Reason[]>([])
@@ -274,7 +294,7 @@ async function callNext() {
   error.value = ''
   calling.value = true
   try {
-    const entry = await api<QueueEntry>('/queue/call-next', { method: 'POST', body: { actor: ACTOR } })
+    const entry = await api<QueueEntry>('/queue/call-next', { method: 'POST' })
     await refresh()
     const fresh = entries.value.find((x) => x.id === entry.id)
     select(fresh ?? entry)
@@ -345,7 +365,7 @@ async function loadPreconditions(codes: string[]) {
 }
 
 async function saveDemographics() {
-  if (!current.value) return
+  if (!current.value || !canEdit.value) return
   const body = Object.fromEntries(
     Object.entries(form.values as Record<string, unknown>).map(([k, v]) => [k, v === '' ? null : v])
   )
@@ -397,7 +417,6 @@ const onClose = form.submit(async () => {
       method: 'POST',
       body: {
         test_codes: chosen.value.map((t) => t.code),
-        actor: ACTOR,
         precondition_checks: toCheckPayload(keys.value, checks.value)
       }
     })
@@ -416,7 +435,7 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
   returning.value = false
   try {
     await saveDemographics()
-    await api(`/queue/${current.value.id}/return`, { method: 'POST', body: { ...payload, actor: ACTOR } })
+    await api(`/queue/${current.value.id}/return`, { method: 'POST', body: payload })
     toast.info('Paciente devuelto a pre-recepción.')
     currentId.value = null
     await refresh()

@@ -51,7 +51,7 @@
           </ul>
         </UiSection>
 
-        <UiFormField label="Profesional de toma de muestras" required>
+        <UiFormField v-if="canPrint" label="Profesional de toma de muestras" required>
           <UiSelect
             v-model="professionalId"
             :options="staffOptions"
@@ -62,7 +62,7 @@
 
         <UiAlert v-if="error" variant="danger" :message="error" />
 
-        <div class="flex flex-wrap justify-end gap-2">
+        <div v-if="canPrint" class="flex flex-wrap justify-end gap-2">
           <UiButton variant="secondary" :disabled="!order?.samples.length" @click="downloadZpl">
             Descargar ZPL
           </UiButton>
@@ -83,10 +83,12 @@
 <script setup lang="ts">
 import type { OrderDetail, QueueEntry, StaffMember } from '../types'
 
-const ACTOR = 'impresion'
+// Pantalla: label-printing.view. Sin print se ven las órdenes y sus tubos, pero no se imprime ni asigna.
+definePageMeta({ leo: { tag: TAGS.labelPrinting.view } })
+const canPrint = useCan(TAGS.labelPrinting.print)
 const api = useApi()
 const toast = useToast()
-const apiBase = useRuntimeConfig().public.apiBase
+const labelFiles = useLabelFiles()
 const { entries, loading: listLoading, refresh } = useQueueList(['en_espera_impresion'])
 
 const staff = ref<StaffMember[]>([])
@@ -113,10 +115,14 @@ async function loadStaff() {
 
 onMounted(loadStaff)
 
-/** Descarga el ZPL (203 dpi, 70x35 mm) para enviarlo a la impresora térmica. */
-function downloadZpl() {
+/** Descarga el ZPL (203 dpi, 70x35 mm) para la impresora térmica, con petición firmada (DPoP). */
+async function downloadZpl() {
   if (!current.value) return
-  window.open(`${apiBase}/orders/by-entry/${current.value.id}/labels.zpl`, '_blank')
+  try {
+    await labelFiles.downloadZpl(current.value.id, current.value.order_number)
+  } catch (err) {
+    toast.error(apiErrorMessage(err))
+  }
 }
 
 async function select(e: QueueEntry) {
@@ -138,6 +144,7 @@ async function select(e: QueueEntry) {
 async function print() {
   if (!current.value) return
   const entryId = current.value.id
+  const orderNumber = current.value.order_number
   const pro = staff.value.find((s) => s.id === professionalId.value)
   if (!pro) return
   busy.value = true
@@ -145,11 +152,16 @@ async function print() {
   try {
     await api(`/orders/by-entry/${entryId}/print-labels`, {
       method: 'POST',
-      body: { professional_id: pro.id, professional_name: pro.name, actor: ACTOR }
+      body: { professional_id: pro.id, professional_name: pro.name }
     })
-    // PDF básico con una etiqueta por tubo; ZPL para impresora térmica queda como mejora.
-    window.open(`${apiBase}/orders/by-entry/${entryId}/labels.pdf`, '_blank')
     toast.success(`Etiquetas generadas y paciente asignado a ${pro.name}.`)
+    // PDF con una etiqueta por tubo, pedido con petición firmada. Si falla, la
+    // asignación ya quedó hecha: se avisa aparte y se puede descargar el ZPL.
+    try {
+      await labelFiles.openPdf(entryId, orderNumber)
+    } catch (pdfErr) {
+      toast.error(`Las etiquetas se generaron, pero no se pudo abrir el PDF: ${apiErrorMessage(pdfErr)}`)
+    }
     currentId.value = null
     order.value = null
     await refresh()

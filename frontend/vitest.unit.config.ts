@@ -8,5 +8,10 @@ export default defineConfig({
       '#andromeda': fileURLToPath(new URL('./node_modules/andromeda/app', import.meta.url))
     }
   },
-  test: { environment: 'node', include: ['app/utils/**/*.test.ts'] }
+  test: {
+    environment: 'node',
+    include: ['app/utils/**/*.test.ts'],
+    // Necesita el entorno Nuxt (runtimeConfig/router): corre con `vitest run`.
+    exclude: ['app/utils/leoConfig.test.ts']
+  }
 })

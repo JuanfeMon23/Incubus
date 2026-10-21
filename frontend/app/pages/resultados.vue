@@ -55,7 +55,7 @@
                   :variant="t.validation_status === 'draft' ? 'warning' : 'neutral'"
                   :label="t.validation_status === 'draft' ? 'Borrador' : 'Pendiente'"
                 />
-                <UiButton size="sm" @click="openOrder(o.entry_id, t.order_test_id)">Validar</UiButton>
+                <UiButton size="sm" @click="openOrder(o.entry_id, t.order_test_id)">{{ canWork ? 'Validar' : 'Ver' }}</UiButton>
               </li>
             </ul>
           </div>
@@ -80,6 +80,9 @@
 <script setup lang="ts">
 import type { ResultsQueueOrder, ValidatorStaff } from '../types'
 
+// Pantalla: results.view. Capturar (enter) y validar (validate) se controlan en cada examen.
+definePageMeta({ leo: { tag: TAGS.results.view } })
+const canWork = useCan([TAGS.results.enter, TAGS.results.validate], 'any')
 const api = useApi()
 const toast = useToast()
 

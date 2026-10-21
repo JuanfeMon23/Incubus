@@ -61,6 +61,7 @@
             >
               <template #actions>
                 <UiButton
+                  v-if="s.received_at ? canUnreceive : canReceive"
                   :variant="s.received_at ? 'secondary' : 'primary'"
                   size="sm"
                   :loading="busyId === s.id"
@@ -73,7 +74,7 @@
           </li>
         </ul>
 
-        <div class="flex justify-end">
+        <div v-if="canReceive" class="flex justify-end">
           <UiButton :disabled="!current.pending" :loading="busyAll" @click="receiveAll">
             Recibir todos los tubos
           </UiButton>
@@ -91,7 +92,10 @@
 <script setup lang="ts">
 import type { LabReceptionOrder, LabReceptionSample, OrderSample } from '../types'
 
-const ACTOR = 'recepcion-laboratorio'
+// Pantalla: lab-reception.view. Recibir y deshacer exigen cada uno su tag.
+definePageMeta({ leo: { tag: TAGS.labReception.view } })
+const canReceive = useCan(TAGS.labReception.receive)
+const canUnreceive = useCan(TAGS.labReception.unreceive)
 const api = useApi()
 const toast = useToast()
 
@@ -146,10 +150,7 @@ async function toggle(s: LabReceptionSample) {
   busyId.value = s.id
   try {
     const action = s.received_at ? 'unreceive' : 'receive'
-    const res = await api<{ entry_status: string }>(`/orders/samples/${s.id}/${action}`, {
-      method: 'POST',
-      body: { actor: ACTOR }
-    })
+    const res = await api<{ entry_status: string }>(`/orders/samples/${s.id}/${action}`, { method: 'POST' })
     if (res.entry_status === 'en_laboratorio') {
       toast.success(`Orden ${current.value?.order_number} recibida: pasa a validación de resultados.`)
       currentId.value = null
@@ -168,7 +169,7 @@ async function receiveAll() {
   const number = current.value.order_number
   try {
     for (const s of current.value.samples.filter((x) => !x.received_at)) {
-      await api(`/orders/samples/${s.id}/receive`, { method: 'POST', body: { actor: ACTOR } })
+      await api(`/orders/samples/${s.id}/receive`, { method: 'POST' })
     }
     toast.success(`Orden ${number} recibida: pasa a validación de resultados.`)
     currentId.value = null

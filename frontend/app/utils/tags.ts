@@ -1,0 +1,49 @@
+/**
+ * Permisos (tags de Leo) de Incubus: `incubus.<módulo>.<acción>`. Fuente de
+ * verdad: `backend/app/core/permissions.py`. Un módulo por pantalla/etapa;
+ * `resultsDelivery` es solo API para otros servicios (sin pantalla).
+ */
+const t = (module: string, verb: string) => `incubus.${module}.${verb}`
+
+export const TAGS = {
+  preReception: {
+    view: t('pre-reception', 'view'),
+    enqueue: t('pre-reception', 'enqueue'),
+    remove: t('pre-reception', 'remove')
+  },
+  reception: {
+    view: t('reception', 'view'),
+    callNext: t('reception', 'call-next'),
+    editPatient: t('reception', 'edit-patient'),
+    closeReception: t('reception', 'close-reception'),
+    return: t('reception', 'return'),
+    remove: t('reception', 'remove')
+  },
+  labelPrinting: {
+    view: t('label-printing', 'view'),
+    print: t('label-printing', 'print')
+  },
+  sampling: {
+    view: t('sampling', 'view'),
+    claim: t('sampling', 'claim'),
+    collect: t('sampling', 'collect'),
+    finish: t('sampling', 'finish'),
+    return: t('sampling', 'return')
+  },
+  labReception: {
+    view: t('lab-reception', 'view'),
+    receive: t('lab-reception', 'receive'),
+    unreceive: t('lab-reception', 'unreceive')
+  },
+  results: {
+    view: t('results', 'view'),
+    enter: t('results', 'enter'),
+    validate: t('results', 'validate')
+  },
+  resultsDelivery: {
+    view: t('results-delivery', 'view')
+  }
+} as const
+
+/** Todos los tags, en el orden del catálogo del backend. */
+export const ALL_TAGS: string[] = Object.values(TAGS).flatMap((module) => Object.values(module))

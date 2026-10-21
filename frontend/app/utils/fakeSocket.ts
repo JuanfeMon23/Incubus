@@ -7,8 +7,11 @@ type Responder = (payload: any) => unknown
 export function createFakeSocket(responders: Record<string, Responder> = {}) {
   const handlers = new Map<string, Handler[]>()
   const emitted: Array<{ event: string; payload?: any }> = []
+  const calls = { connect: 0, disconnect: 0 }
   const socket = {
     connected: false,
+    /** `false` = el servidor rechazó la conexión y socket.io no reintenta solo. */
+    active: true,
     on(event: string, fn: Handler) {
       handlers.set(event, [...(handlers.get(event) ?? []), fn])
     },
@@ -18,12 +21,22 @@ export function createFakeSocket(responders: Record<string, Responder> = {}) {
       const res = responders[event]?.(args[0])
       if (ack) ack(res)
     },
-    connect: () => {},
-    disconnect: () => {}
+    connect: () => {
+      calls.connect += 1
+    },
+    disconnect: () => {
+      calls.disconnect += 1
+    }
   }
   return {
     socket: socket as SocketLike,
     emitted,
+    calls,
+    /** Rechazo del servidor (`connect_error` con `active=false`). */
+    refuse() {
+      socket.active = false
+      this.fire('connect_error', new Error('forbidden'))
+    },
     /** Simula un evento del servidor (`connect`, `disconnect`, `status:changed`…). */
     fire(event: string, ...args: any[]) {
       if (event === 'connect') socket.connected = true

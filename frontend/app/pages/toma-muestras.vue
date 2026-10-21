@@ -14,7 +14,7 @@
           <li v-for="e in waiting" :key="e.id">
             <QueueEntryCard :entry="e">
               <template #actions>
-                <UiButton size="sm" :disabled="!professionalId" :loading="claimingId === e.id" @click="claim(e)">
+                <UiButton v-if="canClaim" size="sm" :disabled="!professionalId" :loading="claimingId === e.id" @click="claim(e)">
                   Tomar paciente
                 </UiButton>
               </template>
@@ -66,6 +66,12 @@
           <PriorityBadge :priority="current.priority" />
         </div>
 
+        <UiAlert v-if="!canCollect" variant="info">
+          Solo lectura: no tienes permiso para «{{ collectName }}».
+        </UiAlert>
+
+        <!-- Sin collect, verificación y tubos son de solo lectura (un fieldset deshabilitado apaga sus controles). -->
+        <fieldset :disabled="!canCollect" class="m-0 min-w-0 space-y-5 border-0 p-0">
         <PreconditionChecklist
           v-if="order.preconditions.length"
           v-model="checks"
@@ -78,7 +84,7 @@
           <ul class="space-y-4">
             <li v-for="(s, i) in order.samples" :key="s.id">
               <SampleTubeCard :sample="s" variant="collect" :index="i" :total="order.samples.length">
-                <template #actions>
+                <template v-if="canCollect" #actions>
                   <UiButton
                     class="w-full"
                     size="lg"
@@ -93,12 +99,14 @@
             </li>
           </ul>
         </UiSection>
+        </fieldset>
 
         <UiAlert v-if="error" variant="danger" :message="error" />
 
         <div class="flex justify-between">
-          <UiButton variant="secondary" @click="returning = true">Devolver a espera</UiButton>
-          <UiButton :disabled="!allCollected(order.samples) || !checksOk" :loading="busy" @click="finish">
+          <UiButton v-if="canReturn" variant="secondary" @click="returning = true">Devolver a espera</UiButton>
+          <span v-else />
+          <UiButton v-if="canFinish" :disabled="!allCollected(order.samples) || !checksOk" :loading="busy" @click="finish">
             Finalizar toma
           </UiButton>
         </div>
@@ -128,7 +136,13 @@ import type { CheckMap } from '../utils/checks'
 import { sampleToggleError } from '../utils/queueLive'
 import type { LiveEvent, LiveEventName } from '../utils/queueLive'
 
-const ACTOR = 'toma-muestras'
+// Pantalla: sampling.view. Cada acción exige su tag; sin collect, tubos y verificación son de solo lectura.
+definePageMeta({ leo: { tag: TAGS.sampling.view } })
+const canClaim = useCan(TAGS.sampling.claim)
+const canCollect = useCan(TAGS.sampling.collect)
+const canFinish = useCan(TAGS.sampling.finish)
+const canReturn = useCan(TAGS.sampling.return)
+const collectName = permissionName(TAGS.sampling.collect)
 const api = useApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(
@@ -152,7 +166,8 @@ const attending = computed(() => mine.value.filter((e) => e.status === 'en_atenc
 const checks = ref<CheckMap>({})
 const collectedCount = computed(() => order.value?.samples.filter((s) => s.collected_at).length ?? 0)
 const checkKeys = computed(() => order.value?.preconditions.map((p) => p.key) ?? [])
-const checksOk = computed(() => checksComplete(checkKeys.value, checks.value))
+// La verificación se guarda con `collect`: sin él no se exige para finalizar.
+const checksOk = computed(() => !canCollect.value || checksComplete(checkKeys.value, checks.value))
 const receptionResults = computed(() =>
   Object.fromEntries((order.value?.preconditions ?? []).map((p) => [p.key, p.reception_met ?? null]))
 )
@@ -222,7 +237,7 @@ async function claim(e: QueueEntry) {
   try {
     await api(`/queue/${e.id}/claim`, {
       method: 'POST',
-      body: { actor: professional.value?.name ?? ACTOR, professional_id: professionalId.value }
+      body: { professional_id: professionalId.value }
     })
     await refresh()
     const fresh = entries.value.find((x) => x.id === e.id)
@@ -242,7 +257,7 @@ async function toggle(sample: OrderSample, collected: boolean) {
   try {
     const updated = await api<OrderSample>(
       `/orders/samples/${sample.id}/${collected ? 'collect' : 'uncollect'}`,
-      { method: 'POST', body: { actor: ACTOR } }
+      { method: 'POST' }
     )
     order.value = {
       ...order.value,
@@ -263,18 +278,13 @@ async function finish() {
   busy.value = true
   error.value = ''
   try {
-    await api(`/orders/by-entry/${current.value.id}/precondition-checks`, {
-      method: 'POST',
-      body: {
-        stage: 'sampling',
-        actor: professional.value?.name ?? ACTOR,
-        checks: toCheckPayload(checkKeys.value, checks.value)
-      }
-    })
-    await api(`/queue/${current.value.id}/finish-sampling`, {
-      method: 'POST',
-      body: { actor: ACTOR }
-    })
+    if (canCollect.value) {
+      await api(`/orders/by-entry/${current.value.id}/precondition-checks`, {
+        method: 'POST',
+        body: { stage: 'sampling', checks: toCheckPayload(checkKeys.value, checks.value) }
+      })
+    }
+    await api(`/queue/${current.value.id}/finish-sampling`, { method: 'POST' })
     toast.success('Toma de muestras finalizada.')
     currentId.value = null
     order.value = null
@@ -293,7 +303,7 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
   try {
     await api(`/queue/${current.value.id}/return`, {
       method: 'POST',
-      body: { ...payload, actor: ACTOR }
+      body: payload
     })
     toast.info('Paciente devuelto a espera de toma de muestras.')
     currentId.value = null
