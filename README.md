@@ -10,15 +10,16 @@ Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js con [pnpm](https://pnpm.
 2. Backend (`http://localhost:8001`, documentación en `/docs`):
    ```bash
    cd backend
-   cp .env.example .env    # DATABASE_URL, CORS_ORIGINS, VLADIMIR_API_URL
+   cp .env.example .env    # DATABASE_URL, CORS_ORIGINS, VLADIMIR_API_URL, variables de Leo
    uv sync
    uv run alembic upgrade head
+   uv run python -m app.core.leo_sync   # publica los permisos de Incubus en Leo
    uv run uvicorn app.main:app --port 8001 --reload
    ```
-3. Frontend (`http://localhost:3000`):
+3. Frontend (`http://localhost:3200`):
    ```bash
    cd frontend
-   cp .env.example .env    # NUXT_PUBLIC_API_BASE=http://localhost:8001/api/v1
+   cp .env.example .env    # API y variables de Leo (NUXT_PUBLIC_LEO_*)
    pnpm install
    pnpm run dev
    ```

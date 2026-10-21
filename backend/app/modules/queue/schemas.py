@@ -76,14 +76,19 @@ class PatientRead(PatientIn):
     insurer: str | None
 
 
+# `actor` en los cuerpos de entrada esta DEPRECADO: se acepta y se IGNORA mientras
+# el frontend migra. El actor es siempre la persona autenticada en Leo
+# (`app.core.leo.actor_name`); quitar el campo cuando nadie lo envie.
+
+
 class QueueEntryCreate(BaseModel):
     patient: PatientIn
     priority_id: UUID
-    actor: str | None = Field(default=None, max_length=120)
+    actor: str | None = Field(default=None, max_length=120, deprecated=True)
 
 
 class ClaimInput(BaseModel):
-    actor: str | None = Field(default=None, max_length=120)
+    actor: str | None = Field(default=None, max_length=120, deprecated=True)
     # Toma de muestras: solo el profesional asignado puede tomar al paciente.
     professional_id: str | None = Field(default=None, max_length=64)
 
@@ -93,7 +98,7 @@ class ReasonedActionInput(BaseModel):
 
     reason_id: UUID
     note: str | None = None
-    actor: str | None = Field(default=None, max_length=120)
+    actor: str | None = Field(default=None, max_length=120, deprecated=True)
 
 
 class DraftInput(BaseModel):

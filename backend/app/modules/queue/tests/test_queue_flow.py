@@ -54,7 +54,7 @@ async def test_claim_devolver_y_retirar_con_motivo(client):
 
     claimed = await client.post(f"/api/v1/queue/{eid}/claim", json={"actor": "ana"})
     assert claimed.json()["status"] == "en_atencion_recepcion"
-    assert claimed.json()["claimed_by"] == "ana"
+    assert claimed.json()["claimed_by"] == "Tester Uno"  # actor = sesion
     # nadie mas puede tomarlo
     again = await client.post(f"/api/v1/queue/{eid}/claim", json={"actor": "luis"})
     assert again.status_code == 409

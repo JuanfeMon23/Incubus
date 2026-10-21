@@ -247,7 +247,10 @@ async def save_values(
     professional_id: str,
     professional_name: str,
     values: dict,
+    actor: str,
 ) -> dict:
+    """`actor`: quien captura (usuario autenticado); `professional_*`: el
+    profesional del area."""
     test, order = await _load_test(session, catalog, order_test_id, professional_id)
     if test.validation_status == "validated":
         raise ConflictError(
@@ -256,7 +259,7 @@ async def save_values(
         )
     rows = await ensure_structure(session, catalog, test)
     patient = await session.get(Patient, order.patient_id)
-    _apply_values(rows, values, patient, professional_name)
+    _apply_values(rows, values, patient, actor)
     test.validation_status = (
         "draft" if any(r.value is not None for r in rows) else "pending"
     )
@@ -271,6 +274,7 @@ async def validate_test(
     professional_id: str,
     professional_name: str,
     values: dict,
+    actor: str,
 ) -> tuple[dict, bool]:
     """Valida el examen; devuelve su detalle y si la orden quedo finalizada."""
     # Bloquea la entrada ANTES de guardar y contar pendientes: dos validaciones
@@ -281,7 +285,13 @@ async def validate_test(
         await queue_service.get_entry(session, parent.queue_entry_id, lock=True)
         await session.refresh(locked)
     await save_values(
-        session, catalog, order_test_id, professional_id, professional_name, values
+        session,
+        catalog,
+        order_test_id,
+        professional_id,
+        professional_name,
+        values,
+        actor,
     )
     test = await session.get(OrderTest, order_test_id)
     rows = await ensure_structure(session, catalog, test)
@@ -316,7 +326,7 @@ async def validate_test(
             session,
             order.queue_entry_id,
             QueueStatus.FINALIZADA,
-            actor=professional_name,
+            actor=actor,
             note=f"orden {order.order_number} validada",
         )
     detail = await test_detail(session, catalog, order_test_id, professional_id)

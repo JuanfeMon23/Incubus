@@ -77,6 +77,16 @@ async def get_entry(
     return entry
 
 
+def _ensure_expected(entry: QueueEntry, expected_status: str | None) -> None:
+    """El permiso se evaluo contra la etapa que el router vio; si otra
+    transaccion la cambio antes de bloquear la fila, se rechaza (409)."""
+    if expected_status is not None and entry.status != expected_status:
+        raise ConflictError(
+            "El paciente cambio de etapa; vuelve a intentarlo.",
+            {"status": entry.status},
+        )
+
+
 async def _write_history(
     session: AsyncSession,
     entry: QueueEntry,
@@ -155,8 +165,10 @@ async def change_status(
     removal_reason_id: UUID | None = None,
     return_reason_id: UUID | None = None,
     note: str | None = None,
+    expected_status: str | None = None,
 ) -> QueueEntry:
     entry = await get_entry(session, entry_id, lock=True)
+    _ensure_expected(entry, expected_status)
     origin = QueueStatus(entry.status)
     try:
         kind = resolve_transition(origin, target)
@@ -262,9 +274,11 @@ async def claim(
     *,
     actor: str | None,
     professional_id: str | None,
+    expected_status: str | None = None,
 ) -> QueueEntry:
     """Toma al paciente validando con la fila bloqueada (sin TOCTOU)."""
     entry = await get_entry(session, entry_id, lock=True)
+    _ensure_expected(entry, expected_status)
     target = CLAIM_TARGET.get(QueueStatus(entry.status))
     if target is None:
         raise ConflictError(
@@ -289,8 +303,10 @@ async def return_entry(
     actor: str | None,
     reason_id: UUID,
     note: str | None,
+    expected_status: str | None = None,
 ) -> QueueEntry:
     entry = await get_entry(session, entry_id, lock=True)
+    _ensure_expected(entry, expected_status)
     back = RETURN_TARGET.get(QueueStatus(entry.status))
     if back is None:
         raise ConflictError(

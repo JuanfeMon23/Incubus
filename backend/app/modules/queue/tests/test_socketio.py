@@ -26,6 +26,7 @@ from app.modules.orders.tests.test_sampling import (
 )
 from app.modules.queue import events, rooms
 from app.modules.queue import socket_handlers as handlers
+from app.testing import DpopKey
 
 NS = "/queue"
 PII_PATIENT = {
@@ -96,17 +97,42 @@ class Probe:
         return [p for n, p in self.events if n == name]
 
 
+HANDSHAKE_HTU = "http://incubus.test/socket.io/"  # PUBLIC_URL (conftest) + path
+
+
+@pytest.fixture
+def browser(leo) -> DpopKey:
+    """Llave DPoP del "navegador" ligada a la sesion falsa de Leo."""
+    key = DpopKey()
+    leo.jkt = key.jkt
+    return key
+
+
 @pytest_asyncio.fixture
-async def connect(live_url):
+async def connect(live_url, leo, browser):
+    """Conecta un cliente Socket.IO con sesion de Leo (cookie + prueba DPoP).
+
+    `cookie=False` / `dpop=False` omiten cada parte; `key` firma con otra llave."""
     opened: list[Probe] = []
 
-    async def _connect(origin: str | None = None, **kwargs) -> Probe:
+    async def _connect(
+        origin: str | None = None,
+        *,
+        cookie: bool | str = True,
+        dpop: bool | str = True,
+        **kwargs,
+    ) -> Probe:
         probe = Probe()
         headers = {} if origin == "" else {"Origin": origin or _origin()}
+        if cookie:
+            name = "incubus_access" if cookie is True else cookie
+            headers["Cookie"] = f"{name}={leo.access_token}"
+        proof = browser.proof("GET", HANDSHAKE_HTU) if dpop is True else dpop
         await probe.sio.connect(
             live_url,
             namespaces=[NS],
             headers=headers,
+            auth={"dpop": proof} if dpop else None,
             transports=["websocket"],
             wait_timeout=5,
             **kwargs,
@@ -166,11 +192,12 @@ def test_rooms_mal_formados_se_rechazan(bad):
 # --- Handshake -------------------------------------------------------------------
 
 
-async def test_origin_valido_conecta_y_guarda_el_principal_anonimo(connect):
+async def test_origin_valido_con_sesion_conecta_y_guarda_el_principal(connect, leo):
     probe = await connect()
     assert probe.sio.connected
     session = await realtime.sio.get_session(probe.sio.get_sid(NS), namespace=NS)
-    assert session["principal"].role == "unknown"
+    assert session["principal"].name == "Tester Uno"
+    assert session["principal"].permissions == leo.user.permissions
 
 
 async def test_origin_ajeno_es_rechazado(connect):
@@ -187,15 +214,6 @@ async def test_sin_origin_se_acepta_si_la_bandera_lo_permite(connect, monkeypatc
     monkeypatch.setattr(get_settings(), "socketio_allow_no_origin", True)
     probe = await connect(origin="")
     assert probe.sio.connected
-
-
-async def test_authenticate_socket_devuelve_principal_anonimo_con_origin_valido():
-    principal = await realtime.authenticate_socket(
-        {"HTTP_ORIGIN": _origin()}, {"token": "ignorado-hoy"}
-    )
-    assert principal is not None
-    assert principal.role == "unknown"
-    assert principal.id is None
 
 
 async def test_authenticate_socket_rechaza_origin_ajeno():
@@ -522,3 +540,198 @@ def test_con_redis_url_usa_async_redis_manager(monkeypatch):
     manager = realtime.build_manager("redis://localhost:6379/0")
     assert isinstance(manager, FakeManager)
     assert seen["url"] == "redis://localhost:6379/0"
+
+
+# === Autenticacion con Leo (cookie + prueba DPoP en `auth`) ==========================
+
+from app.conftest import make_leo_user
+from app.core import permissions as perms
+from app.core.leo import auth as leo_auth
+from app.main import queue_namespace
+
+
+async def test_sin_cookie_se_rechaza(connect):
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect(cookie=False)
+
+
+async def test_sin_prueba_dpop_se_rechaza(connect):
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect(dpop=False)
+
+
+async def test_prueba_firmada_por_otra_llave_se_rechaza(connect):
+    forged = DpopKey().proof("GET", HANDSHAKE_HTU)
+    # firma valida de OTRA llave: su jkt no es el de la sesion de Leo
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect(dpop=forged)
+
+
+async def test_prueba_con_firma_alterada_se_rechaza(connect, browser):
+    head, payload, _sig = browser.proof("GET", HANDSHAKE_HTU).split(".")
+    other = DpopKey().proof("GET", HANDSHAKE_HTU).split(".")[2]
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect(dpop=f"{head}.{payload}.{other}")
+
+
+@pytest.mark.parametrize(
+    ("htm", "htu", "iat"),
+    [
+        ("POST", HANDSHAKE_HTU, 0),  # htm equivocado
+        ("GET", "http://incubus.test/socket.io", 0),  # htu sin la barra final
+        ("GET", "http://otro.test/socket.io/", 0),  # htu de otro host
+        ("GET", HANDSHAKE_HTU, -120),  # iat fuera de la ventana de 60 s
+        ("GET", HANDSHAKE_HTU, 120),
+    ],
+)
+async def test_prueba_con_claims_invalidos_se_rechaza(connect, browser, htm, htu, iat):
+    import time
+
+    proof = browser.proof(htm, htu, iat=time.time() + iat)
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect(dpop=proof)
+
+
+async def test_prueba_repetida_se_rechaza_una_sola_vez_vale(connect, browser):
+    proof = browser.proof("GET", HANDSHAKE_HTU)
+    first = await connect(dpop=proof)
+    assert first.sio.connected
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect(dpop=proof)  # replay
+
+
+async def test_cada_conexion_con_prueba_nueva_entra(connect):
+    a = await connect()
+    b = await connect()
+    assert a.sio.connected and b.sio.connected
+
+
+async def test_sesion_inactiva_en_leo_se_rechaza(connect, leo):
+    leo.user = None
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect()
+
+
+async def test_sesion_sin_permisos_de_incubus_se_rechaza(connect, leo):
+    leo.user = make_leo_user({"vladimir.samples.view"})
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect()
+
+
+async def test_la_cookie_de_otra_app_no_vale(connect):
+    """Con el nombre por defecto del SDK (`leo_access`) no entra: cada app usa
+    la suya y no se pisan las sesiones."""
+    with pytest.raises(socketio.exceptions.ConnectionError):
+        await connect(cookie="leo_access")
+
+
+def test_cada_etapa_exige_el_view_de_su_pantalla():
+    from app.core.realtime import Principal, authorize_room
+
+    for status, view in perms.STAGE_VIEW.items():
+        yes = Principal("1", "u", "U", frozenset({view}))
+        no = Principal("1", "u", "U", frozenset(perms.ANY_STAGE_VIEW) - {view})
+        assert authorize_room(yes, rooms.stage_room(status)), status
+        assert not authorize_room(no, rooms.stage_room(status)), status
+
+
+def test_authorize_room_de_entrada_y_profesional():
+    from app.core.realtime import Principal, authorize_room
+
+    nobody = Principal("1", "u", "U", frozenset({perms.RES_VALIDATE}))
+    viewer = Principal("1", "u", "U", frozenset({perms.LAB_VIEW}))
+    sampler = Principal("1", "u", "U", frozenset({perms.SAM_VIEW}))
+    entry = rooms.entry_room("00000000-0000-0000-0000-000000000001")
+    assert not authorize_room(nobody, entry)
+    assert authorize_room(viewer, entry)
+    assert not authorize_room(viewer, rooms.staff_room("staff-1"))
+    assert authorize_room(sampler, rooms.staff_room("staff-1"))
+    assert not authorize_room(sampler, "otra:cosa")
+
+
+async def test_subscribe_a_etapa_sin_permiso_responde_forbidden(connect, leo):
+    leo.grant(perms.PRE_VIEW)
+    probe = await connect()
+    denied = await probe.subscribe("stage:en_atencion_recepcion")
+    assert denied == {"ok": False, "error": "forbidden"}
+    ok = await probe.subscribe("stage:pre_recepcion")
+    assert ok == {"ok": True, "joined": ["stage:pre_recepcion"]}
+    # atomico: un room prohibido entre varios no une ninguno
+    mixed = await probe.subscribe("stage:en_laboratorio", "stage:pre_recepcion")
+    assert mixed["error"] == "forbidden"
+
+
+async def test_subscribe_a_entrada_y_profesional_exige_permisos(connect, leo):
+    entry = "entry:00000000-0000-0000-0000-000000000001"
+    leo.grant(perms.PRE_VIEW)
+    probe = await connect()
+    assert (await probe.subscribe(entry))["ok"] is True  # algun view de etapa
+    assert (await probe.subscribe("staff:staff-1"))["error"] == "forbidden"
+    leo.grant(perms.SAM_VIEW)
+    leo_auth.sessions._cache.clear()
+    assert (await probe.subscribe("staff:staff-1"))["ok"] is True
+
+
+async def test_eventos_solo_llegan_a_quien_puede_ver_esa_etapa(connect, client, leo):
+    leo.grant(perms.PRE_VIEW, perms.RES_VIEW)
+    allowed = await connect()
+    await allowed.subscribe("stage:pre_recepcion")
+    leo.grant(perms.SAM_VIEW)
+    leo_auth.sessions._cache.clear()
+    blind = await connect()
+    assert (await blind.subscribe("stage:pre_recepcion"))["error"] == "forbidden"
+    leo.grant(*perms.catalog.tags)  # quien escribe por REST tiene todo
+    await _enter(client)
+    await events.drain()
+    await allowed.sync()
+    await blind.sync()
+    assert len(allowed.named("entry:created")) == 1
+    assert blind.named("entry:created") == []
+
+
+async def test_el_sync_revalida_con_la_cache_de_introspeccion(connect, leo):
+    probe = await connect()
+    inicial = leo.introspections
+    for _ in range(3):
+        await probe.sync()
+    assert leo.introspections == inicial  # misma cache de 30 s: sin llamadas
+
+
+async def test_sesion_revocada_desconecta_en_el_siguiente_evento(connect, leo):
+    probe = await connect()
+    leo.user = None  # Leo revoca la sesion
+    leo_auth.sessions._cache.clear()  # vence la cache de 30 s
+    assert await probe.sync() == {"ok": False, "error": "session_expired"}
+    for _ in range(50):
+        if not probe.sio.connected:
+            break
+        await asyncio.sleep(0.02)
+    assert not probe.sio.connected
+
+
+async def test_permisos_quitados_sacan_de_los_rooms_en_el_siguiente_evento(
+    connect, leo
+):
+    leo.grant(perms.PRE_VIEW, perms.REC_VIEW)
+    probe = await connect()
+    await probe.subscribe("stage:pre_recepcion", "stage:en_atencion_recepcion")
+    leo.grant(perms.PRE_VIEW)  # se le quita recepcion
+    leo_auth.sessions._cache.clear()
+    joined = (await probe.subscribe("stage:pre_recepcion"))["joined"]
+    assert joined == ["stage:pre_recepcion"]
+
+
+async def test_barrido_desconecta_los_tokens_vencidos_sin_llamar_a_leo(
+    connect, leo, monkeypatch
+):
+    probe = await connect()
+    llamadas = leo.introspections
+    assert await queue_namespace.disconnect_expired() == 0
+    monkeypatch.setattr(realtime, "_now", lambda: 4_000_000_000)  # tras exp
+    assert await queue_namespace.disconnect_expired() == 1
+    assert leo.introspections == llamadas
+    for _ in range(50):
+        if not probe.sio.connected:
+            break
+        await asyncio.sleep(0.02)
+    assert not probe.sio.connected

@@ -2,13 +2,31 @@ import asyncio
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from leo_sdk import LeoUser
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError, ValidationAppError
+from app.core.leo import CatalogReader, actor_name, authorize
+from app.core.permissions import (
+    CHECKS_BY_STAGE,
+    LAB_RECEIVE,
+    LAB_UNRECEIVE,
+    LBL_PRINT,
+    REC_CLOSE,
+    SAM_COLLECT,
+    CanCheck,
+    CanCloseReception,
+    CanCollect,
+    CanPrintLabels,
+    CanReceive,
+    CanUnreceive,
+    CanViewAnyStage,
+    CanViewLabels,
+)
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders import service
 from app.modules.orders.labels import (
@@ -40,27 +58,33 @@ class CheckInput(BaseModel):
     note: str | None = None
 
 
+# `actor` (en estos cuerpos) esta DEPRECADO: se acepta y se ignora; el actor
+# es siempre la persona autenticada (`app.core.leo.actor_name`).
+
+
 class CloseReceptionInput(BaseModel):
     test_codes: list[str]
-    actor: str | None = Field(default=None, max_length=120)
+    actor: str | None = Field(default=None, max_length=120, deprecated=True)
     precondition_checks: list[CheckInput] = Field(default_factory=list)
 
 
 class PrintLabelsInput(BaseModel):
     professional_id: str = Field(max_length=64)
     professional_name: str = Field(max_length=150)
-    actor: str | None = Field(default=None, max_length=120)
+    actor: str | None = Field(default=None, max_length=120, deprecated=True)
 
 
 class StageChecksInput(BaseModel):
     stage: str = Field(pattern="^(reception|sampling)$")
     checks: list[CheckInput]
-    actor: str | None = Field(default=None, max_length=120)
+    actor: str | None = Field(default=None, max_length=120, deprecated=True)
 
 
 @catalog_router.get("/tests")
 async def search_tests(
-    catalog: Catalog, q: Annotated[str | None, Query(max_length=100)] = None
+    catalog: Catalog,
+    _user: CatalogReader,
+    q: Annotated[str | None, Query(max_length=100)] = None,
 ) -> list[dict]:
     """Busqueda de examenes activos en el catalogo de Vladimir."""
     return [
@@ -78,7 +102,7 @@ SAMPLING_JOB_TITLE = "toma de muestras"
 
 
 @catalog_router.get("/staff")
-async def list_staff(catalog: Catalog) -> list[dict]:
+async def list_staff(catalog: Catalog, _user: CatalogReader) -> list[dict]:
     """Profesionales de toma de muestras (personal activo con ese cargo)."""
     staff = await catalog.list_staff()
     return [
@@ -87,7 +111,7 @@ async def list_staff(catalog: Catalog) -> list[dict]:
 
 
 @router.post("/preview")
-async def preview(body: PreviewInput, catalog: Catalog) -> dict:
+async def preview(body: PreviewInput, catalog: Catalog, _user: CatalogReader) -> dict:
     """Preanaliticos ya unificados para los examenes elegidos (panel en vivo)."""
     tests, preconditions = await service.resolve_tests(catalog, body.test_codes)
     return {
@@ -98,23 +122,35 @@ async def preview(body: PreviewInput, catalog: Catalog) -> dict:
 
 @router.post("/close-reception/{entry_id}")
 async def close_reception(
-    entry_id: UUID, body: CloseReceptionInput, session: Session, catalog: Catalog
+    entry_id: UUID,
+    body: CloseReceptionInput,
+    session: Session,
+    catalog: Catalog,
+    user: CanCloseReception,
 ) -> dict:
     order = await service.close_reception(
         session,
         catalog,
         entry_id,
         body.test_codes,
-        body.actor,
+        actor_name(user),
         [c.model_dump() for c in body.precondition_checks],
     )
     await session.commit()
-    await events.publish_entry(session, entry_id, events.STATUS_CHANGED)
+    await events.publish_entry(
+        session,
+        entry_id,
+        events.STATUS_CHANGED,
+        audit=events.AuditInfo(
+            user,
+            REC_CLOSE,
+            after={
+                "order_number": order.order_number,
+                "test_codes": sorted(body.test_codes),
+            },
+        ),
+    )
     return {"order_number": order.order_number, "order_id": str(order.id)}
-
-
-class CollectInput(BaseModel):
-    actor: str | None = Field(default=None, max_length=120)
 
 
 def sample_dict(s: OrderSample) -> dict:
@@ -179,7 +215,9 @@ async def _order_detail(session: AsyncSession, order: Order) -> dict:
 
 
 @router.get("/by-entry/{entry_id}")
-async def get_order_by_entry(entry_id: UUID, session: Session) -> dict:
+async def get_order_by_entry(
+    entry_id: UUID, session: Session, _user: CanViewAnyStage
+) -> dict:
     order = (
         await session.execute(select(Order).where(Order.queue_entry_id == entry_id))
     ).scalar_one_or_none()
@@ -192,33 +230,56 @@ async def get_order_by_entry(entry_id: UUID, session: Session) -> dict:
 
 
 async def _set_collected(
-    session: AsyncSession, sample_id: UUID, actor: str | None, collected: bool
+    session: AsyncSession, sample_id: UUID, user: LeoUser, collected: bool
 ) -> dict:
-    sample, entry_id = await service.set_collected(session, sample_id, actor, collected)
+    sample, entry_id = await service.set_collected(
+        session, sample_id, actor_name(user), collected
+    )
     await session.commit()
     await events.publish_entry(
-        session, entry_id, events.SAMPLE_UPDATED, sample_id=sample_id
+        session,
+        entry_id,
+        events.SAMPLE_UPDATED,
+        sample_id=sample_id,
+        audit=events.AuditInfo(
+            user,
+            SAM_COLLECT,
+            before={"collected": not collected},
+            after={"sample_id": str(sample_id), "collected": collected},
+        ),
     )
     return sample_dict(sample)
 
 
 @router.post("/samples/{sample_id}/collect")
-async def collect_sample(sample_id: UUID, body: CollectInput, session: Session) -> dict:
-    return await _set_collected(session, sample_id, body.actor, True)
+async def collect_sample(sample_id: UUID, session: Session, user: CanCollect) -> dict:
+    return await _set_collected(session, sample_id, user, True)
 
 
 @router.post("/samples/{sample_id}/receive")
 async def receive_sample(
-    sample_id: UUID, body: CollectInput, session: Session, catalog: Catalog
+    sample_id: UUID,
+    session: Session,
+    catalog: Catalog,
+    user: CanReceive,
 ) -> dict:
     """Check de entrada de un tubo al laboratorio; al ultimo la orden pasa a laboratorio."""
     sample, status = await results_service.set_received(
-        session, sample_id, body.actor, True
+        session, sample_id, actor_name(user), True
     )
     await session.commit()
     order = await session.get(Order, sample.order_id)
     await events.publish_entry(
-        session, order.queue_entry_id, events.SAMPLE_UPDATED, sample_id=sample_id
+        session,
+        order.queue_entry_id,
+        events.SAMPLE_UPDATED,
+        sample_id=sample_id,
+        audit=events.AuditInfo(
+            user,
+            LAB_RECEIVE,
+            before={"received": False},
+            after={"sample_id": str(sample_id), "received": True},
+        ),
     )
     if status == "en_laboratorio":
         await events.publish_entry(session, order.queue_entry_id, events.STATUS_CHANGED)
@@ -242,24 +303,31 @@ async def receive_sample(
 
 @router.post("/samples/{sample_id}/unreceive")
 async def unreceive_sample(
-    sample_id: UUID, body: CollectInput, session: Session
+    sample_id: UUID, session: Session, user: CanUnreceive
 ) -> dict:
     sample, status = await results_service.set_received(
-        session, sample_id, body.actor, False
+        session, sample_id, actor_name(user), False
     )
     await session.commit()
     order = await session.get(Order, sample.order_id)
     await events.publish_entry(
-        session, order.queue_entry_id, events.SAMPLE_UPDATED, sample_id=sample_id
+        session,
+        order.queue_entry_id,
+        events.SAMPLE_UPDATED,
+        sample_id=sample_id,
+        audit=events.AuditInfo(
+            user,
+            LAB_UNRECEIVE,
+            before={"received": True},
+            after={"sample_id": str(sample_id), "received": False},
+        ),
     )
     return {**sample_dict(sample), "entry_status": status}
 
 
 @router.post("/samples/{sample_id}/uncollect")
-async def uncollect_sample(
-    sample_id: UUID, body: CollectInput, session: Session
-) -> dict:
-    return await _set_collected(session, sample_id, body.actor, False)
+async def uncollect_sample(sample_id: UUID, session: Session, user: CanCollect) -> dict:
+    return await _set_collected(session, sample_id, user, False)
 
 
 async def _entry_order(session: AsyncSession, entry_id: UUID) -> Order:
@@ -276,7 +344,11 @@ async def _entry_order(session: AsyncSession, entry_id: UUID) -> Order:
 
 @router.post("/by-entry/{entry_id}/print-labels")
 async def print_labels(
-    entry_id: UUID, body: PrintLabelsInput, session: Session, catalog: Catalog
+    entry_id: UUID,
+    body: PrintLabelsInput,
+    session: Session,
+    catalog: Catalog,
+    user: CanPrintLabels,
 ) -> dict:
     """Imprime etiquetas: crea tubos, asigna profesional y pasa a espera de toma."""
     order = await service.print_labels(
@@ -285,15 +357,24 @@ async def print_labels(
         entry_id,
         body.professional_id,
         body.professional_name,
-        body.actor,
+        actor_name(user),
     )
     await session.commit()
-    await events.publish_entry(session, entry_id, events.STATUS_CHANGED)
+    await events.publish_entry(
+        session,
+        entry_id,
+        events.STATUS_CHANGED,
+        audit=events.AuditInfo(
+            user, LBL_PRINT, after={"assigned_professional_id": body.professional_id}
+        ),
+    )
     return await _order_detail(session, order)
 
 
 @router.post("/by-entry/{entry_id}/samples")
-async def prepare_samples(entry_id: UUID, session: Session, catalog: Catalog) -> dict:
+async def prepare_samples(
+    entry_id: UUID, session: Session, catalog: Catalog, _user: CanViewLabels
+) -> dict:
     """Crea (si faltan) los tubos para mostrarlos en la vista de impresion."""
     await _entry_order(session, entry_id)
     await service.ensure_samples(session, catalog, entry_id)
@@ -357,7 +438,9 @@ async def barcode_svg(order_number: str) -> Response:
 
 
 @router.get("/by-entry/{entry_id}/labels.pdf")
-async def labels_pdf(entry_id: UUID, session: Session) -> Response:
+async def labels_pdf(
+    entry_id: UUID, session: Session, _user: CanPrintLabels
+) -> Response:
     order, labels = await _labels(session, entry_id)
     filename = f"etiquetas-{order.order_number}.pdf"
     return Response(
@@ -371,6 +454,7 @@ async def labels_pdf(entry_id: UUID, session: Session) -> Response:
 async def labels_zpl(
     entry_id: UUID,
     session: Session,
+    _user: CanPrintLabels,
     width_mm: Annotated[float, Query(ge=20, le=120)] = 70,
     height_mm: Annotated[float, Query(ge=15, le=120)] = 35,
     dpi: Annotated[int, Query(ge=150, le=600)] = 203,
@@ -389,18 +473,44 @@ async def labels_zpl(
 
 @router.post("/by-entry/{entry_id}/precondition-checks")
 async def precondition_checks(
-    entry_id: UUID, body: StageChecksInput, session: Session
+    entry_id: UUID,
+    body: StageChecksInput,
+    request: Request,
+    session: Session,
+    user: CanCheck,
 ) -> dict:
+    """Verificacion de precondiciones: `reception` exige
+    `reception.edit-patient`; `sampling` exige `sampling.collect`."""
+    tag = CHECKS_BY_STAGE[body.stage]
+    await authorize(request, user, tag)
     await service.save_checks(
-        session, entry_id, body.stage, [c.model_dump() for c in body.checks], body.actor
+        session,
+        entry_id,
+        body.stage,
+        [c.model_dump() for c in body.checks],
+        actor_name(user),
     )
     await session.commit()
-    await events.publish_entry(session, entry_id, events.ENTRY_UPDATED)
+    await events.publish_entry(
+        session,
+        entry_id,
+        events.ENTRY_UPDATED,
+        audit=events.AuditInfo(
+            user,
+            tag,
+            after={
+                "stage": body.stage,
+                "unmet_keys": sorted(c.key for c in body.checks if c.met is False),
+            },
+        ),
+    )
     return await _order_detail(session, await _entry_order(session, entry_id))
 
 
 @router.get("/{order_number}")
-async def get_order(order_number: str, session: Session) -> dict:
+async def get_order(
+    order_number: str, session: Session, _user: CanViewAnyStage
+) -> dict:
     order = (
         await session.execute(select(Order).where(Order.order_number == order_number))
     ).scalar_one_or_none()

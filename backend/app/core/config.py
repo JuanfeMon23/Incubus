@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     socketio_allow_no_origin: bool = False
     # Maximo de rooms por socket (una pantalla suscribe varios estados).
     socketio_max_rooms: int = 20
+    # Cada cuantos segundos se desconectan los sockets con el token vencido.
+    socketio_sweep_seconds: float = 30.0
     # Si se define, varios procesos comparten los rooms por Redis. Requiere el
     # paquete `redis` (`uv add redis`), que NO se instala por defecto.
     socketio_redis_url: str | None = None
