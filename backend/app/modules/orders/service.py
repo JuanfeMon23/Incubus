@@ -13,6 +13,7 @@ from app.core.exceptions import (
     ValidationAppError,
 )
 from app.core.leo import Actor
+from app.core.permissions import TURN_STATUS_BY_STAGE
 from app.modules.catalog_client.client import CatalogClient
 from app.modules.orders.errors import NoteRequiredError, UnansweredPreconditionsError
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
@@ -163,6 +164,8 @@ async def close_reception(
     test_codes: list[str],
     actor: Actor,
     checks: list[dict] | None = None,
+    *,
+    supervisor: bool = False,
 ) -> Order:
     entry = await queue_service.get_entry(session, entry_id, lock=True)
     if entry.status != QueueStatus.EN_ATENCION_RECEPCION:
@@ -170,6 +173,7 @@ async def close_reception(
             "Solo se cierra la recepcion de un paciente en atencion de recepcion.",
             {"status": entry.status},
         )
+    ensure_turn_owner(entry, actor, supervisor=supervisor, action="cerrar la recepción")
     if not test_codes:
         raise ValidationAppError(
             "La orden necesita al menos un examen.", {"test_codes": []}
@@ -329,14 +333,25 @@ async def save_checks(
     stage: str,
     checks: list[dict],
     actor: Actor,
+    *,
+    supervisor: bool = False,
 ) -> None:
-    """Guarda la verificacion de una etapa (`reception` | `sampling`)."""
+    """Guarda la verificacion de una etapa (`reception` | `sampling`). Si la
+    entrada esta en atencion de esa etapa, exige ser dueno del turno."""
     order = (
         await session.execute(select(Order).where(Order.queue_entry_id == entry_id))
     ).scalar_one_or_none()
     if order is None:
         raise ValidationAppError(
             "La entrada no tiene orden.", {"entry_id": str(entry_id)}
+        )
+    entry = await queue_service.get_entry(session, entry_id, lock=True)
+    if entry.status == TURN_STATUS_BY_STAGE[stage]:
+        ensure_turn_owner(
+            entry,
+            actor,
+            supervisor=supervisor,
+            action="registrar la verificación de precondiciones",
         )
     rows = list(
         (

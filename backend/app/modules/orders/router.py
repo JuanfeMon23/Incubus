@@ -18,6 +18,7 @@ from app.core.permissions import (
     LBL_PRINT,
     REC_CLOSE,
     SAM_COLLECT,
+    TURN_STATUS_BY_STAGE,
     CanCheck,
     CanCloseReception,
     CanCollect,
@@ -39,6 +40,7 @@ from app.modules.orders.models import Order, OrderPrecondition, OrderSample, Ord
 from app.modules.queue import events
 from app.modules.queue.models import Patient
 from app.modules.queue.ownership import audit_not_owner, can_supervise
+from app.modules.queue.transitions import QueueStatus
 from app.modules.results import service as results_service
 
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -125,18 +127,21 @@ async def preview(body: PreviewInput, catalog: Catalog, _user: CatalogReader) ->
 async def close_reception(
     entry_id: UUID,
     body: CloseReceptionInput,
+    request: Request,
     session: Session,
     catalog: Catalog,
     user: CanCloseReception,
 ) -> dict:
-    order = await service.close_reception(
-        session,
-        catalog,
-        entry_id,
-        body.test_codes,
-        Actor.of(user),
-        [c.model_dump() for c in body.precondition_checks],
-    )
+    async with audit_not_owner(request, user, REC_CLOSE):
+        order = await service.close_reception(
+            session,
+            catalog,
+            entry_id,
+            body.test_codes,
+            Actor.of(user),
+            [c.model_dump() for c in body.precondition_checks],
+            supervisor=can_supervise(user, QueueStatus.EN_ATENCION_RECEPCION.value),
+        )
     await session.commit()
     await events.publish_entry(
         session,
@@ -245,7 +250,7 @@ async def _set_collected(
             sample_id,
             Actor.of(user),
             collected,
-            supervisor=can_supervise(user),
+            supervisor=can_supervise(user, QueueStatus.EN_ATENCION_TOMA_MUESTRAS.value),
         )
     await session.commit()
     await events.publish_entry(
@@ -499,13 +504,15 @@ async def precondition_checks(
     `reception.edit-patient`; `sampling` exige `sampling.collect`."""
     tag = CHECKS_BY_STAGE[body.stage]
     await authorize(request, user, tag)
-    await service.save_checks(
-        session,
-        entry_id,
-        body.stage,
-        [c.model_dump() for c in body.checks],
-        Actor.of(user),
-    )
+    async with audit_not_owner(request, user, tag):
+        await service.save_checks(
+            session,
+            entry_id,
+            body.stage,
+            [c.model_dump() for c in body.checks],
+            Actor.of(user),
+            supervisor=can_supervise(user, TURN_STATUS_BY_STAGE[body.stage]),
+        )
     await session.commit()
     await events.publish_entry(
         session,

@@ -68,6 +68,15 @@ REC_REMOVE = _action(
     "la recepción).",
 )  # fmt: skip
 
+REC_SUPERVISE = _action(
+    _REC, "supervise", "Gestionar turnos de otros recepcionistas",
+    "Devolver, cerrar o editar un turno de recepción que llamó otra persona.",
+)  # fmt: skip
+
+# `supervise` no protege una ruta: se consulta dentro de los handlers
+# (`queue.ownership`) para saltarse la propiedad del turno.
+auth.used_tags.add(REC_SUPERVISE)
+
 # --- Impresion de etiquetas --------------------------------------------------------
 _LBL = _module("label-printing", "Impresión de etiquetas", "Etiquetas de los tubos.")
 LBL_VIEW = _action(
@@ -107,8 +116,6 @@ SAM_SUPERVISE = _action(
     "Devolver, finalizar o marcar tubos de un turno de toma que tomó otra persona.",
 )  # fmt: skip
 
-# `supervise` no protege una ruta: se consulta dentro de los handlers de la toma
-# (`queue.ownership`) para saltarse la propiedad del turno.
 auth.used_tags.add(SAM_SUPERVISE)
 
 # --- Recepcion en laboratorio -------------------------------------------------------
@@ -182,6 +189,16 @@ REMOVE_BY_STATUS = {
 }
 # Verificacion de precondiciones por etapa.
 CHECKS_BY_STAGE = {"reception": REC_EDIT_PATIENT, "sampling": SAM_COLLECT}
+# Etapas con turno propio (quien lo toma es su dueno) -> permiso de supervisor.
+SUPERVISE_BY_STATUS = {
+    "en_atencion_recepcion": REC_SUPERVISE,
+    "en_atencion_toma_muestras": SAM_SUPERVISE,
+}
+# Verificacion de precondiciones por etapa -> estado cuyo turno exige duenio.
+TURN_STATUS_BY_STAGE = {
+    "reception": "en_atencion_recepcion",
+    "sampling": "en_atencion_toma_muestras",
+}
 
 
 def _unique(tags: dict[str, str]) -> tuple[str, ...]:
