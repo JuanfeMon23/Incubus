@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError, ValidationAppError
-from app.core.leo import CatalogReader, actor_name, authorize
+from app.core.leo import Actor, CatalogReader, authorize, uuid_str
 from app.core.permissions import (
     CHECKS_BY_STAGE,
     LAB_RECEIVE,
@@ -38,6 +38,7 @@ from app.modules.orders.labels import (
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
 from app.modules.queue import events
 from app.modules.queue.models import Patient
+from app.modules.queue.ownership import audit_not_owner, can_supervise
 from app.modules.results import service as results_service
 
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -59,7 +60,7 @@ class CheckInput(BaseModel):
 
 
 # `actor` (en estos cuerpos) esta DEPRECADO: se acepta y se ignora; el actor
-# es siempre la persona autenticada (`app.core.leo.actor_name`).
+# es siempre la persona autenticada (`app.core.leo.Actor.of`).
 
 
 class CloseReceptionInput(BaseModel):
@@ -133,7 +134,7 @@ async def close_reception(
         catalog,
         entry_id,
         body.test_codes,
-        actor_name(user),
+        Actor.of(user),
         [c.model_dump() for c in body.precondition_checks],
     )
     await session.commit()
@@ -169,8 +170,10 @@ def sample_dict(s: OrderSample) -> dict:
         else None,
         "collected_at": s.collected_at.isoformat() if s.collected_at else None,
         "collected_by": s.collected_by,
+        "collected_by_user_id": uuid_str(s.collected_by_user_id),
         "received_at": s.received_at.isoformat() if s.received_at else None,
         "received_by": s.received_by,
+        "received_by_user_id": uuid_str(s.received_by_user_id),
     }
 
 
@@ -230,11 +233,20 @@ async def get_order_by_entry(
 
 
 async def _set_collected(
-    session: AsyncSession, sample_id: UUID, user: LeoUser, collected: bool
+    request: Request,
+    session: AsyncSession,
+    sample_id: UUID,
+    user: LeoUser,
+    collected: bool,
 ) -> dict:
-    sample, entry_id = await service.set_collected(
-        session, sample_id, actor_name(user), collected
-    )
+    async with audit_not_owner(request, user, SAM_COLLECT):
+        sample, entry_id = await service.set_collected(
+            session,
+            sample_id,
+            Actor.of(user),
+            collected,
+            supervisor=can_supervise(user),
+        )
     await session.commit()
     await events.publish_entry(
         session,
@@ -252,8 +264,10 @@ async def _set_collected(
 
 
 @router.post("/samples/{sample_id}/collect")
-async def collect_sample(sample_id: UUID, session: Session, user: CanCollect) -> dict:
-    return await _set_collected(session, sample_id, user, True)
+async def collect_sample(
+    sample_id: UUID, request: Request, session: Session, user: CanCollect
+) -> dict:
+    return await _set_collected(request, session, sample_id, user, True)
 
 
 @router.post("/samples/{sample_id}/receive")
@@ -265,7 +279,7 @@ async def receive_sample(
 ) -> dict:
     """Check de entrada de un tubo al laboratorio; al ultimo la orden pasa a laboratorio."""
     sample, status = await results_service.set_received(
-        session, sample_id, actor_name(user), True
+        session, sample_id, Actor.of(user), True
     )
     await session.commit()
     order = await session.get(Order, sample.order_id)
@@ -306,7 +320,7 @@ async def unreceive_sample(
     sample_id: UUID, session: Session, user: CanUnreceive
 ) -> dict:
     sample, status = await results_service.set_received(
-        session, sample_id, actor_name(user), False
+        session, sample_id, Actor.of(user), False
     )
     await session.commit()
     order = await session.get(Order, sample.order_id)
@@ -326,8 +340,10 @@ async def unreceive_sample(
 
 
 @router.post("/samples/{sample_id}/uncollect")
-async def uncollect_sample(sample_id: UUID, session: Session, user: CanCollect) -> dict:
-    return await _set_collected(session, sample_id, user, False)
+async def uncollect_sample(
+    sample_id: UUID, request: Request, session: Session, user: CanCollect
+) -> dict:
+    return await _set_collected(request, session, sample_id, user, False)
 
 
 async def _entry_order(session: AsyncSession, entry_id: UUID) -> Order:
@@ -357,7 +373,7 @@ async def print_labels(
         entry_id,
         body.professional_id,
         body.professional_name,
-        actor_name(user),
+        Actor.of(user),
     )
     await session.commit()
     await events.publish_entry(
@@ -488,7 +504,7 @@ async def precondition_checks(
         entry_id,
         body.stage,
         [c.model_dump() for c in body.checks],
-        actor_name(user),
+        Actor.of(user),
     )
     await session.commit()
     await events.publish_entry(

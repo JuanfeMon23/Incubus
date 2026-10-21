@@ -12,6 +12,7 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationAppError,
 )
+from app.core.leo import Actor, uuid_str
 from app.modules.catalog_client.client import CatalogClient
 from app.modules.orders.models import Order, OrderResult, OrderSample, OrderTest
 from app.modules.queue import service as queue_service
@@ -184,8 +185,16 @@ async def test_detail(
 # ----------------------------------------------------------- valores
 
 
+def _set_entered(row: OrderResult, at: datetime | None, actor: Actor | None) -> None:
+    """Quien y cuando capturo el valor (nombre + id); sin actor se limpian."""
+    who = actor or Actor()
+    row.entered_at = at
+    row.entered_by = who.name
+    row.entered_by_user_id = who.user_id
+
+
 def _apply_values(
-    rows: list[OrderResult], values: dict, patient: Patient, actor: str
+    rows: list[OrderResult], values: dict, patient: Patient, actor: Actor
 ) -> None:
     by_code = {r.analyte_code: r for r in rows}
     unknown = [c for c in values if c not in by_code]
@@ -207,7 +216,7 @@ def _apply_values(
             raise InvalidResultError(str(exc), {"field": code}) from exc
         row.value = None if typed is None else {"v": typed}
         row.entered_at = now if typed is not None else None
-        row.entered_by = actor if typed is not None else None
+        _set_entered(row, now, actor if typed is not None else None)
 
     # calculados a partir de los valores numericos actuales
     numeric = {
@@ -225,12 +234,13 @@ def _apply_values(
         except FormulaError:
             computed = None
         if computed is None:
-            row.value, row.entered_at, row.entered_by = None, None, None
+            row.value = None
+            _set_entered(row, None, None)
         else:
             if row.decimals is not None:
                 computed = round(computed, row.decimals)
             row.value = {"v": computed}
-            row.entered_at, row.entered_by = now, actor
+            _set_entered(row, now, actor)
             numeric[row.analyte_code] = computed
 
     age = age_in_years(patient.birth_date)
@@ -247,7 +257,7 @@ async def save_values(
     professional_id: str,
     professional_name: str,
     values: dict,
-    actor: str,
+    actor: Actor,
 ) -> dict:
     """`actor`: quien captura (usuario autenticado); `professional_*`: el
     profesional del area."""
@@ -274,7 +284,7 @@ async def validate_test(
     professional_id: str,
     professional_name: str,
     values: dict,
-    actor: str,
+    actor: Actor,
 ) -> tuple[dict, bool]:
     """Valida el examen; devuelve su detalle y si la orden quedo finalizada."""
     # Bloquea la entrada ANTES de guardar y contar pendientes: dos validaciones
@@ -309,6 +319,7 @@ async def validate_test(
     test.validated_at = datetime.now(UTC)
     test.validated_by_id = professional_id
     test.validated_by_name = professional_name
+    test.validated_by_user_id = actor.user_id  # quien ejecuto la validacion
     await session.flush()
 
     order = await session.get(Order, test.order_id)
@@ -504,6 +515,7 @@ async def lab_reception_queue(session: AsyncSession, q: str | None) -> list[dict
                         if s.received_at
                         else None,
                         "received_by": s.received_by,
+                        "received_by_user_id": uuid_str(s.received_by_user_id),
                     }
                     for s in samples
                 ],
@@ -513,7 +525,7 @@ async def lab_reception_queue(session: AsyncSession, q: str | None) -> list[dict
 
 
 async def set_received(
-    session: AsyncSession, sample_id: UUID, actor: str | None, received: bool
+    session: AsyncSession, sample_id: UUID, actor: Actor, received: bool
 ) -> tuple[OrderSample, str]:
     sample = await session.get(OrderSample, sample_id)
     if sample is None:
@@ -531,7 +543,9 @@ async def set_received(
         sample
     )  # puede haber cambiado mientras se esperaba el bloqueo
     sample.received_at = datetime.now(UTC) if received else None
-    sample.received_by = actor if received else None
+    owner = actor if received else Actor()
+    sample.received_by = owner.name
+    sample.received_by_user_id = owner.user_id
     await session.flush()
     await queue_service.touch_entry(session, entry.id)
     status = entry.status

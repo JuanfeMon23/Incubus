@@ -102,6 +102,14 @@ SAM_RETURN = _action(
     _SAM, "return", "Devolver pacientes a espera de toma",
     "Deshacer la atención de toma con un motivo.",
 )  # fmt: skip
+SAM_SUPERVISE = _action(
+    _SAM, "supervise", "Gestionar turnos de otros técnicos",
+    "Devolver, finalizar o marcar tubos de un turno de toma que tomó otra persona.",
+)  # fmt: skip
+
+# `supervise` no protege una ruta: se consulta dentro de los handlers de la toma
+# (`queue.ownership`) para saltarse la propiedad del turno.
+auth.used_tags.add(SAM_SUPERVISE)
 
 # --- Recepcion en laboratorio -------------------------------------------------------
 _LAB = _module("lab-reception", "Recepción en laboratorio", "Entrada de tubos.")

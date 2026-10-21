@@ -100,6 +100,7 @@ def to_read(
         id=entry.id,
         status=entry.status,
         claimed_by=entry.claimed_by,
+        claimed_by_user_id=entry.claimed_by_user_id,
         assigned_professional_id=entry.assigned_professional_id,
         assigned_professional_name=entry.assigned_professional_name,
         arrived_at=entry.arrived_at,

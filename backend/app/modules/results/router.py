@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError
-from app.core.leo import CatalogReader, actor_name, record_audit
+from app.core.leo import Actor, CatalogReader, record_audit
 from app.core.permissions import (
     RES_ENTER,
     RES_VALIDATE,
@@ -136,7 +136,7 @@ async def save_values(
         body.professional_id,
         body.professional_name,
         body.values,
-        actor_name(user),
+        Actor.of(user),
     )
     await session.commit()
     await record_audit(
@@ -169,7 +169,7 @@ async def validate_test(
         body.professional_id,
         body.professional_name,
         body.values,
-        actor_name(user),
+        Actor.of(user),
     )
     await session.commit()
     await record_audit(

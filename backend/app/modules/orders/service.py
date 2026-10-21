@@ -12,6 +12,7 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationAppError,
 )
+from app.core.leo import Actor
 from app.modules.catalog_client.client import CatalogClient
 from app.modules.orders.errors import NoteRequiredError, UnansweredPreconditionsError
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
@@ -29,6 +30,7 @@ from app.modules.orders.preconditions import (
 from app.modules.orders.samples import group_samples
 from app.modules.queue import service as queue_service
 from app.modules.queue.models import Patient
+from app.modules.queue.ownership import ensure_turn_owner
 from app.modules.queue.transitions import QueueStatus
 
 # Datos que debe tener el paciente para cerrar la recepcion (decision del usuario:
@@ -159,7 +161,7 @@ async def close_reception(
     catalog: CatalogClient,
     entry_id: UUID,
     test_codes: list[str],
-    actor: str | None,
+    actor: Actor,
     checks: list[dict] | None = None,
 ) -> Order:
     entry = await queue_service.get_entry(session, entry_id, lock=True)
@@ -211,7 +213,8 @@ async def close_reception(
                 reception_met=answer["met"],
                 reception_note=answer["note"],
                 reception_checked_at=now,
-                reception_checked_by=actor,
+                reception_checked_by=actor.name,
+                reception_checked_by_user_id=actor.user_id,
             )
         )
     await session.flush()
@@ -285,7 +288,7 @@ async def print_labels(
     entry_id: UUID,
     professional_id: str,
     professional_name: str,
-    actor: str | None,
+    actor: Actor,
 ) -> Order:
     """Imprime etiquetas: crea tubos, asigna al profesional y pasa a espera de toma."""
     entry = await queue_service.get_entry(session, entry_id, lock=True)
@@ -325,7 +328,7 @@ async def save_checks(
     entry_id: UUID,
     stage: str,
     checks: list[dict],
-    actor: str | None,
+    actor: Actor,
 ) -> None:
     """Guarda la verificacion de una etapa (`reception` | `sampling`)."""
     order = (
@@ -349,7 +352,8 @@ async def save_checks(
         setattr(row, f"{stage}_met", answer["met"])
         setattr(row, f"{stage}_note", answer["note"])
         setattr(row, f"{stage}_checked_at", now)
-        setattr(row, f"{stage}_checked_by", actor)
+        setattr(row, f"{stage}_checked_by", actor.name)
+        setattr(row, f"{stage}_checked_by_user_id", actor.user_id)
     await session.flush()
     await queue_service.touch_entry(session, entry_id)
 
@@ -371,7 +375,12 @@ async def unanswered_checks(
 
 
 async def set_collected(
-    session: AsyncSession, sample_id: UUID, actor: str | None, collected: bool
+    session: AsyncSession,
+    sample_id: UUID,
+    actor: Actor,
+    collected: bool,
+    *,
+    supervisor: bool = False,
 ) -> tuple[OrderSample, UUID]:
     """Marca/desmarca un tubo con la entrada bloqueada y en atencion de toma.
 
@@ -388,10 +397,18 @@ async def set_collected(
             "Los tubos solo se marcan con el paciente en atencion de toma de muestras.",
             {"status": entry.status},
         )
+    ensure_turn_owner(
+        entry,
+        actor,
+        supervisor=supervisor,
+        action="marcar o desmarcar tubos",
+    )
     # refresca el tubo: otra transaccion pudo cambiarlo mientras se esperaba el bloqueo
     await session.refresh(sample)
     sample.collected_at = datetime.now(UTC) if collected else None
-    sample.collected_by = actor if collected else None
+    owner = actor if collected else Actor()
+    sample.collected_by = owner.name
+    sample.collected_by_user_id = owner.user_id
     await session.flush()
     await queue_service.touch_entry(session, entry.id)
     return sample, entry.id

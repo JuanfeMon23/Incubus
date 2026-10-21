@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
-from app.core.leo import CatalogReader, actor_name, authorize, record_audit
+from app.core.leo import Actor, CatalogReader, authorize, record_audit
 from app.core.permissions import (
     CLAIM_BY_STATUS,
     PRE_ENQUEUE,
@@ -17,6 +17,7 @@ from app.core.permissions import (
     REMOVE_BY_STATUS,
     RETURN_BY_STATUS,
     SAM_FINISH,
+    SAM_RETURN,
     STAGE_VIEW,
     CanCallNext,
     CanClaim,
@@ -39,6 +40,11 @@ from app.modules.queue.models import (
     Priority,
     RemovalReason,
     ReturnReason,
+)
+from app.modules.queue.ownership import (
+    audit_not_owner,
+    can_supervise,
+    ensure_turn_owner,
 )
 from app.modules.queue.schemas import (
     CatalogRead,
@@ -228,7 +234,7 @@ async def enter_queue(
     body: QueueEntryCreate, session: Session, user: CanEnqueue
 ) -> QueueEntryRead:
     entry = await service.enter_queue(
-        session, body.patient, body.priority_id, actor_name(user)
+        session, body.patient, body.priority_id, Actor.of(user)
     )
     await session.commit()
     return await events.publish_entry(
@@ -247,7 +253,7 @@ async def call_next(session: Session, user: CanCallNext) -> QueueEntryRead:
 
     El cuerpo ya no se usa (el actor sale de la sesion): se ignora por
     compatibilidad con clientes que aun lo envian."""
-    entry = await service.claim_next(session, actor_name(user))
+    entry = await service.claim_next(session, Actor.of(user))
     await session.commit()
     return await events.publish_entry(
         session,
@@ -287,7 +293,7 @@ async def claim(
     await service.claim(
         session,
         entry_id,
-        actor=actor_name(user),
+        actor=Actor.of(user),
         professional_id=body.professional_id if body else None,
         expected_status=expected,
     )
@@ -311,14 +317,16 @@ async def return_entry(
     expected = await _authorize_for_status(
         request, user, session, entry_id, RETURN_BY_STATUS
     )
-    await service.return_entry(
-        session,
-        entry_id,
-        actor=actor_name(user),
-        reason_id=body.reason_id,
-        note=body.note,
-        expected_status=expected,
-    )
+    async with audit_not_owner(request, user, SAM_RETURN):
+        await service.return_entry(
+            session,
+            entry_id,
+            actor=Actor.of(user),
+            reason_id=body.reason_id,
+            note=body.note,
+            expected_status=expected,
+            supervisor=can_supervise(user),
+        )
     await session.commit()
     return await events.publish_entry(
         session,
@@ -347,7 +355,7 @@ async def remove_entry(
         session,
         entry_id,
         QueueStatus.RETIRADO,
-        actor=actor_name(user),
+        actor=Actor.of(user),
         removal_reason_id=body.reason_id,
         note=body.note,
         expected_status=expected,
@@ -367,7 +375,7 @@ async def remove_entry(
 
 @queue_router.post("/{entry_id}/finish-sampling", response_model=QueueEntryRead)
 async def finish_sampling(
-    entry_id: UUID, session: Session, user: CanFinishSampling
+    entry_id: UUID, request: Request, session: Session, user: CanFinishSampling
 ) -> QueueEntryRead:
     """Finaliza la toma: exige todos los tubos de la orden recolectados."""
     entry = await service.get_entry(session, entry_id, lock=True)
@@ -375,6 +383,13 @@ async def finish_sampling(
         raise ConflictError(
             f"No se puede finalizar la toma de un paciente en «{entry.status}».",
             {"status": entry.status},
+        )
+    async with audit_not_owner(request, user, SAM_FINISH):
+        ensure_turn_owner(
+            entry,
+            Actor.of(user),
+            supervisor=can_supervise(user),
+            action="finalizar la toma",
         )
     pending = list(
         (
@@ -396,7 +411,7 @@ async def finish_sampling(
             "Falta la segunda verificacion de precondiciones.", {"keys": unanswered}
         )
     await service.change_status(
-        session, entry_id, QueueStatus.TOMA_FINALIZADA, actor=actor_name(user)
+        session, entry_id, QueueStatus.TOMA_FINALIZADA, actor=Actor.of(user)
     )
     await session.commit()
     return await events.publish_entry(
