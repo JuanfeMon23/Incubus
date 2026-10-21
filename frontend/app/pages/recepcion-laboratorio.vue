@@ -42,11 +42,14 @@
 
     <UiCard v-if="current">
       <div class="space-y-4">
-        <div>
-          <h1 class="text-lg font-semibold">{{ current.patient_name }}</h1>
-          <p class="text-sm text-text-muted">
-            {{ current.document }} · Orden <span class="font-mono">{{ current.order_number }}</span>
-          </p>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h1 class="text-lg font-semibold">{{ current.patient_name }}</h1>
+            <p class="text-sm text-text-muted">
+              {{ current.document }} · Orden <span class="font-mono">{{ current.order_number }}</span>
+            </p>
+          </div>
+          <QueueHistoryButton :entry-id="current.entry_id" />
         </div>
 
         <UiAlert variant="info">

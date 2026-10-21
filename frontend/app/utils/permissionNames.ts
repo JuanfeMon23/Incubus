@@ -22,6 +22,7 @@ const PERMISSION_NAMES: Record<string, string> = {
   [TAGS.sampling.collect]: 'Marcar tubos tomados',
   [TAGS.sampling.finish]: 'Finalizar la toma de muestras',
   [TAGS.sampling.return]: 'Devolver pacientes a espera de toma',
+  [TAGS.sampling.supervise]: 'Gestionar turnos de otros técnicos',
   [TAGS.labReception.view]: 'Consultar la recepción en laboratorio',
   [TAGS.labReception.receive]: 'Recibir tubos en el laboratorio',
   [TAGS.labReception.unreceive]: 'Deshacer la recepción de tubos',
