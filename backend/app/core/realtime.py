@@ -33,7 +33,7 @@ Autorizacion de rooms: `authorize_room(principal, room)`.
 Sesion con el socket abierto: en cada evento del cliente (`subscribe`, `sync`)
 se revalida con la introspeccion cacheada (30 s): sesion revocada o vencida =
 desconexion; permisos nuevos se aplican y los rooms que ya no corresponden se
-abandonan. Ademas un barrido (cada `SOCKET_SWEEP_SECONDS`) desconecta los
+abandonan. Ademas un barrido (cada `SOCKETIO_SWEEP_SECONDS`) desconecta los
 sockets cuyo access token ya vencio, SIN llamar a Leo (una conexion abierta no
 cuenta como actividad: la inactividad la desliza solo el heartbeat
 `POST /auth/activity` del frontend). Tras una desconexion del servidor el
