@@ -37,11 +37,14 @@
       <li v-for="o in orders" :key="o.entry_id">
         <UiCard>
           <div class="space-y-3">
-            <div>
-              <p class="font-semibold">{{ o.patient_name }}</p>
-              <p class="text-xs text-text-muted">
-                {{ o.document }} · Orden <span class="font-mono">{{ o.order_number }}</span>
-              </p>
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <p class="font-semibold">{{ o.patient_name }}</p>
+                <p class="text-xs text-text-muted">
+                  {{ o.document }} · Orden <span class="font-mono">{{ o.order_number }}</span>
+                </p>
+              </div>
+              <QueueHistoryButton :entry-id="o.entry_id" />
             </div>
             <ul class="space-y-2">
               <li

@@ -66,12 +66,17 @@
           <PriorityBadge :priority="current.priority" />
         </div>
 
+        <UiAlert v-if="current.claimed_by" :variant="ownsTurn ? 'info' : 'warning'">
+          <template v-if="ownsTurn">Tomado por {{ current.claimed_by }}.</template>
+          <template v-else>{{ ownerNotice }}</template>
+        </UiAlert>
+
         <UiAlert v-if="!canCollect" variant="info">
           Solo lectura: no tienes permiso para «{{ collectName }}».
         </UiAlert>
 
         <!-- Sin collect, verificación y tubos son de solo lectura (un fieldset deshabilitado apaga sus controles). -->
-        <fieldset :disabled="!canCollect" class="m-0 min-w-0 space-y-5 border-0 p-0">
+        <fieldset :disabled="!canCollect || !ownsTurn" class="m-0 min-w-0 space-y-5 border-0 p-0">
         <PreconditionChecklist
           v-if="order.preconditions.length"
           v-model="checks"
@@ -90,6 +95,8 @@
                     size="lg"
                     :variant="s.collected_at ? 'secondary' : 'primary'"
                     :loading="togglingId === s.id"
+                    :disabled="!ownsTurn"
+                    :title="ownsTurn ? undefined : turnOwnerHint(current, 'marcar los tubos')"
                     @click="toggle(s, !s.collected_at)"
                   >
                     {{ s.collected_at ? 'Deshacer toma' : 'Marcar como tomado' }}
@@ -104,9 +111,21 @@
         <UiAlert v-if="error" variant="danger" :message="error" />
 
         <div class="flex justify-between">
-          <UiButton v-if="canReturn" variant="secondary" @click="returning = true">Devolver a espera</UiButton>
+          <UiButton
+            v-if="canReturn"
+            variant="secondary"
+            :disabled="!ownsTurn"
+            :title="ownsTurn ? undefined : turnOwnerHint(current, 'devolverlo a espera')"
+            @click="returning = true"
+          >Devolver a espera</UiButton>
           <span v-else />
-          <UiButton v-if="canFinish" :disabled="!allCollected(order.samples) || !checksOk" :loading="busy" @click="finish">
+          <UiButton
+            v-if="canFinish"
+            :disabled="!ownsTurn || !allCollected(order.samples) || !checksOk"
+            :title="ownsTurn ? undefined : turnOwnerHint(current, 'finalizarlo')"
+            :loading="busy"
+            @click="finish"
+          >
             Finalizar toma
           </UiButton>
         </div>
@@ -134,6 +153,7 @@ import type { OrderDetail, OrderSample, QueueEntry, Reason, StaffMember } from '
 import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
 import type { CheckMap } from '../utils/checks'
 import { sampleToggleError } from '../utils/queueLive'
+import { canActOnTurn, isNotTurnOwnerError, turnOwnerHint } from '../utils/turnOwnership'
 import type { LiveEvent, LiveEventName } from '../utils/queueLive'
 
 // Pantalla: sampling.view. Cada acción exige su tag; sin collect, tubos y verificación son de solo lectura.
@@ -142,7 +162,9 @@ const canClaim = useCan(TAGS.sampling.claim)
 const canCollect = useCan(TAGS.sampling.collect)
 const canFinish = useCan(TAGS.sampling.finish)
 const canReturn = useCan(TAGS.sampling.return)
+const canSupervise = useCan(TAGS.sampling.supervise)
 const collectName = permissionName(TAGS.sampling.collect)
+const user = useLeoUser()
 const api = useApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(
@@ -175,6 +197,11 @@ const receptionResults = computed(() =>
 const currentId = ref<string | null>(null)
 const current = computed(() => attending.value.find((e) => e.id === currentId.value) ?? null)
 const order = ref<OrderDetail | null>(null)
+// Solo quien tomó el turno (o un supervisor) puede devolverlo, finalizarlo o marcar sus tubos.
+const ownsTurn = computed(() => !current.value || canActOnTurn(current.value, user.value, canSupervise.value))
+const ownerNotice = computed(() =>
+  current.value ? turnOwnerHint(current.value, 'devolverlo, finalizarlo o marcar sus tubos') : ''
+)
 const error = ref('')
 const busy = ref(false)
 const returning = ref(false)
@@ -292,6 +319,7 @@ async function finish() {
   } catch (err) {
     error.value = apiErrorMessage(err)
     toast.error(error.value)
+    if (isNotTurnOwnerError(err)) await refresh()
   } finally {
     busy.value = false
   }
@@ -312,6 +340,7 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
   } catch (err) {
     error.value = apiErrorMessage(err)
     toast.error(error.value)
+    if (isNotTurnOwnerError(err)) await refresh()
   }
 }
 </script>

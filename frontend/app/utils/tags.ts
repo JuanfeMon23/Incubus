@@ -28,7 +28,8 @@ export const TAGS = {
     claim: t('sampling', 'claim'),
     collect: t('sampling', 'collect'),
     finish: t('sampling', 'finish'),
-    return: t('sampling', 'return')
+    return: t('sampling', 'return'),
+    supervise: t('sampling', 'supervise')
   },
   labReception: {
     view: t('lab-reception', 'view'),
@@ -47,3 +48,13 @@ export const TAGS = {
 
 /** Todos los tags, en el orden del catálogo del backend. */
 export const ALL_TAGS: string[] = Object.values(TAGS).flatMap((module) => Object.values(module))
+
+/** Los `view` de cada etapa con pantalla: quien tenga alguno puede consultar el historial de un turno. */
+export const VIEW_TAGS: string[] = [
+  TAGS.preReception.view,
+  TAGS.reception.view,
+  TAGS.labelPrinting.view,
+  TAGS.sampling.view,
+  TAGS.labReception.view,
+  TAGS.results.view
+]

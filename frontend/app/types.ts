@@ -32,6 +32,8 @@ export interface QueueEntry {
   id: string
   status: QueueStatus
   claimed_by: string | null
+  /** Id de Leo de quien tomó el turno; null en turnos legados (dueño desconocido). */
+  claimed_by_user_id?: string | null
   assigned_professional_id: string | null
   assigned_professional_name: string | null
   arrived_at: string
@@ -68,6 +70,9 @@ export interface OrderSample {
   labels_printed_at: string | null
   collected_at: string | null
   collected_by: string | null
+  collected_by_user_id?: string | null
+  received_by?: string | null
+  received_by_user_id?: string | null
 }
 export interface OrderDetail {
   order_number: string
@@ -170,4 +175,18 @@ export interface OrderValidationView {
     age_years: number | null
   }
   tests: OrderValidationTest[]
+}
+
+export type QueueHistoryKind = 'enter' | 'advance' | 'return' | 'remove'
+/** Fila de `GET /queue/{id}/history`. */
+export interface QueueHistoryRow {
+  from_status: QueueStatus | null
+  to_status: QueueStatus
+  kind: QueueHistoryKind | string
+  changed_at: string
+  actor: string | null
+  actor_user_id: string | null
+  note: string | null
+  removal_reason_id: string | null
+  return_reason_id: string | null
 }

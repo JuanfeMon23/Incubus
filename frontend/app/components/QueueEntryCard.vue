@@ -59,7 +59,7 @@
           <span
             v-if="entry.claimed_by && showClaimedBy"
             class="rounded-full bg-success-50 px-2 py-0.5 text-success-700"
-          >Atiende: {{ entry.claimed_by }}</span>
+          >{{ claimedLabel }} {{ entry.claimed_by }}</span>
           <slot name="chips" />
         </div>
 
@@ -67,7 +67,8 @@
       </div>
     </div>
 
-    <div v-if="$slots.actions" class="mt-3 flex justify-end gap-2 pl-1.5" @click.stop>
+    <div class="mt-3 flex justify-end gap-2 pl-1.5" @click.stop>
+      <QueueHistoryButton :entry-id="entry.id" />
       <slot name="actions" />
     </div>
   </article>
@@ -92,5 +93,7 @@ const initials = computed(() => {
   const p = props.entry.patient
   return `${p.first_name?.[0] ?? ''}${p.first_last_name?.[0] ?? ''}`.toUpperCase()
 })
+/** Etiqueta de quien tomó el turno (toma de muestras: "Tomado por"). */
+const claimedLabel = computed(() => (props.entry.status === 'en_atencion_toma_muestras' ? 'Tomado por' : 'Atiende:'))
 const age = computed(() => ageFrom(props.entry.patient.birth_date))
 </script>
