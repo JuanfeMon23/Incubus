@@ -29,6 +29,16 @@ describe('menú por permiso', () => {
   it('el inicio lleva a la primera pantalla visible', () => {
     expect(firstVisibleRoute(canOnly(TAGS.results.view, TAGS.labelPrinting.view))).toBe('/impresion-etiquetas')
   })
+
+  it.each([
+    [[TAGS.sampling.view], '/toma-muestras'],
+    [[TAGS.reception.view, TAGS.results.view], '/recepcion'],
+    [[TAGS.results.view, TAGS.labReception.view], '/recepcion-laboratorio'],
+    [[TAGS.preReception.view, TAGS.results.view], '/pre-recepcion'],
+    [[TAGS.results.enter, TAGS.sampling.claim], null]
+  ])('primer módulo con view para %j es %s', (tags, route) => {
+    expect(firstVisibleRoute(canOnly(...tags))).toBe(route)
+  })
 })
 
 describe('etapas visibles', () => {
