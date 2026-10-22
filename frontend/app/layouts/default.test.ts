@@ -1,12 +1,14 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushAll } from '~/testing/dom'
 import { ALL, signInWith } from '~/testing/session'
 import { TAGS } from '~/utils/tags'
 import IndexPage from '../pages/index.vue'
 import DefaultLayout from './default.vue'
 
+const navigateToMock = vi.hoisted(() => vi.fn())
+mockNuxtImport('navigateTo', () => navigateToMock)
 mockNuxtImport('useQueueSocket', () => () => ({
   connected: { value: true },
   reconnecting: { value: false },
@@ -17,6 +19,7 @@ mockNuxtImport('useQueueSocket', () => () => ({
 }))
 
 enableAutoUnmount(afterEach)
+beforeEach(() => navigateToMock.mockClear())
 
 async function menuLabels(tags: string[]) {
   signInWith(tags)
@@ -60,21 +63,33 @@ describe('menú lateral por permiso', () => {
 })
 
 describe('inicio', () => {
-  it('con varias etapas ofrece elegir entre las que tiene', async () => {
-    signInWith([TAGS.reception.view, TAGS.results.view])
-    const wrapper = await mountSuspended(IndexPage)
+  it.each([
+    [[TAGS.sampling.view], '/toma-muestras'],
+    [[TAGS.reception.view, TAGS.results.view], '/recepcion'],
+    [ALL, '/pre-recepcion']
+  ])('con %j redirige con replace al primer módulo', async (tags, route) => {
+    signInWith(tags)
+    await mountSuspended(IndexPage)
     await flushAll()
-    expect(wrapper.text()).toContain('¿A qué etapa vas a entrar?')
-    expect(wrapper.findAll('a').map((a) => a.text())).toEqual([
-      expect.stringContaining('Recepción'),
-      expect.stringContaining('Resultados')
-    ])
+    expect(navigateToMock).toHaveBeenCalledTimes(1)
+    expect(navigateToMock).toHaveBeenCalledWith(route, { replace: true })
   })
 
-  it('sin ninguna etapa explica que falta asignar un rol', async () => {
+  it('sin ninguna pantalla explica que falta un rol y no redirige', async () => {
     signInWith([TAGS.results.enter])
     const wrapper = await mountSuspended(IndexPage)
     await flushAll()
-    expect(wrapper.text()).toContain('aún no tiene pantallas asignadas')
+    expect(navigateToMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain(
+      'Tu usuario no tiene acceso a ninguna pantalla de Incubus. Pide a un administrador de Leo que te asigne un rol.'
+    )
+  })
+
+  it('no muestra el selector de etapas', async () => {
+    signInWith([TAGS.reception.view, TAGS.results.view])
+    const wrapper = await mountSuspended(IndexPage)
+    await flushAll()
+    expect(wrapper.text()).not.toContain('¿A qué etapa vas a entrar?')
+    expect(wrapper.findAll('a')).toEqual([])
   })
 })
