@@ -15,8 +15,8 @@ importers:
         specifier: github:JuanfeMon23/Andromeda#v0.4.0
         version: https://codeload.github.com/JuanfeMon23/Andromeda/tar.gz/dba5dd5d671feee636bcc9316a607ffd587d9265(@vee-validate/zod@4.15.1(vue@3.5.43(typescript@5.9.3))(zod@3.25.76))(nuxt@4.5.2(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@oxc-project/types@0.153.0)(@types/node@26.6.5)(@vue/compiler-sfc@3.5.43)(commander@14.0.3)(confbox@0.3.1)(db0@0.3.4)(dotenv@17.4.2)(esbuild@0.28.2)(giget@3.3.1)(ioredis@5.11.1(supports-color@10.2.2))(lightningcss@1.33.0)(magicast@0.5.5)(rolldown@1.2.13)(rollup-plugin-visualizer@7.1.1(rolldown@1.2.13)(rollup@4.64.5))(rollup@4.64.5)(srvx@0.11.22)(supports-color@10.2.2)(terser@5.51.2)(typescript@5.9.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))(vue-tsc@3.3.13(typescript@5.9.3)))(vee-validate@4.15.1(vue@3.5.43(typescript@5.9.3)))(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))(vue@3.5.43(typescript@5.9.3))(zod@3.25.76)
       leo-client:
-        specifier: github:JuanfeMon23/Leo#v0.3.1&path:/client
-        version: https://codeload.github.com/JuanfeMon23/Leo/tar.gz/5a8745c80eeaa0b035d00e4367d3f105467404bf#path:/client(47b40b7bac19c267ad644159e72d1384)
+        specifier: github:JuanfeMon23/Leo#v0.3.2&path:/client
+        version: https://codeload.github.com/JuanfeMon23/Leo/tar.gz/63bbfbbb06567dcf136a021279a81ada7aa4262e#path:/client(47b40b7bac19c267ad644159e72d1384)
       nuxt:
         specifier: 4.5.2
         version: 4.5.2(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@oxc-project/types@0.153.0)(@types/node@26.6.5)(@vue/compiler-sfc@3.5.43)(commander@14.0.3)(confbox@0.3.1)(db0@0.3.4)(dotenv@17.4.2)(esbuild@0.28.2)(giget@3.3.1)(ioredis@5.11.1(supports-color@10.2.2))(lightningcss@1.33.0)(magicast@0.5.5)(rolldown@1.2.13)(rollup-plugin-visualizer@7.1.1(rolldown@1.2.13)(rollup@4.64.5))(rollup@4.64.5)(srvx@0.11.22)(supports-color@10.2.2)(terser@5.51.2)(typescript@5.9.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))(vue-tsc@3.3.13(typescript@5.9.3))
@@ -2173,8 +2173,8 @@ packages:
     resolution: {integrity: sha512-b94GiNHQNy6JNTrt5w6zNyffMrNkXZb3KTkCZJb2V1xaEGCk093vkZ2jk3tpaeP33/OiXC+WvK9AxUebnf5nbw==}
     engines: {node: '>= 0.6.3'}
 
-  leo-client@https://codeload.github.com/JuanfeMon23/Leo/tar.gz/5a8745c80eeaa0b035d00e4367d3f105467404bf#path:/client:
-    resolution: {gitHosted: true, integrity: sha512-IhTDvLXeyVMfhuS9Bkzk1bFs4mc7iumx1QvQmbpt8YbH9zHbTfAzRDh2f4mcqDZcNbqBT0kMVO4yRkIvVgi73g==, path: /client, tarball: https://codeload.github.com/JuanfeMon23/Leo/tar.gz/5a8745c80eeaa0b035d00e4367d3f105467404bf}
+  leo-client@https://codeload.github.com/JuanfeMon23/Leo/tar.gz/63bbfbbb06567dcf136a021279a81ada7aa4262e#path:/client:
+    resolution: {gitHosted: true, integrity: sha512-qXTJ1jor+OHTGOjZagoXwp6aT9nbpBm917t2F0sOS/6gzCn5dGaGXv4RPyCh/jLX3Dlez455Yuz+IKOSASIb0A==, path: /client, tarball: https://codeload.github.com/JuanfeMon23/Leo/tar.gz/63bbfbbb06567dcf136a021279a81ada7aa4262e}
     version: 0.2.0
     peerDependencies:
       andromeda: '*'
@@ -6024,7 +6024,7 @@ snapshots:
     dependencies:
       readable-stream: 2.3.8
 
-  leo-client@https://codeload.github.com/JuanfeMon23/Leo/tar.gz/5a8745c80eeaa0b035d00e4367d3f105467404bf#path:/client(47b40b7bac19c267ad644159e72d1384):
+  leo-client@https://codeload.github.com/JuanfeMon23/Leo/tar.gz/63bbfbbb06567dcf136a021279a81ada7aa4262e#path:/client(47b40b7bac19c267ad644159e72d1384):
     dependencies:
       andromeda: https://codeload.github.com/JuanfeMon23/Andromeda/tar.gz/dba5dd5d671feee636bcc9316a607ffd587d9265(@vee-validate/zod@4.15.1(vue@3.5.43(typescript@5.9.3))(zod@3.25.76))(nuxt@4.5.2(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@oxc-project/types@0.153.0)(@types/node@26.6.5)(@vue/compiler-sfc@3.5.43)(commander@14.0.3)(confbox@0.3.1)(db0@0.3.4)(dotenv@17.4.2)(esbuild@0.28.2)(giget@3.3.1)(ioredis@5.11.1(supports-color@10.2.2))(lightningcss@1.33.0)(magicast@0.5.5)(rolldown@1.2.13)(rollup-plugin-visualizer@7.1.1(rolldown@1.2.13)(rollup@4.64.5))(rollup@4.64.5)(srvx@0.11.22)(supports-color@10.2.2)(terser@5.51.2)(typescript@5.9.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))(vue-tsc@3.3.13(typescript@5.9.3)))(vee-validate@4.15.1(vue@3.5.43(typescript@5.9.3)))(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))(vue@3.5.43(typescript@5.9.3))(zod@3.25.76)
       nuxt: 4.5.2(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7(supports-color@10.2.2)))(@oxc-project/types@0.153.0)(@types/node@26.6.5)(@vue/compiler-sfc@3.5.43)(commander@14.0.3)(confbox@0.3.1)(db0@0.3.4)(dotenv@17.4.2)(esbuild@0.28.2)(giget@3.3.1)(ioredis@5.11.1(supports-color@10.2.2))(lightningcss@1.33.0)(magicast@0.5.5)(rolldown@1.2.13)(rollup-plugin-visualizer@7.1.1(rolldown@1.2.13)(rollup@4.64.5))(rollup@4.64.5)(srvx@0.11.22)(supports-color@10.2.2)(terser@5.51.2)(typescript@5.9.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))(vue-tsc@3.3.13(typescript@5.9.3))
