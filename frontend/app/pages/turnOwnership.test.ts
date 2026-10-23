@@ -262,6 +262,22 @@ describe('recepción: propiedad del turno', () => {
     expect(btn(w, 'Devolver a pre-recepción')!.disabled).toBe(false)
   })
 
+  it('al cerrar abre el comprobante con el código de activación y lo descarta al cerrarlo', async () => {
+    fake.routes['GET /catalog/tests'] = [{ code: 'GLU', name: 'Glucosa', abbreviation: null }]
+    fake.routes['POST /orders/preview'] = { preconditions: [] }
+    fake.routes['POST /orders/close-reception/e1'] = {
+      order_number: '2610-0001', order_id: 'o1', activation_code: 'ABCDE-FGHJK'
+    }
+    const w = await openReception(noSupervise, { claimed_by: 'Ana Pérez', claimed_by_user_id: ME }, { draft: { test_codes: ['GLU'] } })
+    btn(w, 'Cerrar y generar orden')!.click()
+    await flushAll()
+    expect(document.body.textContent).toContain('ABCDE-FGHJK')
+    expect(JSON.stringify({ ...localStorage })).not.toContain('ABCDE-FGHJK')
+    findButton(document.body, 'Cerrar')!.click()
+    await flushAll()
+    expect(document.body.textContent).not.toContain('ABCDE-FGHJK')
+  })
+
   it('un 403 not_turn_owner al cerrar muestra el mensaje del backend y refresca la lista', async () => {
     const message = 'Este turno lo tomó Luis Gómez. Solo esa persona (o un supervisor) puede cerrar la recepción.'
     fake.routes['GET /catalog/tests'] = [{ code: 'GLU', name: 'Glucosa', abbreviation: null }]

@@ -207,6 +207,12 @@
       <p class="py-10 text-center text-sm text-text-muted">Tome un paciente de la cola para iniciar la atención.</p>
     </UiCard>
 
+    <ActivationReceiptModal
+      v-if="receipt"
+      :order-number="receipt.orderNumber"
+      :activation-code="receipt.activationCode"
+      @close="receipt = null"
+    />
     <ReasonDialog
       v-if="returning"
       title="Devolver a pre-recepción"
@@ -281,6 +287,7 @@ const searching = ref(false)
 const isChosen = (code: string) => chosen.value.some((c) => c.code === code)
 const error = ref('')
 const orderNumber = ref('')
+const receipt = ref<{ orderNumber: string; activationCode: string } | null>(null)
 const returning = ref(false)
 const returnReasons = ref<Reason[]>([])
 
@@ -434,7 +441,7 @@ const onClose = form.submit(async () => {
   error.value = ''
   try {
     await saveDemographics()
-    const res = await api<{ order_number: string }>(`/orders/close-reception/${current.value.id}`, {
+    const res = await api<{ order_number: string; activation_code?: string | null }>(`/orders/close-reception/${current.value.id}`, {
       method: 'POST',
       body: {
         test_codes: chosen.value.map((t) => t.code),
@@ -442,6 +449,8 @@ const onClose = form.submit(async () => {
       }
     })
     orderNumber.value = res.order_number
+    // Solo en memoria: se descarta al cerrar el modal (el backend no vuelve a mostrarlo).
+    if (res.activation_code) receipt.value = { orderNumber: res.order_number, activationCode: res.activation_code }
     toast.success(`Orden ${res.order_number} generada. Pasa a impresión de etiquetas.`)
     currentId.value = null
     await refresh()
