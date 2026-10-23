@@ -5,7 +5,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: {
     alias: {
-      '#andromeda': fileURLToPath(new URL('./node_modules/andromeda/app', import.meta.url))
+      '#andromeda': fileURLToPath(new URL('./node_modules/andromeda/app', import.meta.url)),
+      '#leo-client': fileURLToPath(new URL('./node_modules/leo-client/app', import.meta.url))
     }
   },
   test: {

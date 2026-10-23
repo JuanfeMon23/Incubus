@@ -1,5 +1,4 @@
 import type { QueueAdminItem, QueueAdminKind, QueueAdminPage } from '../types'
-import { pageSizeMessage } from '../utils/apiErrors'
 import { listParams, PAGE_SIZE } from '../utils/queueAdmin'
 
 /** Llamadas a `/queue-admin/{kind}` (catálogos de la cola) con el cliente de Leo. */
@@ -33,7 +32,7 @@ export function useQueueAdminList(kind: QueueAdminKind) {
     pageSize: PAGE_SIZE,
     filters: [activeFilter],
     search,
-    mapError: err => `No se pudo cargar el listado. ${pageSizeMessage(err) ?? toUserMessage(err)}`
+    mapError: err => `No se pudo cargar el listado. ${leoErrorMessage(err)}`
   })
   return { ...list, search, activeFilter }
 }

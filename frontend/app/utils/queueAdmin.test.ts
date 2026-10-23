@@ -12,7 +12,7 @@ import {
   queueAdminErrorMessage,
   setDefaultSchema
 } from './queueAdmin'
-import { pageSizeMessage } from './apiErrors'
+import { LeoApiError } from '#leo-client/lib/errors'
 
 const item = (over: Partial<QueueAdminItem> = {}): QueueAdminItem => ({
   id: 'p1', code: 'urgente', name: 'Urgente', is_active: true,
@@ -141,16 +141,9 @@ describe('mensajes de error', () => {
 })
 
 describe('tope de page_size (ajuste del backend)', () => {
-  const tooBig = (details: unknown) => ({ status: 422, code: 'validation_error', message: 'crudo', details })
+  const tooBig = (details: unknown) => new LeoApiError(422, 'validation_error', 'El tamaño de página máximo permitido es 50.', details)
 
-  it('el 422 sobre page_size nombra el máximo vigente que trae el servidor', () => {
-    expect(queueAdminErrorMessage(tooBig({ field: 'page_size', max: 50 }), 'priorities')).toContain('máximo 50')
-    expect(pageSizeMessage(tooBig({ field: 'page_size' }))).toBe('Se pidieron más registros por página de los permitidos.')
-  })
-
-  it('otros errores no son del tope', () => {
-    expect(pageSizeMessage(tooBig({ field: 'q' }))).toBeNull()
-    expect(pageSizeMessage({ status: 409, details: { field: 'page_size' } })).toBeNull()
-    expect(pageSizeMessage(null)).toBeNull()
+  it('el 422 sobre page_size llega legible (mensaje del servidor con el máximo vigente)', () => {
+    expect(queueAdminErrorMessage(tooBig({ field: 'page_size', max: 50 }), 'priorities')).toBe('El tamaño de página máximo permitido es 50.')
   })
 })

@@ -71,7 +71,7 @@ async function fetchPage(next: number) {
     total.value = res.total
     page.value = next
   } catch (e) {
-    if (mine === token) error.value = pageSizeMessage(e) ?? leoErrorMessage(e)
+    if (mine === token) error.value = leoErrorMessage(e)
   } finally {
     if (mine === token) loading.value = false
   }

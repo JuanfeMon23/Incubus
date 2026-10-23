@@ -82,11 +82,10 @@ describe('ajustes del sistema', () => {
     expect(fake.bodies('PUT', '/settings/queue.timeout')).toEqual([{ value: 20, reason: 'Más holgura', expected_version: 3 }])
   })
 
-  it('un 422 por page_size al cargar se explica con el máximo, sin el texto crudo', async () => {
+  it('un 422 por page_size al cargar muestra el mensaje legible del servidor con el máximo', async () => {
     fake.routes['GET /settings'] = () =>
-      Promise.reject(new LeoApiError(422, 'validation_error', 'crudo', { field: 'page_size', max: 50 }))
+      Promise.reject(new LeoApiError(422, 'validation_error', 'El tamaño de página máximo permitido es 50.', { field: 'page_size', max: 50 }))
     const wrapper = await mountPage([TAGS.settings.view])
-    expect(wrapper.text()).toContain('máximo 50')
-    expect(wrapper.text()).not.toContain('crudo')
+    expect(wrapper.text()).toContain('máximo permitido es 50')
   })
 })
