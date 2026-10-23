@@ -10,13 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError, ValidationAppError
-from app.core.leo import Actor, CatalogReader, authorize, uuid_str
+from app.core.leo import Actor, CatalogReader, authorize, record_audit, uuid_str
 from app.core.permissions import (
     CHECKS_BY_STAGE,
     LAB_RECEIVE,
     LAB_UNRECEIVE,
     LBL_PRINT,
     REC_CLOSE,
+    RES_TRACE,
     SAM_COLLECT,
     TURN_STATUS_BY_STAGE,
     CanCheck,
@@ -27,7 +28,9 @@ from app.core.permissions import (
     CanUnreceive,
     CanViewAnyStage,
     CanViewLabels,
+    CanViewTrace,
 )
+from app.core.trace import record_sample_events
 from app.modules.activation import service as activation_service
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders import service
@@ -38,6 +41,7 @@ from app.modules.orders.labels import (
     render_labels_zpl,
 )
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
+from app.modules.orders.trace_view import build_trace
 from app.modules.queue import events
 from app.modules.queue.models import Patient
 from app.modules.queue.ownership import audit_not_owner, can_supervise
@@ -143,7 +147,9 @@ async def close_reception(
             [c.model_dump() for c in body.precondition_checks],
             supervisor=can_supervise(user, QueueStatus.EN_ATENCION_RECEPCION.value),
         )
-    activation_code = await activation_service.issue_code(session, order)
+    activation_code = await activation_service.issue_code(
+        session, order, Actor.of(user)
+    )
     await session.commit()
     await events.publish_entry(
         session,
@@ -412,7 +418,7 @@ async def prepare_samples(
 
 async def _labels(
     session: AsyncSession, entry_id: UUID
-) -> tuple[Order, list[LabelData]]:
+) -> tuple[Order, list[LabelData], list[OrderSample]]:
     order = await _entry_order(session, entry_id)
     patient = await session.get(Patient, order.patient_id)
     tubes = list(
@@ -440,17 +446,36 @@ async def _labels(
             ],
         )
     )
-    return order, [
-        LabelData(
-            patient_name=name,
-            order_number=order.order_number,
-            tube_name=t.name,
-            area_route=list(t.area_route),
-            cap_color_hex=t.cap_color_hex,
-            document=f"{patient.document_type} {patient.document_number}",
+    return (
+        order,
+        [
+            LabelData(
+                patient_name=name,
+                order_number=order.order_number,
+                tube_name=t.name,
+                area_route=list(t.area_route),
+                cap_color_hex=t.cap_color_hex,
+                document=f"{patient.document_type} {patient.document_number}",
+            )
+            for t in tubes
+        ],
+        tubes,
+    )
+
+
+async def _record_downloads(
+    session: AsyncSession, user: LeoUser, tubes: list[OrderSample], fmt: str
+) -> None:
+    for tube in tubes:
+        await record_sample_events(
+            session,
+            "labels.downloaded",
+            user,
+            tube,
+            summary=f"Etiquetas del tubo {tube.name} descargadas ({fmt})",
+            details={"format": fmt},
         )
-        for t in tubes
-    ]
+    await session.commit()
 
 
 @router.get("/barcode/{order_number}.svg")
@@ -467,9 +492,10 @@ async def barcode_svg(order_number: str) -> Response:
 
 @router.get("/by-entry/{entry_id}/labels.pdf")
 async def labels_pdf(
-    entry_id: UUID, session: Session, _user: CanPrintLabels
+    entry_id: UUID, session: Session, user: CanPrintLabels
 ) -> Response:
-    order, labels = await _labels(session, entry_id)
+    order, labels, tubes = await _labels(session, entry_id)
+    await _record_downloads(session, user, tubes, "pdf")
     filename = f"etiquetas-{order.order_number}.pdf"
     return Response(
         content=render_labels_pdf(labels),
@@ -482,13 +508,14 @@ async def labels_pdf(
 async def labels_zpl(
     entry_id: UUID,
     session: Session,
-    _user: CanPrintLabels,
+    user: CanPrintLabels,
     width_mm: Annotated[float, Query(ge=20, le=120)] = 70,
     height_mm: Annotated[float, Query(ge=15, le=120)] = 35,
     dpi: Annotated[int, Query(ge=150, le=600)] = 203,
 ) -> Response:
     """Etiquetas en ZPL II para impresora termica (descarga o envio crudo)."""
-    order, labels = await _labels(session, entry_id)
+    order, labels, tubes = await _labels(session, entry_id)
+    await _record_downloads(session, user, tubes, "zpl")
     filename = f"etiquetas-{order.order_number}.zpl"
     return Response(
         content=render_labels_zpl(
@@ -549,3 +576,66 @@ async def get_order(
             f"No existe la orden '{order_number}'.", {"order_number": order_number}
         )
     return await _order_detail(session, order)
+
+
+@router.get("/{order_number}/tests")
+async def order_tests(order_number: str, session: Session, user: CanViewTrace) -> dict:
+    """Pruebas de la orden (sin datos de paciente) para elegir cual trazar."""
+    order = (
+        await session.execute(select(Order).where(Order.order_number == order_number))
+    ).scalar_one_or_none()
+    if order is None:
+        raise NotFoundError(
+            f"No existe la orden '{order_number}'.", {"order_number": order_number}
+        )
+    rows = (
+        await session.execute(
+            select(OrderTest)
+            .where(OrderTest.order_id == order.id)
+            .order_by(OrderTest.created_at, OrderTest.test_code)
+        )
+    ).scalars()
+    return {
+        "order_number": order.order_number,
+        "order_id": str(order.id),
+        "tests": [
+            {
+                "id": str(t.id),
+                "code": t.test_code,
+                "name": t.test_name,
+                "area_code": t.area_code,
+                "validation_status": t.validation_status,
+            }
+            for t in rows
+        ],
+    }
+
+
+@router.get("/{order_number}/tests/{test_id}/trace")
+async def test_trace(
+    order_number: str,
+    test_id: UUID,
+    session: Session,
+    user: CanViewTrace,
+    page: Annotated[int, Query(ge=1, le=10_000)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict:
+    """Linea de tiempo (ascendente, paginada) de una prueba de la orden."""
+    order = (
+        await session.execute(select(Order).where(Order.order_number == order_number))
+    ).scalar_one_or_none()
+    test = await session.get(OrderTest, test_id)
+    if order is None or test is None or test.order_id != order.id:
+        raise NotFoundError(
+            f"La orden '{order_number}' no tiene la prueba '{test_id}'.",
+            {"order_number": order_number, "test_id": str(test_id)},
+        )
+    trace = await build_trace(session, order, test, page, page_size)
+    await record_audit(
+        RES_TRACE,
+        user,
+        entity_type="order_test",
+        entity_id=test_id,
+        after={"order_number": order_number, "page": page, "total": trace["total"]},
+    )
+    return trace

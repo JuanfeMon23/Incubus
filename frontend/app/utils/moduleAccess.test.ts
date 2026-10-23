@@ -12,7 +12,9 @@ describe('menú por permiso', () => {
       '/impresion-etiquetas': TAGS.labelPrinting.view,
       '/toma-muestras': TAGS.sampling.view,
       '/recepcion-laboratorio': TAGS.labReception.view,
-      '/resultados': TAGS.results.view
+      '/resultados': TAGS.results.view,
+      '/trazabilidad': TAGS.results.trace,
+      '/catalogos-cola': TAGS.queueAdmin.view
     })
   })
 

@@ -40,10 +40,17 @@ export const TAGS = {
   results: {
     view: t('results', 'view'),
     enter: t('results', 'enter'),
-    validate: t('results', 'validate')
+    validate: t('results', 'validate'),
+    trace: t('results', 'trace')
   },
   resultsDelivery: {
     view: t('results-delivery', 'view')
+  },
+  queueAdmin: {
+    view: t('queue-admin', 'view'),
+    create: t('queue-admin', 'create'),
+    update: t('queue-admin', 'update'),
+    toggle: t('queue-admin', 'toggle')
   }
 } as const
 

@@ -14,6 +14,7 @@ from app.core.exceptions import (
 )
 from app.core.leo import Actor
 from app.core.permissions import TURN_STATUS_BY_STAGE
+from app.core.trace import record_sample_events, record_test_event
 from app.modules.catalog_client.client import CatalogClient
 from app.modules.orders.errors import NoteRequiredError, UnansweredPreconditionsError
 from app.modules.orders.models import Order, OrderPrecondition, OrderSample, OrderTest
@@ -195,17 +196,35 @@ async def close_reception(
     session.add(order)
     await session.flush()
     area_codes = await catalog.areas_by_id() if tests else {}
+    order_tests = []
     for test in tests:
         area_id = test.get("area_id")
-        session.add(
-            OrderTest(
-                order_id=order.id,
-                test_code=test["code"],
-                test_name=test["name"],
-                snapshot=test,
-                area_id=str(area_id) if area_id else None,
-                area_code=area_codes.get(str(area_id)) if area_id else None,
-            )
+        order_test = OrderTest(
+            order_id=order.id,
+            test_code=test["code"],
+            test_name=test["name"],
+            snapshot=test,
+            area_id=str(area_id) if area_id else None,
+            area_code=area_codes.get(str(area_id)) if area_id else None,
+            created_by=actor.name,
+            created_by_user_id=actor.user_id,
+        )
+        session.add(order_test)
+        order_tests.append(order_test)
+    await session.flush()
+    for order_test in order_tests:
+        await record_test_event(
+            session,
+            "order.test_added",
+            actor,
+            order.id,
+            order_test.id,
+            summary=f"Prueba {order_test.test_code} agregada a la orden",
+            details={
+                "test_code": order_test.test_code,
+                "test_name": order_test.test_name,
+                "area_code": order_test.area_code,
+            },
         )
     now = datetime.now(UTC)
     for pre in preconditions:
@@ -222,6 +241,9 @@ async def close_reception(
             )
         )
     await session.flush()
+    for pre in preconditions:
+        answer = answers[pre["key"]]
+        await _record_check(session, actor, order.id, "reception", pre, None, answer)
     await queue_service.change_status(
         session,
         entry.id,
@@ -314,6 +336,16 @@ async def print_labels(
     ).scalars()
     for tube in tubes:
         tube.labels_printed_at = now
+        tube.labels_printed_by = actor.name
+        tube.labels_printed_by_user_id = actor.user_id
+        await record_sample_events(
+            session,
+            "labels.printed",
+            actor,
+            tube,
+            summary=f"Etiquetas del tubo {tube.name} impresas",
+            details={"assigned_professional_name": professional_name},
+        )
     entry.assigned_professional_id = professional_id
     entry.assigned_professional_name = professional_name
     await session.flush()
@@ -325,6 +357,34 @@ async def print_labels(
         note=f"asignado a {professional_name}",
     )
     return order
+
+
+async def _record_check(
+    session: AsyncSession,
+    actor: Actor,
+    order_id: UUID,
+    stage: str,
+    pre: "OrderPrecondition | dict",
+    before: dict | None,
+    after: dict,
+) -> None:
+    """Evento `precondition.checked` (de la orden) con la respuesta anterior y la nueva."""
+    get = pre.get if isinstance(pre, dict) else lambda k: getattr(pre, k)
+    met = "cumple" if after["met"] else "no cumple"
+    await record_test_event(
+        session,
+        "precondition.checked",
+        actor,
+        order_id,
+        summary=f"Precondición «{get('name')}» ({stage}): {met}",
+        details={
+            "stage": stage,
+            "key": get("key"),
+            "name": get("name"),
+            "before": before,
+            "after": after,
+        },
+    )
 
 
 async def save_checks(
@@ -364,6 +424,11 @@ async def save_checks(
     now = datetime.now(UTC)
     for row in rows:
         answer = answers[row.key]
+        before = {
+            "met": getattr(row, f"{stage}_met"),
+            "note": getattr(row, f"{stage}_note"),
+        }
+        await _record_check(session, actor, order.id, stage, row, before, answer)
         setattr(row, f"{stage}_met", answer["met"])
         setattr(row, f"{stage}_note", answer["note"])
         setattr(row, f"{stage}_checked_at", now)
@@ -425,5 +490,13 @@ async def set_collected(
     sample.collected_by = owner.name
     sample.collected_by_user_id = owner.user_id
     await session.flush()
+    await record_sample_events(
+        session,
+        "sample.collected" if collected else "sample.uncollected",
+        actor,
+        sample,
+        summary=f"Tubo {sample.name} "
+        + ("marcado como tomado" if collected else "desmarcado como tomado"),
+    )
     await queue_service.touch_entry(session, entry.id)
     return sample, entry.id

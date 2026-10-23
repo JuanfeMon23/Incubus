@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError
-from app.core.leo import record_audit
+from app.core.leo import client_of, record_audit
 from app.core.permissions import DEL_VIEW, CanViewDelivery
 from app.modules.activation import service
 
@@ -35,7 +35,13 @@ async def verify_activation(
         ip, body.document_type.strip().upper(), body.document_number.strip()
     )
     patient = await service.consume_code(
-        session, body.code, body.document_type, body.document_number, body.birth_date
+        session,
+        body.code,
+        body.document_type,
+        body.document_number,
+        body.birth_date,
+        actor=user,
+        client=client_of(user),
     )
     if patient is None:
         raise NotFoundError("Código de activación no válido.")

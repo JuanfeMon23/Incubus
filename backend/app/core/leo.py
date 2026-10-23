@@ -63,6 +63,11 @@ class Actor:
 NO_ACTOR = Actor()
 
 
+def client_of(user: LeoUser) -> str:
+    """Quien consume una API: el `client_id` del servicio o el usuario."""
+    return user.client_id or user.username
+
+
 def uuid_str(value: UUID | None) -> str | None:
     """Id de usuario para respuestas JSON (None si la fila es anterior a 0007)."""
     return None if value is None else str(value)

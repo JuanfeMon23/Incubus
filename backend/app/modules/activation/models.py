@@ -33,6 +33,9 @@ class ActivationCode(UUIDv7PK, Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    used_by_client: Mapped[str | None] = mapped_column(String(64))
+
     __table_args__ = (
         CheckConstraint("char_length(code_hash) = 64", name="hash_length"),
         CheckConstraint("expires_at > created_at", name="expires_after_creation"),

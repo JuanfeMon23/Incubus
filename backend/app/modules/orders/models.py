@@ -5,9 +5,11 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -16,6 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
 
 from app.core.db.base import Base
 from app.core.db.mixins import Timestamps, UUIDv7PK
@@ -66,6 +69,11 @@ class OrderTest(UUIDv7PK, Base):
     validated_by_id: Mapped[str | None] = mapped_column(String(64))
     validated_by_name: Mapped[str | None] = mapped_column(String(150))
     validated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str | None] = mapped_column(String(200))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class OrderPrecondition(UUIDv7PK, Base):
@@ -123,6 +131,10 @@ class OrderSample(UUIDv7PK, Base):
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     labels_printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    labels_printed_by: Mapped[str | None] = mapped_column(String(200))
+    labels_printed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True)
+    )
     collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     collected_by: Mapped[str | None] = mapped_column(String(120))
     collected_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -169,4 +181,41 @@ class OrderResult(UUIDv7PK, Base):
 
     __table_args__ = (
         UniqueConstraint("order_test_id", "analyte_code", name="analyte_per_test"),
+    )
+
+
+class OrderTestEvent(UUIDv7PK, Base):
+    """Linea de tiempo append-only de una prueba (o de la orden completa si
+    `order_test_id` es NULL). `occurred_at` lo asigna la BD; un trigger impide
+    UPDATE y DELETE. `step` tiene forma `area.accion` (p. ej. `muestra.recolectada`).
+    """
+
+    __tablename__ = "order_test_events"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    order_test_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_tests.id", ondelete="RESTRICT")
+    )
+    order_sample_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_samples.id", ondelete="RESTRICT")
+    )
+    step: Mapped[str] = mapped_column(String(40), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
+    )
+    actor_name: Mapped[str | None] = mapped_column(String(200))
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # Leo
+    staff_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # Vladimir
+    summary: Mapped[str] = mapped_column(String(300), nullable=False)
+    details: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    request_id: Mapped[str | None] = mapped_column(String(64))
+
+    __table_args__ = (
+        CheckConstraint(r"step ~ '^[a-z]+(\.[a-z_]+)+$'", name="step_format"),
+        Index("ix_order_test_events_order", "order_id", "occurred_at"),
+        Index("ix_order_test_events_test", "order_test_id", "occurred_at"),
     )
