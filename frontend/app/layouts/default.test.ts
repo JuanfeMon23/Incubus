@@ -29,7 +29,7 @@ async function menuLabels(tags: string[]) {
 }
 
 describe('menú lateral por permiso', () => {
-  it('con todos los view aparecen las ocho pantallas', async () => {
+  it('con todos los view aparecen las nueve pantallas', async () => {
     expect(await menuLabels(ALL)).toEqual([
       'Pre-recepción',
       'Recepción',
@@ -38,7 +38,8 @@ describe('menú lateral por permiso', () => {
       'Recepción laboratorio',
       'Resultados',
       'Trazabilidad',
-      'Catálogos de la cola'
+      'Catálogos de la cola',
+      'Ajustes del sistema'
     ])
   })
 
@@ -50,13 +51,14 @@ describe('menú lateral por permiso', () => {
     [TAGS.labReception.view, 'Recepción laboratorio'],
     [TAGS.results.view, 'Resultados'],
     [TAGS.results.trace, 'Trazabilidad'],
-    [TAGS.queueAdmin.view, 'Catálogos de la cola']
+    [TAGS.queueAdmin.view, 'Catálogos de la cola'],
+    [TAGS.settings.view, 'Ajustes del sistema']
   ])('con solo %s aparece únicamente «%s»', async (tag, label) => {
     expect(await menuLabels([tag])).toEqual([label])
   })
 
   it('los permisos de acción no abren pantallas por sí solos', async () => {
-    expect(await menuLabels([TAGS.preReception.enqueue, TAGS.results.validate, TAGS.resultsDelivery.view, TAGS.queueAdmin.create, TAGS.queueAdmin.update, TAGS.queueAdmin.toggle])).toEqual([])
+    expect(await menuLabels([TAGS.preReception.enqueue, TAGS.results.validate, TAGS.resultsDelivery.view, TAGS.queueAdmin.create, TAGS.queueAdmin.update, TAGS.queueAdmin.toggle, TAGS.settings.edit, TAGS.settings.editSecurity])).toEqual([])
   })
 
   it('el usuario y la app aparecen en la barra superior de Leo', async () => {

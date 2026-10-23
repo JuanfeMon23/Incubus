@@ -81,6 +81,15 @@ describe('pre-recepción', () => {
     )
   })
 
+  it('preselecciona la prioridad con is_default, no la de code «media»', async () => {
+    const priority = (id: string, code: string, rank: number, is_default: boolean) =>
+      ({ id, code, name: code, color_hex: '#999999', rank, is_default })
+    fake.routes['GET /priorities'] = [priority('a', 'media', 2, false), priority('b', 'normal', 1, true)]
+    const wrapper = await mountPage(PreReceptionPage, [TAGS.preReception.view, TAGS.preReception.enqueue])
+    const checked = [...wrapper.element.querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter((r) => r.checked)
+    expect(checked.map((r) => r.value)).toEqual(['b'])
+  })
+
   it('"Retirar" solo con remove', async () => {
     expect(btn(await mountPage(PreReceptionPage, allExcept(TAGS.preReception.remove)), 'Retirar')).toBeNull()
     expect(btn(await mountPage(PreReceptionPage, [TAGS.preReception.view, TAGS.preReception.remove]), 'Retirar')).not.toBeNull()

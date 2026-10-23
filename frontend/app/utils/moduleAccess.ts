@@ -28,7 +28,7 @@ export interface ScreenItem {
   tag: string
   section: string
   /** Clave del icono (ver `app/layouts/default.vue`). */
-  icon: 'intake' | 'reception' | 'printer' | 'sample' | 'inbox' | 'results' | 'catalog' | 'trace'
+  icon: 'intake' | 'reception' | 'printer' | 'sample' | 'inbox' | 'results' | 'catalog' | 'trace' | 'settings'
 }
 
 export const SCREENS: ScreenItem[] = [
@@ -39,7 +39,8 @@ export const SCREENS: ScreenItem[] = [
   { section: 'Laboratorio', label: 'Recepción laboratorio', to: '/recepcion-laboratorio', tag: TAGS.labReception.view, icon: 'inbox' },
   { section: 'Laboratorio', label: 'Resultados', to: '/resultados', tag: TAGS.results.view, icon: 'results' },
   { section: 'Laboratorio', label: 'Trazabilidad', to: '/trazabilidad', tag: TAGS.results.trace, icon: 'trace' },
-  { section: 'Administración', label: 'Catálogos de la cola', to: '/catalogos-cola', tag: TAGS.queueAdmin.view, icon: 'catalog' }
+  { section: 'Administración', label: 'Catálogos de la cola', to: '/catalogos-cola', tag: TAGS.queueAdmin.view, icon: 'catalog' },
+  { section: 'Administración', label: 'Ajustes del sistema', to: '/ajustes', tag: TAGS.settings.view, icon: 'settings' }
 ]
 
 /** Pantallas que el usuario puede abrir. */

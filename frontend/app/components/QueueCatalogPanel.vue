@@ -40,7 +40,10 @@
         <span class="font-mono text-xs text-text-muted">{{ row.code }}</span>
       </template>
       <template #cell-is_active="{ row }">
-        <UiStatusBadge :active="row.is_active" />
+        <div class="flex flex-wrap items-center gap-1">
+          <UiStatusBadge :active="row.is_active" />
+          <UiStatusBadge v-if="row.is_default === true" variant="primary" label="Por defecto" />
+        </div>
       </template>
       <template #cell-updated_at="{ row }">
         <span class="text-text-muted">{{ formatDateTime(row.updated_at) }}</span>
@@ -49,6 +52,14 @@
         <div class="flex flex-wrap justify-end gap-1">
           <LeoCan :tag="TAGS.queueAdmin.update">
             <UiButton variant="ghost" size="sm" :aria-label="`Editar ${row.name}`" @click="openEdit(row)">Editar</UiButton>
+            <UiButton
+              v-if="priority"
+              variant="ghost"
+              size="sm"
+              :disabled="!canMakeDefault(kind, row)"
+              :aria-label="`Hacer predeterminada ${row.name}`"
+              @click="openSetDefault(row)"
+            >Hacer predeterminada</UiButton>
           </LeoCan>
           <LeoCan :tag="TAGS.queueAdmin.toggle">
             <UiButton
@@ -97,6 +108,14 @@
       </UiFormField>
     </UiFormModal>
 
+    <QueueSetDefaultModal
+      v-if="defaulting"
+      v-model:open="defaultOpen"
+      :item="defaulting"
+      :kind="kind"
+      @saved="list.reload()"
+    />
+
     <UiConfirmModal
       v-model:open="reactivation.open"
       :title="`Reactivar ${info.noun}`"
@@ -113,7 +132,7 @@
 <script setup lang="ts">
 import type { UiDataTableColumn } from '#andromeda/components/ui/UiDataTable.vue'
 import type { QueueAdminItem, QueueAdminKind } from '../types'
-import { deactivateBlockedReason, deactivateSchema, isPriorityKind, KIND_INFO, queueAdminErrorMessage } from '../utils/queueAdmin'
+import { canMakeDefault, deactivateBlockedReason, deactivateSchema, isPriorityKind, KIND_INFO, queueAdminErrorMessage } from '../utils/queueAdmin'
 import { TAGS } from '../utils/tags'
 
 const props = defineProps<{ kind: QueueAdminKind }>()
@@ -173,6 +192,15 @@ const onDeactivate = deactivateForm.submit(async ({ reason }) => {
   deactivateOpen.value = false
   await list.reload()
 })
+
+// Hacer predeterminada (el modal es otro componente: dos formularios en uno comparten contexto)
+const defaultOpen = ref(false)
+const defaulting = ref<QueueAdminItem | null>(null)
+function openSetDefault(row: QueueAdminItem) {
+  if (!canMakeDefault(props.kind, row)) return
+  defaulting.value = row
+  defaultOpen.value = true
+}
 
 // Reactivar (confirmación)
 const reactivation = useConfirmAction(
