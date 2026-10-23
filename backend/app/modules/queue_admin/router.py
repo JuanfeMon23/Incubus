@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.leo import record_audit
+from app.core.pagination import enforce_max_page_size
 from app.core.permissions import (
     QAD_CREATE,
     QAD_TOGGLE,
@@ -29,6 +30,40 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 router = APIRouter(tags=["queue-admin"])
 
 
+@router.post("/priorities/{item_id}/set-default", response_model=CatalogAdminRead)
+async def set_default_priority(
+    item_id: UUID,
+    session: Session,
+    user: CanUpdateQueueAdmin,
+    body: ToggleInput | None = None,
+):
+    """Cambia la prioridad por defecto del ingreso (debe estar activa)."""
+    row, previous = await service.set_default(session, item_id)
+    await session.commit()
+    reason = ((body.reason if body else None) or "").strip() or None
+    k = service.kind_of("priorities")
+    if previous is not None:
+        await record_audit(
+            QAD_UPDATE,
+            user,
+            entity_type=k.entity_type,
+            entity_id=previous.id,
+            before={"is_default": True},
+            after={"is_default": False},
+            reason=reason,
+        )
+    await record_audit(
+        QAD_UPDATE,
+        user,
+        entity_type=k.entity_type,
+        entity_id=row.id,
+        before={"is_default": False},
+        after={"is_default": True},
+        reason=reason,
+    )
+    return row
+
+
 @router.get("/{kind}", response_model=CatalogPage)
 async def list_items(
     kind: CatalogKind,
@@ -37,8 +72,9 @@ async def list_items(
     q: Annotated[str | None, Query(max_length=100)] = None,
     is_active: bool | None = None,
     page: Annotated[int, Query(ge=1, le=10_000)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    page_size: Annotated[int, Query(ge=1)] = 20,
 ) -> dict:
+    await enforce_max_page_size("pagination.queue_admin_max_page_size", page_size)
     items, total = await service.list_items(
         session,
         service.kind_of(kind),

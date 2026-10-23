@@ -187,6 +187,31 @@ QAD_TOGGLE = _action(
     "Activar o desactivar prioridades y motivos (nada se borra).",
 )  # fmt: skip
 
+# --- Ajustes ---------------------------------------------------------------------------
+_SET = _module(
+    "settings", "Ajustes",
+    "Umbrales operativos de Incubus editables sin reiniciar (con historial).",
+)  # fmt: skip
+SET_VIEW = _action(
+    _SET, "view", "Consultar los ajustes",
+    "Ver los ajustes, su valor vigente, rango e historial de cambios.",
+)  # fmt: skip
+SET_EDIT = _action(
+    _SET, "edit", "Editar ajustes",
+    "Cambiar el valor de los ajustes operativos (con motivo).",
+)  # fmt: skip
+SET_EDIT_SECURITY = _action(
+    _SET, "edit-security", "Editar ajustes de seguridad",
+    "Cambiar además los ajustes marcados como de seguridad (vigencia y límites "
+    "de intentos del código de activación). Se suma a «Editar ajustes».",
+)  # fmt: skip
+# Evento de auditoria (no protege ninguna ruta): lo registra `settings.router`.
+SET_UPDATE = _action(
+    _SET, "update", "Evento: ajuste modificado",
+    "Evento de auditoría con el valor anterior, el nuevo y el motivo.",
+)  # fmt: skip
+auth.used_tags.add(SET_UPDATE)
+
 # Etapa (estado de la cola) -> permiso `view` de la pantalla que la muestra.
 # Fuente unica para `GET /queue`, `GET /queue/{id}` y los rooms de Socket.IO.
 STAGE_VIEW: dict[str, str] = {

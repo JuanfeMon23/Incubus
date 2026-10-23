@@ -50,6 +50,7 @@ _prepare_test_database()
 
 import time
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
@@ -62,6 +63,7 @@ from leo_sdk.models import Introspection, IntrospectUser
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core import runtime_settings
 from app.core.database import engine
 from app.core.database import get_session as real_get_session
 from app.core.leo import auth
@@ -318,7 +320,23 @@ async def session() -> AsyncGenerator[AsyncSession]:
             join_transaction_mode="create_savepoint",
         )
         async with maker() as test_session:
-            yield test_session
+            # Los ajustes se leen/escriben en la sesion del test (misma
+            # transaccion, revertida al final), sembrados con sus defaults.
+            store = runtime_settings.store
+            original_factory = store.session_factory
+
+            @asynccontextmanager
+            async def shared_session() -> AsyncGenerator[AsyncSession]:
+                yield test_session
+
+            store.session_factory = shared_session
+            store.invalidate()
+            await store.sync_registry()
+            try:
+                yield test_session
+            finally:
+                store.session_factory = original_factory
+                store.invalidate()
         await outer.rollback()
 
 

@@ -10,6 +10,7 @@ from leo_sdk import LeoUser
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import runtime_settings
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.leo import Actor
@@ -65,7 +66,7 @@ async def issue_code(
     """Crea el codigo de la orden y lo devuelve en claro (UNICA vez)."""
     code = generate_code()
     expires_at = datetime.now(UTC) + timedelta(
-        days=get_settings().activation_code_ttl_days
+        days=await runtime_settings.get("activation.code_ttl_days")
     )
     session.add(
         ActivationCode(
@@ -88,14 +89,20 @@ async def issue_code(
     return display_code(code)
 
 
-def check_rate_limit(ip: str, document_type: str, document_number: str) -> None:
-    s = get_settings()
+async def check_rate_limit(ip: str, document_type: str, document_number: str) -> None:
+    """Limites y ventana vigentes de Ajustes, leidos en cada intento."""
+    s = await runtime_settings.get_many(
+        "activation.verify_max_per_ip_doc",
+        "activation.verify_max_per_doc",
+        "activation.verify_window_seconds",
+    )
+    window = s["activation.verify_window_seconds"]
     doc = f"{document_type}:{document_number}"
     for key, limit in (
-        (f"ip-doc:{ip}:{doc}", s.activation_verify_max_per_ip_doc),
-        (f"doc:{doc}", s.activation_verify_max_per_doc),
+        (f"ip-doc:{ip}:{doc}", s["activation.verify_max_per_ip_doc"]),
+        (f"doc:{doc}", s["activation.verify_max_per_doc"]),
     ):
-        wait = limiter.hit(key, limit, s.activation_verify_window_seconds)
+        wait = limiter.hit(key, limit, window)
         if wait is not None:
             raise TooManyAttemptsError(
                 "Demasiados intentos. Intenta más tarde.",

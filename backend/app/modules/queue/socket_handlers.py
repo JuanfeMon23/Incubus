@@ -26,7 +26,7 @@ from typing import Any
 import socketio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core import runtime_settings
 from app.core.database import AsyncSessionLocal
 from app.core.realtime import (
     Principal,
@@ -110,7 +110,8 @@ class QueueNamespace(socketio.AsyncNamespace):
         if not all(authorize_room(principal, r) for r in wanted):
             return _error("forbidden")
         current = self._joined(sid)
-        if len(set(current) | set(wanted)) > get_settings().socketio_max_rooms:
+        max_rooms = await runtime_settings.get("realtime.socket_max_rooms")
+        if len(set(current) | set(wanted)) > max_rooms:
             return _error("too_many_rooms")
         for room in wanted:
             await self.enter_room(sid, room)

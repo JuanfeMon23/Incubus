@@ -13,8 +13,9 @@ import pytest
 import pytest_asyncio
 import socketio
 import uvicorn
+from leo_sdk.settings_store import SYSTEM_ACTOR
 
-from app.core import realtime
+from app.core import realtime, runtime_settings
 from app.core.config import get_settings
 from app.main import app
 from app.modules.orders.tests.test_sampling import (
@@ -269,14 +270,21 @@ async def test_subscribe_con_un_room_invalido_no_une_ninguno(connect):
     assert (await probe.subscribe())["joined"] == []
 
 
-async def test_subscribe_limita_los_rooms_por_socket(connect, monkeypatch):
-    monkeypatch.setattr(get_settings(), "socketio_max_rooms", 2)
+async def test_subscribe_limita_los_rooms_por_socket(connect, client, session):
+    # El tope sale de Ajustes (`realtime.socket_max_rooms`, minimo 5), por peticion.
+    await runtime_settings.store.update(
+        "realtime.socket_max_rooms", 5, "Prueba del tope", SYSTEM_ACTOR, 1
+    )
     probe = await connect()
-    assert (await probe.subscribe("stage:pre_recepcion"))["ok"] is True
-    ack = await probe.subscribe("stage:en_laboratorio", "stage:finalizada")
+    first = ("pre_recepcion", "en_atencion_recepcion", "en_espera_impresion")
+    ack = await probe.subscribe(*(f"stage:{s}" for s in first))
+    assert ack["ok"] is True
+    ack = await probe.subscribe(
+        "stage:en_espera_toma_muestras", "stage:en_laboratorio", "stage:finalizada"
+    )
     assert ack["ok"] is False
     assert ack["error"] == "too_many_rooms"
-    assert (await probe.subscribe())["joined"] == ["stage:pre_recepcion"]
+    assert len((await probe.subscribe())["joined"]) == 3
 
 
 async def test_unsubscribe_sale_del_room_y_deja_de_recibir(connect, client):

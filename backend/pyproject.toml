@@ -8,7 +8,7 @@ dependencies = [
     "asyncpg>=0.31.0",
     "fastapi>=0.142.2",
     "httpx>=0.28.1",
-    "leo-sdk",
+    "leo-sdk[settings]",
     "pydantic-settings>=2.15.0",
     "python-socketio>=5.17.0",
     "reportlab>=5.0.1",
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-leo-sdk = { git = "https://github.com/JuanfeMon23/Leo.git", subdirectory = "sdk/python", tag = "v0.2.0" }
+leo-sdk = { git = "https://github.com/JuanfeMon23/Leo.git", subdirectory = "sdk/python", tag = "v0.8.0" }
 
 [dependency-groups]
 dev = [

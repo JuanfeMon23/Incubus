@@ -3,6 +3,9 @@
 Nada se borra: las filas las referencian turnos e historial. Desactivar las
 saca de los selectores (`/priorities`, `/removal-reasons`, `/return-reasons`),
 pero los turnos existentes siguen mostrandolas.
+
+La prioridad por defecto del ingreso es la fila con `is_default` (una sola, por
+indice unico parcial); no se puede desactivar y se cambia con `set_default`.
 """
 
 import re
@@ -17,8 +20,6 @@ from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
 from app.modules.queue.models import Priority, RemovalReason, ReturnReason
 from app.modules.queue_admin.schemas import CatalogCreate, CatalogKind, CatalogUpdate
 
-# Prioridad que la pantalla de ingreso preselecciona: no se puede desactivar.
-DEFAULT_PRIORITY_CODE = "media"
 CODE_RE = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -45,7 +46,11 @@ def kind_of(slug: CatalogKind) -> Kind:
 def snapshot(row: Any) -> dict[str, Any]:
     data = {"code": row.code, "name": row.name, "is_active": row.is_active}
     if hasattr(row, "rank"):
-        data |= {"color_hex": row.color_hex, "rank": row.rank}
+        data |= {
+            "color_hex": row.color_hex,
+            "rank": row.rank,
+            "is_default": row.is_default,
+        }
     return data
 
 
@@ -234,7 +239,7 @@ async def set_active(
         state = "activo" if active else "inactivo"
         raise ConflictError(f"El elemento ya está {state}.", {"is_active": active})
     if not active and kind.has_style:
-        if row.code == DEFAULT_PRIORITY_CODE:
+        if row.is_default:
             raise ConflictError(
                 "No se puede desactivar la prioridad por defecto del ingreso.",
                 {"code": row.code},
@@ -254,3 +259,30 @@ async def set_active(
     await session.flush()
     await session.refresh(row)
     return row
+
+
+async def set_default(session: AsyncSession, item_id: UUID) -> tuple[Priority, Any]:
+    """Hace de `item_id` la prioridad por defecto del ingreso (atomico: bajo el
+    candado del catalogo se baja la anterior y se sube la nueva en la misma
+    transaccion). Debe estar activa. Devuelve (nueva, anterior | None)."""
+    kind = KINDS["priorities"]
+    await _lock(session, kind)
+    row = await get(session, kind, item_id, lock=True)
+    if row.is_default:
+        raise ConflictError("Esa ya es la prioridad por defecto.", {"code": row.code})
+    if not row.is_active:
+        raise ConflictError(
+            "La prioridad por defecto debe estar activa.", {"code": row.code}
+        )
+    previous = (
+        await session.execute(
+            select(Priority).where(Priority.is_default).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if previous is not None:
+        previous.is_default = False
+        await session.flush()  # el indice unico parcial exige bajarla primero
+    row.is_default = True
+    await session.flush()
+    await session.refresh(row)
+    return row, previous

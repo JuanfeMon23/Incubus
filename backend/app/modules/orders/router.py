@@ -8,9 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import runtime_settings
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.core.leo import Actor, CatalogReader, authorize, record_audit, uuid_str
+from app.core.pagination import enforce_max_page_size
 from app.core.permissions import (
     CHECKS_BY_STAGE,
     LAB_RECEIVE,
@@ -509,11 +511,18 @@ async def labels_zpl(
     entry_id: UUID,
     session: Session,
     user: CanPrintLabels,
-    width_mm: Annotated[float, Query(ge=20, le=120)] = 70,
-    height_mm: Annotated[float, Query(ge=15, le=120)] = 35,
-    dpi: Annotated[int, Query(ge=150, le=600)] = 203,
+    width_mm: Annotated[float | None, Query(ge=20, le=120)] = None,
+    height_mm: Annotated[float | None, Query(ge=15, le=120)] = None,
+    dpi: Annotated[int | None, Query(ge=150, le=600)] = None,
 ) -> Response:
-    """Etiquetas en ZPL II para impresora termica (descarga o envio crudo)."""
+    """Etiquetas en ZPL II para impresora termica (descarga o envio crudo).
+    Sin medidas, usa los valores por defecto de Ajustes (`labels.*`)."""
+    defaults = await runtime_settings.get_many(
+        "labels.default_width_mm", "labels.default_height_mm", "labels.default_dpi"
+    )
+    width_mm = defaults["labels.default_width_mm"] if width_mm is None else width_mm
+    height_mm = defaults["labels.default_height_mm"] if height_mm is None else height_mm
+    dpi = defaults["labels.default_dpi"] if dpi is None else dpi
     order, labels, tubes = await _labels(session, entry_id)
     await _record_downloads(session, user, tubes, "zpl")
     filename = f"etiquetas-{order.order_number}.zpl"
@@ -618,9 +627,10 @@ async def test_trace(
     session: Session,
     user: CanViewTrace,
     page: Annotated[int, Query(ge=1, le=10_000)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=200)] = 50,
+    page_size: Annotated[int, Query(ge=1)] = 50,
 ) -> dict:
     """Linea de tiempo (ascendente, paginada) de una prueba de la orden."""
+    await enforce_max_page_size("pagination.orders_max_page_size", page_size)
     order = (
         await session.execute(select(Order).where(Order.order_number == order_number))
     ).scalar_one_or_none()
