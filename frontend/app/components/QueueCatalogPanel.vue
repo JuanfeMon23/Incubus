@@ -25,7 +25,7 @@
       :rows="list.rows.value"
       :loading="list.loading.value"
       :page="list.page.value"
-      :page-size="list.pageSize"
+      :page-size="list.pageSize.value"
       :total="list.total.value"
       :search-term="list.searchTerm.value"
       empty-message="No hay registros con estos filtros."
