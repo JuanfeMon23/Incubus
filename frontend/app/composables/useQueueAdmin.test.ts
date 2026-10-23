@@ -31,7 +31,7 @@ async function mountList() {
 describe('useQueueAdminList', () => {
   it('carga al montar y expone total', async () => {
     const list = await mountList()
-    expect(fake.requests).toHaveBeenCalledWith('GET', '/queue-admin/priorities', { params: { page: 1, page_size: 20 } })
+    expect(fake.requests).toHaveBeenCalledWith('GET', '/queue-admin/priorities', { params: { page: 1, page_size: 20 }, signal: expect.any(AbortSignal) })
     expect(list.total.value).toBe(45)
   })
 
@@ -39,7 +39,7 @@ describe('useQueueAdminList', () => {
     const list = await mountList()
     list.page.value = 2
     await flushAll()
-    expect(fake.requests).toHaveBeenLastCalledWith('GET', '/queue-admin/priorities', { params: { page: 2, page_size: 20 } })
+    expect(fake.requests).toHaveBeenLastCalledWith('GET', '/queue-admin/priorities', { params: { page: 2, page_size: 20 }, signal: expect.any(AbortSignal) })
   })
 
   it('buscar o filtrar vuelve a la página 1 con una sola petición', async () => {
@@ -52,7 +52,8 @@ describe('useQueueAdminList', () => {
     await flushAll()
     expect(fake.requests).toHaveBeenCalledTimes(1)
     expect(fake.requests).toHaveBeenCalledWith('GET', '/queue-admin/priorities', {
-      params: { page: 1, page_size: 20, q: 'alta', is_active: false }
+      params: { page: 1, page_size: 20, q: 'alta', is_active: false },
+      signal: expect.any(AbortSignal)
     })
     expect(list.page.value).toBe(1)
   })

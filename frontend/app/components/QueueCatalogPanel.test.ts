@@ -70,7 +70,7 @@ describe('QueueCatalogPanel · permisos por botón', () => {
 
   it('pide la lista con page y page_size y muestra el chip de color', async () => {
     const wrapper = await mountPanel(ALL)
-    expect(fake.requests).toHaveBeenCalledWith('GET', '/queue-admin/priorities', { params: { page: 1, page_size: 20 } })
+    expect(fake.requests).toHaveBeenCalledWith('GET', '/queue-admin/priorities', { params: { page: 1, page_size: 20 }, signal: expect.any(AbortSignal) })
     expect(wrapper.find('span[style*="background-color"]').exists()).toBe(true)
   })
 
