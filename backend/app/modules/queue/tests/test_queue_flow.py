@@ -47,6 +47,19 @@ async def test_paciente_no_puede_estar_dos_veces(client):
     assert dup.status_code == 409
 
 
+async def test_paciente_con_turno_finalizado_puede_volver_a_la_cola(client, session):
+    first = (await _enter(client)).json()
+    await session.execute(
+        text("UPDATE queue_entries SET status = 'finalizada' WHERE id = :e"),
+        {"e": first["id"]},
+    )
+    again = await _enter(client)
+    assert again.status_code == 201
+    assert again.json()["id"] != first["id"]
+    # con un turno activo, otro ingreso sigue rechazado
+    assert (await _enter(client)).status_code == 409
+
+
 async def test_claim_devolver_y_retirar_con_motivo(client):
     entry = (await _enter(client)).json()
     _, removal, ret = await _ids(client)
