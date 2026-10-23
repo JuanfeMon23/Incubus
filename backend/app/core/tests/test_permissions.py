@@ -51,6 +51,8 @@ SINGLE_TAG = [
     ("POST", "/results/tests/{x}/validate", p.RES_VALIDATE),
     ("GET", "/delivery/orders/123", p.DEL_VIEW),
     ("GET", "/delivery/orders/123/report.pdf", p.DEL_VIEW),
+    ("GET", "/delivery/patients/CC/123/orders", p.DEL_VIEW),
+    ("POST", "/delivery/activation/verify", p.DEL_VIEW),
 ]
 ALL = set(catalog.tags)
 

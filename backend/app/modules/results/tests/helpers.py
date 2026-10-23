@@ -131,7 +131,9 @@ def setup_catalog(catalog) -> None:
     )
 
 
-async def order_in_laboratory(client, catalog, test_codes=("GLU", "LIP", "VIH")):
+async def order_in_laboratory(
+    client, catalog, test_codes=("GLU", "LIP", "VIH"), extra: dict | None = None
+):
     """Recorre recepcion -> impresion -> toma -> recepcion en laboratorio.
 
     Devuelve `(entry_id, order_number)` con la entrada en `en_laboratorio`.
@@ -152,6 +154,8 @@ async def order_in_laboratory(client, catalog, test_codes=("GLU", "LIP", "VIH"))
     )
     assert close.status_code == 200, close.text
     number = close.json()["order_number"]
+    if extra is not None:  # respuesta completa del cierre (p. ej. activation_code)
+        extra.update(close.json())
     r = await client.post(
         f"/api/v1/orders/by-entry/{eid}/print-labels", json={**PRO, "actor": "i"}
     )
