@@ -31,7 +31,7 @@ async def verify_activation(
 ) -> dict:
     """Consume el codigo si coincide TODO; cualquier fallo es el mismo 404."""
     ip = request.client.host if request.client else "unknown"
-    service.check_rate_limit(
+    await service.check_rate_limit(
         ip, body.document_type.strip().upper(), body.document_number.strip()
     )
     patient = await service.consume_code(

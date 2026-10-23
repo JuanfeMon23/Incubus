@@ -32,6 +32,8 @@ class CatalogRead(BaseModel):
 class PriorityRead(CatalogRead):
     color_hex: str
     rank: int
+    # La que el ingreso preselecciona (una sola, siempre activa).
+    is_default: bool
 
 
 class PatientIn(BaseModel):

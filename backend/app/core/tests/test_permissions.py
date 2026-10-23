@@ -33,6 +33,11 @@ SINGLE_TAG = [
     ("GET", "/queue-admin/priorities/{x}", p.QAD_VIEW),
     ("POST", "/queue-admin/priorities", p.QAD_CREATE),
     ("PATCH", "/queue-admin/removal-reasons/{x}", p.QAD_UPDATE),
+    ("POST", "/queue-admin/priorities/{x}/set-default", p.QAD_UPDATE),
+    ("GET", "/settings", p.SET_VIEW),
+    ("GET", "/settings/realtime.sweep_seconds/history", p.SET_VIEW),
+    ("PUT", "/settings/realtime.sweep_seconds", p.SET_EDIT),
+    ("PUT", "/settings/unknown.key", p.SET_EDIT),
     ("POST", "/queue-admin/return-reasons/{x}/activate", p.QAD_TOGGLE),
     ("POST", "/queue-admin/return-reasons/{x}/deactivate", p.QAD_TOGGLE),
     ("GET", "/orders/{x}/tests/{x}/trace", p.RES_TRACE),
@@ -367,7 +372,7 @@ async def test_a_service_with_delivery_permission_reads_delivery(
 def test_catalog_declared_equals_used_tags() -> None:
     auth.check_catalog()  # ningun tag usado sin declarar
     assert set(catalog.tags) == set(auth.used_tags)
-    assert len(catalog.tags) == 30
+    assert len(catalog.tags) == 34
 
 
 def test_catalog_payload_has_readable_unique_names_per_module() -> None:
@@ -382,6 +387,7 @@ def test_catalog_payload_has_readable_unique_names_per_module() -> None:
         "results",
         "results-delivery",
         "queue-admin",
+        "settings",
     ]
     for module in payload["modules"]:
         names = [a["name"] for a in module["actions"]]

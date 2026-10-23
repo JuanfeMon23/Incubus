@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from leo_sdk import leo_router
 
+from app.core import runtime_settings
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.leo import auth
@@ -29,6 +30,7 @@ from app.modules.results.router import (
     results_router,
     validators_router,
 )
+from app.modules.settings.router import settings_router
 
 queue_namespace = QueueNamespace(QUEUE_NAMESPACE)
 log = logging.getLogger(__name__)
@@ -37,7 +39,8 @@ log = logging.getLogger(__name__)
 async def _sweep_expired_sockets() -> None:
     """Desconecta sockets con el access token vencido (sin llamar a Leo)."""
     while True:
-        await asyncio.sleep(get_settings().socketio_sweep_seconds)
+        # Se lee en cada ciclo: un cambio en Ajustes aplica sin reiniciar.
+        await asyncio.sleep(await runtime_settings.get("realtime.sweep_seconds"))
         try:
             await queue_namespace.disconnect_expired()
         except Exception:
@@ -49,6 +52,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Falla al arrancar si algun `require_action` usa un tag sin declarar. La
     # sincronizacion con Leo NO va aqui (ver `python -m app.core.leo_sync`).
     auth.check_catalog()
+    await runtime_settings.sync_on_startup()
     sweeper = asyncio.create_task(_sweep_expired_sockets())
     try:
         yield
@@ -80,6 +84,7 @@ app.include_router(catalogs_router, prefix="/api/v1")
 app.include_router(patients_router, prefix="/api/v1/patients")
 app.include_router(queue_router, prefix="/api/v1/queue")
 app.include_router(queue_admin_router, prefix="/api/v1/queue-admin")
+app.include_router(settings_router, prefix="/api/v1/settings")
 app.include_router(orders_router, prefix="/api/v1/orders")
 app.include_router(catalog_router, prefix="/api/v1/catalog")
 app.include_router(validators_router, prefix="/api/v1/catalog")

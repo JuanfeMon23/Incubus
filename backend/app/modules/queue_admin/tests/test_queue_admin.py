@@ -1,6 +1,7 @@
 """Administracion de catalogos de la cola: CRUD, reglas y selectores."""
 
 import pytest
+from sqlalchemy import select
 
 from app.conftest import FakeLeo
 from app.core import permissions as p
@@ -223,6 +224,128 @@ async def test_last_active_priority_cannot_be_deactivated(client, session) -> No
     )
     assert r.status_code == 409
     assert "al menos una" in r.json()["message"]
+
+
+# --- Prioridad por defecto --------------------------------------------------------
+
+
+async def _default_codes(client) -> list[str]:
+    page = (await client.get(f"{A}/priorities?page_size=100")).json()
+    return [i["code"] for i in page["items"] if i["is_default"]]
+
+
+async def test_backfill_leaves_media_as_the_only_default(client) -> None:
+    assert await _default_codes(client) == ["media"]
+    # los motivos no tienen el campo
+    otro = await _by_code(client, "removal-reasons", "otro")
+    assert otro["is_default"] is None
+
+
+async def test_set_default_switches_atomically_and_audits(client, leo) -> None:
+    alta = await _by_code(client, "priorities", "alta")
+    media = await _by_code(client, "priorities", "media")
+    r = await client.post(
+        f"{A}/priorities/{alta['id']}/set-default", json={"reason": "demanda"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["is_default"] is True
+    assert await _default_codes(client) == ["alta"]
+    events = _audit(leo, p.QAD_UPDATE)
+    assert {(e["entity_id"], e["changes"]["is_default"]["after"]) for e in events} == {
+        (alta["id"], True),
+        (media["id"], False),
+    }
+    assert {e["reason"] for e in events} == {"demanda"}
+    # la anterior ya se puede desactivar; la nueva no
+    assert (
+        await client.post(
+            f"{A}/priorities/{media['id']}/deactivate", json={"reason": "x"}
+        )
+    ).status_code == 200
+    blocked = await client.post(
+        f"{A}/priorities/{alta['id']}/deactivate", json={"reason": "x"}
+    )
+    assert blocked.status_code == 409 and "por defecto" in blocked.json()["message"]
+
+
+async def test_set_default_requires_an_active_priority(client) -> None:
+    baja = await _by_code(client, "priorities", "baja")
+    await client.post(f"{A}/priorities/{baja['id']}/deactivate", json={"reason": "x"})
+    r = await client.post(f"{A}/priorities/{baja['id']}/set-default")  # sin cuerpo
+    assert r.status_code == 409 and "activa" in r.json()["message"]
+    assert await _default_codes(client) == ["media"]
+
+
+async def test_set_default_on_the_current_default_is_a_conflict(client) -> None:
+    media = await _by_code(client, "priorities", "media")
+    r = await client.post(f"{A}/priorities/{media['id']}/set-default")
+    assert r.status_code == 409
+    assert await _default_codes(client) == ["media"]
+
+
+async def test_set_default_unknown_id_is_404(client) -> None:
+    r = await client.post(
+        f"{A}/priorities/00000000-0000-0000-0000-000000000000/set-default"
+    )
+    assert r.status_code == 404
+
+
+async def test_the_database_allows_only_one_default(session) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    from app.modules.queue.models import Priority
+
+    row = (
+        await session.execute(select(Priority).where(Priority.code == "alta"))
+    ).scalar_one()
+    with pytest.raises(IntegrityError):
+        async with session.begin_nested():
+            row.is_default = True
+            await session.flush()
+
+
+async def test_new_priorities_are_not_default_and_cannot_be_edited_into_it(
+    client,
+) -> None:
+    created = (await client.post(f"{A}/priorities", json={**PRIO, "rank": 10})).json()
+    assert created["is_default"] is False
+    assert await _default_codes(client) == ["media"]
+    r = await client.patch(f"{A}/priorities/{created['id']}", json={"is_default": True})
+    assert r.status_code == 422  # solo se cambia con la accion dedicada
+
+
+async def test_public_selector_exposes_is_default(client) -> None:
+    prios = (await client.get("/api/v1/priorities")).json()
+    assert [(i["code"], i["is_default"]) for i in prios] == [
+        ("extrema", False),
+        ("alta", False),
+        ("media", True),
+        ("baja", False),
+    ]
+    alta = await _by_code(client, "priorities", "alta")
+    await client.post(f"{A}/priorities/{alta['id']}/set-default")
+    prios = (await client.get("/api/v1/priorities")).json()
+    assert [i["code"] for i in prios if i["is_default"]] == ["alta"]
+
+
+async def test_set_default_concurrent_requests_leave_exactly_one(
+    committed_client,
+) -> None:
+    import asyncio
+
+    c = committed_client
+    ids = {
+        code: (await _by_code(c, "priorities", code))["id"] for code in ("alta", "baja")
+    }
+    try:
+        results = await asyncio.gather(
+            *(c.post(f"{A}/priorities/{i}/set-default") for i in ids.values())
+        )
+        assert sorted(r.status_code for r in results) == [200, 200]
+        assert len(await _default_codes(c)) == 1
+    finally:
+        media = await _by_code(c, "priorities", "media")
+        await c.post(f"{A}/priorities/{media['id']}/set-default")
 
 
 # --- Selectores y turnos existentes ------------------------------------------------

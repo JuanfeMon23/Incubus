@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import ClassVar
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -36,9 +37,19 @@ class Priority(CatalogMixin, Base):
 
     color_hex: Mapped[str] = mapped_column(String(7), nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    # La que preselecciona el ingreso; solo una (indice unico parcial).
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
 
     __table_args__ = (
         CheckConstraint("color_hex ~ '^#[0-9A-Fa-f]{6}$'", name="color_hex_format"),
+        Index(
+            "uq_priorities_single_default",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
     )
 
 

@@ -21,6 +21,8 @@ class CatalogAdminRead(BaseModel):
     updated_at: datetime
     color_hex: str | None = None
     rank: int | None = None
+    # Solo prioridades: la que el ingreso preselecciona (null en los motivos).
+    is_default: bool | None = None
 
 
 class CatalogPage(BaseModel):

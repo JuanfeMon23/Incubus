@@ -21,6 +21,7 @@ from uuid import UUID
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import runtime_settings
 from app.core.leo import uuid_str
 from app.core.trace import as_uuid
 from app.modules.activation.models import ActivationCode
@@ -34,6 +35,7 @@ from app.modules.orders.models import (
 )
 from app.modules.queue.models import QueueStatusHistory
 
+# Tolerancia por defecto; la vigente sale de Ajustes (`trace.dedup_tolerance_seconds`).
 TOLERANCE = timedelta(seconds=2)
 MATCH_KEYS = ("sample_id", "analyte_code", "stage")
 EQUIVALENT = {"result.entered": {"result.entered", "result.changed"}}
@@ -111,10 +113,12 @@ def _real(e: OrderTestEvent) -> dict:
     )
 
 
-def _covered(derived: dict, reals: list[dict]) -> bool:
+def _covered(
+    derived: dict, reals: list[dict], tolerance: timedelta = TOLERANCE
+) -> bool:
     steps = EQUIVALENT.get(derived["step"], {derived["step"]})
     for r in reals:
-        if r["step"] not in steps or abs(r["at"] - derived["at"]) > TOLERANCE:
+        if r["step"] not in steps or abs(r["at"] - derived["at"]) > tolerance:
             continue
         if all(
             str(derived["details"][k]) == str(r["details"].get(k))
@@ -362,7 +366,10 @@ async def build_trace(
         *await _precondition_items(session, order),
         *await _activation_items(session, order),
     ]
-    derived = [d for d in candidates if not _covered(d, reals)]
+    tolerance = timedelta(
+        seconds=await runtime_settings.get("trace.dedup_tolerance_seconds")
+    )
+    derived = [d for d in candidates if not _covered(d, reals, tolerance)]
     merged = sorted(reals + derived, key=lambda i: i["at"])  # estable
     start = (page - 1) * page_size
     events = [

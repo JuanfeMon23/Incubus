@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError
 from app.core.leo import Actor, CatalogReader, client_of, record_audit
+from app.core.pagination import enforce_max_page_size
 from app.core.permissions import (
     RES_ENTER,
     RES_VALIDATE,
@@ -338,11 +339,12 @@ async def delivery_patient_orders(
     session: Session,
     user: CanViewDelivery,
     page: Annotated[int, Query(ge=1, le=10_000)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=50)] = 10,
+    page_size: Annotated[int, Query(ge=1)] = 10,
 ) -> dict:
     """Ordenes con resultados disponibles (finalizadas) de un paciente, la mas
     reciente primero. Datos minimos; el detalle y el PDF van por
     `/orders/{order_number}` y `/orders/{order_number}/report.pdf`."""
+    await enforce_max_page_size("pagination.results_max_page_size", page_size)
     base = (
         select(Order.id)
         .join(QueueEntry, QueueEntry.id == Order.queue_entry_id)
