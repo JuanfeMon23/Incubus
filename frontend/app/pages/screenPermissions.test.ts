@@ -3,7 +3,8 @@ import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buttonTexts, findButton, flushAll } from '~/testing/dom'
 import { entry, labOrder, order, sample } from '~/testing/fixtures'
-import { ALL, allExcept, signInWith } from '~/testing/session'
+import { signInWith } from '#leo-client/testing/session'
+import { ALL, allExcept } from '~/testing/session'
 import { TAGS } from '~/utils/tags'
 import ExamValidationForm from '../components/ExamValidationForm.vue'
 import ImpresionPage from './impresion-etiquetas.vue'
@@ -14,7 +15,7 @@ import ResultsPage from './resultados.vue'
 import SamplingPage from './toma-muestras.vue'
 
 const fake = await vi.hoisted(async () => (await import('~/testing/fakeApi')).createFakeApi())
-mockNuxtImport('useApi', () => () => fake.api)
+mockNuxtImport('useLeoAppApi', () => () => fake.client)
 // Sin conexión real: el socket se prueba aparte (queueRealtime.test.ts).
 mockNuxtImport('useQueueSocket', () => () => ({
   connected: { value: true },
@@ -25,7 +26,7 @@ mockNuxtImport('useQueueSocket', () => () => ({
   close: () => {}
 }))
 const files = vi.hoisted(() => ({ showPdf: vi.fn(), saveFile: vi.fn() }))
-vi.mock('../utils/downloadBlob', () => ({ openBlobInTab: files.showPdf, downloadBlob: files.saveFile }))
+vi.mock('#andromeda/utils/downloadBlob', () => ({ openBlobInTab: files.showPdf, downloadBlob: files.saveFile }))
 
 enableAutoUnmount(afterEach)
 

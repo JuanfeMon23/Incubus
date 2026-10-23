@@ -86,7 +86,7 @@ import type { OrderDetail, QueueEntry, StaffMember } from '../types'
 // Pantalla: label-printing.view. Sin print se ven las órdenes y sus tubos, pero no se imprime ni asigna.
 definePageMeta({ leo: { tag: TAGS.labelPrinting.view } })
 const canPrint = useCan(TAGS.labelPrinting.print)
-const api = useApi()
+const api = useLeoAppApi()
 const toast = useToast()
 const labelFiles = useLabelFiles()
 const { entries, loading: listLoading, refresh } = useQueueList(['en_espera_impresion'])
@@ -106,9 +106,9 @@ const error = ref('')
 // La API ya devuelve solo profesionales de toma de muestras.
 async function loadStaff() {
   try {
-    staff.value = await api<StaffMember[]>('/catalog/staff')
+    staff.value = await api.get<StaffMember[]>('/catalog/staff')
   } catch (e) {
-    error.value = apiErrorMessage(e)
+    error.value = leoErrorMessage(e)
     toast.error(error.value)
   }
 }
@@ -121,7 +121,7 @@ async function downloadZpl() {
   try {
     await labelFiles.downloadZpl(current.value.id, current.value.order_number)
   } catch (err) {
-    toast.error(apiErrorMessage(err))
+    toast.error(leoErrorMessage(err))
   }
 }
 
@@ -132,9 +132,9 @@ async function select(e: QueueEntry) {
   professionalId.value = ''
   loading.value = true
   try {
-    order.value = await api<OrderDetail>(`/orders/by-entry/${e.id}/samples`, { method: 'POST' })
+    order.value = await api.post<OrderDetail>(`/orders/by-entry/${e.id}/samples`)
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
     toast.error(error.value)
   } finally {
     loading.value = false
@@ -150,23 +150,20 @@ async function print() {
   busy.value = true
   error.value = ''
   try {
-    await api(`/orders/by-entry/${entryId}/print-labels`, {
-      method: 'POST',
-      body: { professional_id: pro.id, professional_name: pro.name }
-    })
+    await api.post(`/orders/by-entry/${entryId}/print-labels`, { professional_id: pro.id, professional_name: pro.name })
     toast.success(`Etiquetas generadas y paciente asignado a ${pro.name}.`)
     // PDF con una etiqueta por tubo, pedido con petición firmada. Si falla, la
     // asignación ya quedó hecha: se avisa aparte y se puede descargar el ZPL.
     try {
       await labelFiles.openPdf(entryId, orderNumber)
     } catch (pdfErr) {
-      toast.error(`Las etiquetas se generaron, pero no se pudo abrir el PDF: ${apiErrorMessage(pdfErr)}`)
+      toast.error(`Las etiquetas se generaron, pero no se pudo abrir el PDF: ${leoErrorMessage(pdfErr)}`)
     }
     currentId.value = null
     order.value = null
     await refresh()
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
     toast.error(error.value)
   } finally {
     busy.value = false

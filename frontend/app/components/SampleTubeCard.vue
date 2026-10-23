@@ -14,7 +14,7 @@
         <template v-else>Tubo</template>
       </span>
       <span v-if="sample.collected_at">
-        ✓ Tomado {{ timeLabel(sample.collected_at) }}<template v-if="sample.collected_by"> · {{ sample.collected_by }}</template>
+        ✓ Tomado {{ formatDateTime(sample.collected_at) }}<template v-if="sample.collected_by"> · {{ sample.collected_by }}</template>
       </span>
       <span v-else>Pendiente</span>
     </div>
@@ -139,8 +139,4 @@ const fillRatio = computed(() => {
   const ml = props.sample.required_volume_ml
   return ml ? Math.min(ml / 10, 1) * 0.7 + 0.3 : 0.6
 })
-
-function timeLabel(iso: string) {
-  return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
-}
 </script>

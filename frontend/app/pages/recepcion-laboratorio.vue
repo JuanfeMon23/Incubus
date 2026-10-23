@@ -99,7 +99,7 @@ import type { LabReceptionOrder, LabReceptionSample, OrderSample } from '../type
 definePageMeta({ leo: { tag: TAGS.labReception.view } })
 const canReceive = useCan(TAGS.labReception.receive)
 const canUnreceive = useCan(TAGS.labReception.unreceive)
-const api = useApi()
+const api = useLeoAppApi()
 const toast = useToast()
 
 const orders = ref<LabReceptionOrder[]>([])
@@ -112,11 +112,9 @@ const current = computed(() => orders.value.find((o) => o.entry_id === currentId
 
 async function load() {
   try {
-    orders.value = await api<LabReceptionOrder[]>('/lab/reception', {
-      query: search.value.trim() ? { q: search.value.trim() } : {}
-    })
+    orders.value = await api.get<LabReceptionOrder[]>('/lab/reception', { query: search.value.trim() ? { q: search.value.trim() } : {} })
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
   } finally {
     loading.value = false
   }
@@ -153,14 +151,14 @@ async function toggle(s: LabReceptionSample) {
   busyId.value = s.id
   try {
     const action = s.received_at ? 'unreceive' : 'receive'
-    const res = await api<{ entry_status: string }>(`/orders/samples/${s.id}/${action}`, { method: 'POST' })
+    const res = await api.post<{ entry_status: string }>(`/orders/samples/${s.id}/${action}`)
     if (res.entry_status === 'en_laboratorio') {
       toast.success(`Orden ${current.value?.order_number} recibida: pasa a validación de resultados.`)
       currentId.value = null
     }
     await load()
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
   } finally {
     busyId.value = null
   }
@@ -172,13 +170,13 @@ async function receiveAll() {
   const number = current.value.order_number
   try {
     for (const s of current.value.samples.filter((x) => !x.received_at)) {
-      await api(`/orders/samples/${s.id}/receive`, { method: 'POST' })
+      await api.post(`/orders/samples/${s.id}/receive`)
     }
     toast.success(`Orden ${number} recibida: pasa a validación de resultados.`)
     currentId.value = null
     await load()
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
     await load()
   } finally {
     busyAll.value = false

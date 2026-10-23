@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { io } from 'socket.io-client'
-import { createFakeSocket } from './fakeSocket'
+import { createFakeSocket } from '../testing/fakeSocket'
 import {
   buildSocketOptions,
   createQueueRealtime,

@@ -1,4 +1,4 @@
-import type { SocketLike } from './queueRealtime'
+import type { SocketLike } from '../utils/queueRealtime'
 
 type Handler = (...args: any[]) => void
 type Responder = (payload: any) => unknown

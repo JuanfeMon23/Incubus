@@ -4,12 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { flushAll } from '~/testing/dom'
 import { entry } from '~/testing/fixtures'
-import { signInWith } from '~/testing/session'
+import { signInWith } from '#leo-client/testing/session'
 import { TAGS } from '~/utils/tags'
 
 const fake = await vi.hoisted(async () => (await import('~/testing/fakeApi')).createFakeApi())
 const subscribed = vi.hoisted(() => [] as string[][])
-mockNuxtImport('useApi', () => () => fake.api)
+mockNuxtImport('useLeoAppApi', () => () => fake.client)
 mockNuxtImport('useQueueSocket', () => () => ({
   subscribe: (sub: { rooms: string[] }) => {
     subscribed.push(sub.rooms)

@@ -12,7 +12,7 @@ import { stagesWithView } from '../utils/moduleAccess'
  * servidor rechaza el pedido entero si falta alguna); sin ninguna, queda vacía.
  */
 export function useQueueList(statuses: QueueStatus[], opts: Pick<QueueListDeps, 'onEvent'> = {}) {
-  const api = useApi()
+  const api = useLeoAppApi()
   const { can } = useLeoSession()
   const visible = stagesWithView(statuses, can)
   if (!visible.length) return { entries: ref<QueueEntry[]>([]), error: ref(''), loading: ref(false), refresh: async () => {} }
@@ -20,9 +20,9 @@ export function useQueueList(statuses: QueueStatus[], opts: Pick<QueueListDeps, 
   const { subscribe } = useQueueSocket()
   const list = createQueueList(visible, {
     subscribe,
-    fetchList: (s) => api<QueueEntry[]>(`/queue?${s.map((x) => `status=${x}`).join('&')}`),
-    fetchOne: (id) => api<QueueEntry>(`/queue/${id}`),
-    toMessage: apiErrorMessage,
+    fetchList: (s) => api.get<QueueEntry[]>(`/queue?${s.map((x) => `status=${x}`).join('&')}`),
+    fetchOne: (id) => api.get<QueueEntry>(`/queue/${id}`),
+    toMessage: leoErrorMessage,
     onEvent: opts.onEvent
   })
   onMounted(list.start)

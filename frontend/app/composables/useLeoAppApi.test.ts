@@ -18,18 +18,18 @@ const rejectWith = (...errors: unknown[]) => {
 
 beforeEach(() => leoApi.mockReset())
 
-describe('useApi', () => {
+describe('useLeoAppApi', () => {
   it('pasa por el solicitante firmado de leo-client con la ruta bajo /api/v1 de la misma URL de backend', async () => {
     resolveWith([{ id: 1 }])
-    const result = await useApi()('/queue', { query: { status: ['a', 'b'] } })
+    const result = await useLeoAppApi().get('/queue', { query: { status: ['a', 'b'] } })
     expect(result).toEqual([{ id: 1 }])
-    expect(leoApi).toHaveBeenCalledWith('/api/v1/queue', { query: { status: ['a', 'b'] } })
+    expect(leoApi).toHaveBeenCalledWith('/api/v1/queue', { method: 'GET', query: { status: ['a', 'b'] } })
   })
 
   it('pide archivos como blob (etiquetas) por el mismo camino firmado', async () => {
     resolveWith(new Blob(['x']))
-    await useApi()('/orders/by-entry/e1/labels.pdf', { responseType: 'blob' })
-    expect(leoApi).toHaveBeenCalledWith('/api/v1/orders/by-entry/e1/labels.pdf', { responseType: 'blob' })
+    await useLeoAppApi().get('/orders/by-entry/e1/labels.pdf', { responseType: 'blob' })
+    expect(leoApi).toHaveBeenCalledWith('/api/v1/orders/by-entry/e1/labels.pdf', { method: 'GET', responseType: 'blob' })
   })
 
   it('un 403 forbidden nombra el permiso que falta', async () => {
@@ -38,9 +38,9 @@ describe('useApi', () => {
         action: 'incubus.reception.call-next'
       })
     )
-    const err = await useApi()('/queue/call-next', { method: 'POST' }).catch((e) => e)
+    const err = await useLeoAppApi().post('/queue/call-next').catch((e) => e)
     expect(err).toBeInstanceOf(LeoApiError)
-    expect(apiErrorMessage(err)).toBe('No tienes permiso para: Llamar al siguiente paciente')
+    expect(leoErrorMessage(err)).toBe('No tienes permiso para: Llamar al siguiente paciente')
   })
 
   it('un 403 con any_of lista las alternativas; sin permiso conocido deja el mensaje del servidor', async () => {
@@ -50,17 +50,17 @@ describe('useApi', () => {
         any_of: ['incubus.reception.return', 'incubus.sampling.return']
       })
     )
-    expect(apiErrorMessage(await useApi()('/queue/1/return').catch((e) => e))).toBe(
+    expect(leoErrorMessage(await useLeoAppApi().post('/queue/1/return').catch((e) => e))).toBe(
       'No tienes permiso para: Devolver pacientes a pre-recepción o Devolver pacientes a espera de toma'
     )
     rejectWith(new LeoApiError(403, 'forbidden', 'No tienes permiso para realizar esta acción.', {}))
-    expect(apiErrorMessage(await useApi()('/x').catch((e) => e))).toBe('No tienes permiso para realizar esta acción.')
+    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((e) => e))).toBe('No tienes permiso para realizar esta acción.')
   })
 
   it('otros errores conservan su mensaje legible (y los de red no muestran texto crudo)', async () => {
     rejectWith(new LeoApiError(409, 'conflict', 'El paciente ya fue tomado.', null))
-    expect(apiErrorMessage(await useApi()('/x').catch((e) => e))).toBe('El paciente ya fue tomado.')
+    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((e) => e))).toBe('El paciente ya fue tomado.')
     rejectWith(new TypeError('Failed to fetch'))
-    expect(apiErrorMessage(await useApi()('/x').catch((e) => e))).not.toContain('Failed to fetch')
+    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((e) => e))).not.toContain('Failed to fetch')
   })
 })

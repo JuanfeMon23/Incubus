@@ -147,7 +147,7 @@ const emit = defineEmits<{
   validated: [payload: { orderFinalized: boolean; name: string; orderTestId: string }]
 }>()
 
-const api = useApi()
+const api = useLeoAppApi()
 const user = useLeoUser()
 const toast = useToast()
 
@@ -236,9 +236,9 @@ const query = computed(() => ({ professional_id: props.professionalId }))
 
 onMounted(async () => {
   try {
-    hydrate(await api<ResultTestDetail>(`/results/tests/${props.orderTestId}`, { query: query.value }))
+    hydrate(await api.get<ResultTestDetail>(`/results/tests/${props.orderTestId}`, { query: query.value }))
   } catch (e) {
-    error.value = apiErrorMessage(e)
+    error.value = leoErrorMessage(e)
     toast.error(error.value)
   } finally {
     loading.value = false
@@ -260,7 +260,7 @@ function applyServerErrors(e: unknown) {
   const data = (e as { data?: { details?: { field?: string; codes?: string[] }; message?: string } })?.data
   const field = data?.details?.field
   Object.keys(errors).forEach((k) => delete errors[k])
-  if (field) errors[field] = apiErrorMessage(e)
+  if (field) errors[field] = leoErrorMessage(e)
   for (const code of data?.details?.codes ?? []) errors[code] = 'Este resultado es obligatorio.'
 }
 
@@ -268,14 +268,11 @@ async function save(silent = true) {
   if (readonly.value || !detail.value) return true
   saving.value = true
   try {
-    const res = await api<ResultTestDetail>(`/results/tests/${props.orderTestId}/values`, {
-      method: 'PUT',
-      body: {
+    const res = await api.put<ResultTestDetail>(`/results/tests/${props.orderTestId}/values`, {
         professional_id: props.professionalId,
         professional_name: props.professionalName,
         values: payloadValues()
-      }
-    })
+      })
     hydrate(res)
     Object.keys(errors).forEach((k) => delete errors[k])
     dirty.value = false
@@ -284,8 +281,8 @@ async function save(silent = true) {
     return true
   } catch (e) {
     applyServerErrors(e)
-    if (!silent) toast.error(apiErrorMessage(e))
-    error.value = apiErrorMessage(e)
+    if (!silent) toast.error(leoErrorMessage(e))
+    error.value = leoErrorMessage(e)
     return false
   } finally {
     saving.value = false
@@ -319,17 +316,11 @@ async function finish() {
   finishing.value = true
   error.value = ''
   try {
-    const res = await api<ResultTestDetail & { order_finalized: boolean }>(
-      `/results/tests/${props.orderTestId}/validate`,
-      {
-        method: 'POST',
-        body: {
+    const res = await api.post<ResultTestDetail & { order_finalized: boolean }>(`/results/tests/${props.orderTestId}/validate`, {
           professional_id: props.professionalId,
           professional_name: props.professionalName,
           values: payloadValues()
-        }
-      }
-    )
+        })
     toast.success(
       res.order_finalized
         ? `Examen validado. La orden ${res.order_number} quedó finalizada.`
@@ -342,7 +333,7 @@ async function finish() {
     })
   } catch (e) {
     applyServerErrors(e)
-    error.value = apiErrorMessage(e)
+    error.value = leoErrorMessage(e)
     toast.error(error.value)
   } finally {
     finishing.value = false

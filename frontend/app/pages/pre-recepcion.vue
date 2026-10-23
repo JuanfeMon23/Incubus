@@ -98,7 +98,7 @@ const documentTypeOptions = computed(() =>
   documentTypes.value.map((d) => ({ value: d.code, label: `${d.code} · ${d.name}` }))
 )
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
-const api = useApi()
+const api = useLeoAppApi()
 const toast = useToast()
 const { entries, error: listError, loading: listLoading, refresh } = useQueueList(['pre_recepcion'])
 
@@ -106,9 +106,9 @@ const priorities = ref<Priority[]>([])
 const removalReasons = ref<Reason[]>([])
 onMounted(async () => {
   ;[priorities.value, removalReasons.value, documentTypes.value] = await Promise.all([
-    api<Priority[]>('/priorities'),
-    api<Reason[]>('/removal-reasons'),
-    api<Reason[]>('/document-types')
+    api.get<Priority[]>('/priorities'),
+    api.get<Reason[]>('/removal-reasons'),
+    api.get<Reason[]>('/document-types')
   ])
   priorityId.value = priorities.value.find((p) => p.code === 'media')?.id ?? ''
 })
@@ -137,10 +137,7 @@ const removing = ref<{ id: string } | null>(null)
 async function parseScan() {
   scanError.value = ''
   try {
-    const data = await api<Record<string, string | null>>('/patients/parse-cedula', {
-      method: 'POST',
-      body: { raw: scan.value }
-    })
+    const data = await api.post<Record<string, string | null>>('/patients/parse-cedula', { raw: scan.value })
     form.setValues({
       document_type: 'CC',
       document_number: data.document_number ?? '',
@@ -154,7 +151,7 @@ async function parseScan() {
     })
     scan.value = ''
   } catch (e) {
-    scanError.value = apiErrorMessage(e)
+    scanError.value = leoErrorMessage(e)
     toast.error(scanError.value)
   }
 }
@@ -168,9 +165,7 @@ watch(
     if (!type || !number || String(number).trim().length < 3) return
     lookupTimer = setTimeout(async () => {
       try {
-        const found = await api<Record<string, string | null>>('/patients/lookup', {
-          query: { document_type: type, document_number: String(number).trim() }
-        })
+        const found = await api.get<Record<string, string | null>>('/patients/lookup', { query: { document_type: type, document_number: String(number).trim() } })
         const text = (k: string) => found[k] ?? ''
         form.setValues({
           first_name: text('first_name'),
@@ -192,9 +187,9 @@ watch(
 const onSubmit = form.submit(async (values) => {
   const { priority_id: priorityValue, ...patient } = values
   try {
-    await api('/queue', { method: 'POST', body: { patient, priority_id: priorityValue } })
+    await api.post('/queue', { patient, priority_id: priorityValue })
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
     throw e
   }
   form.reset()
@@ -206,12 +201,12 @@ const onSubmit = form.submit(async (values) => {
 async function remove(payload: { reason_id: string; note: string | null }) {
   if (!removing.value) return
   try {
-    await api(`/queue/${removing.value.id}/remove`, { method: 'POST', body: payload })
+    await api.post(`/queue/${removing.value.id}/remove`, payload)
     removing.value = null
     toast.success('Paciente retirado de la cola.')
     await refresh()
   } catch (e) {
-    listError.value = apiErrorMessage(e)
+    listError.value = leoErrorMessage(e)
     toast.error(listError.value)
     removing.value = null
   }

@@ -249,7 +249,7 @@ const documentTypeOptions = computed(() =>
   documentTypes.value.map((d) => ({ value: d.code, label: `${d.code} · ${d.name}` }))
 )
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
-const api = useApi()
+const api = useLeoAppApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
 const calling = ref(false)
@@ -293,8 +293,8 @@ const returnReasons = ref<Reason[]>([])
 
 onMounted(async () => {
   ;[returnReasons.value, documentTypes.value] = await Promise.all([
-    api<Reason[]>('/return-reasons'),
-    api<Reason[]>('/document-types')
+    api.get<Reason[]>('/return-reasons'),
+    api.get<Reason[]>('/document-types')
   ])
 })
 
@@ -312,7 +312,7 @@ function select(e: QueueEntry) {
 
 async function restore(codes: string[]) {
   const found = await Promise.all(
-    codes.map(async (c) => (await api<CatalogTest[]>('/catalog/tests', { query: { q: c } })).find((t) => t.code === c))
+    codes.map(async (c) => (await api.get<CatalogTest[]>('/catalog/tests', { query: { q: c } })).find((t) => t.code === c))
   )
   chosen.value = found.filter((t): t is CatalogTest => !!t)
   await loadPreconditions(chosen.value.map((t) => t.code)).catch(() => {})
@@ -323,13 +323,13 @@ async function callNext() {
   error.value = ''
   calling.value = true
   try {
-    const entry = await api<QueueEntry>('/queue/call-next', { method: 'POST' })
+    const entry = await api.post<QueueEntry>('/queue/call-next')
     await refresh()
     const fresh = entries.value.find((x) => x.id === entry.id)
     select(fresh ?? entry)
     toast.info(`Llamando a ${fullName(entry.patient)}.`)
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
     toast.error(error.value)
     await refresh()
   } finally {
@@ -347,9 +347,9 @@ watch(search, (q) => {
   searchTimer = setTimeout(async () => {
     searching.value = true
     try {
-      results.value = await api<CatalogTest[]>('/catalog/tests', { query: { q: q.trim() } })
+      results.value = await api.get<CatalogTest[]>('/catalog/tests', { query: { q: q.trim() } })
     } catch (e) {
-      toast.error(apiErrorMessage(e))
+      toast.error(leoErrorMessage(e))
     } finally {
       searching.value = false
     }
@@ -372,7 +372,7 @@ async function sync() {
   if (!currentId.value || !ownsTurn.value) return
   const codes = chosen.value.map((t) => t.code)
   try {
-    await api(`/queue/${currentId.value}/draft`, { method: 'PUT', body: { test_codes: codes } })
+    await api.put(`/queue/${currentId.value}/draft`, { test_codes: codes })
     await loadPreconditions(codes)
   } catch (e) {
     await failWith(e)
@@ -381,10 +381,7 @@ async function sync() {
 
 async function loadPreconditions(codes: string[]) {
   preconditions.value = codes.length
-    ? (await api<{ preconditions: OrderPrecondition[] }>('/orders/preview', {
-        method: 'POST',
-        body: { test_codes: codes }
-      })).preconditions
+    ? (await api.post<{ preconditions: OrderPrecondition[] }>('/orders/preview', { test_codes: codes })).preconditions
     : []
   // conserva respuestas de condiciones que siguen presentes; las nuevas quedan sin responder
   const fresh = emptyChecks(keys.value)
@@ -397,7 +394,7 @@ async function saveDemographics() {
   const body = Object.fromEntries(
     Object.entries(form.values as Record<string, unknown>).map(([k, v]) => [k, v === '' ? null : v])
   )
-  await api(`/patients/${current.value.patient.id}`, { method: 'PATCH', body })
+  await api.patch(`/patients/${current.value.patient.id}`, body)
 }
 
 // Teléfono: solo números (se descartan letras y símbolos al escribir o pegar).
@@ -421,9 +418,7 @@ watch(
     if (type === patient.document_type && number === patient.document_number) return
     lookupTimer = setTimeout(async () => {
       try {
-        const found = await api<Record<string, string | null>>('/patients/lookup', {
-          query: { document_type: type, document_number: String(number).trim() }
-        })
+        const found = await api.get<Record<string, string | null>>('/patients/lookup', { query: { document_type: type, document_number: String(number).trim() } })
         if (found.id !== patient.id) {
           toast.warning('Ese documento ya pertenece a otro paciente registrado. Se cargaron sus datos.')
           form.setValues({ ...demographicsOf(found as Record<string, unknown>) })
@@ -441,13 +436,10 @@ const onClose = form.submit(async () => {
   error.value = ''
   try {
     await saveDemographics()
-    const res = await api<{ order_number: string; activation_code?: string | null }>(`/orders/close-reception/${current.value.id}`, {
-      method: 'POST',
-      body: {
+    const res = await api.post<{ order_number: string; activation_code?: string | null }>(`/orders/close-reception/${current.value.id}`, {
         test_codes: chosen.value.map((t) => t.code),
         precondition_checks: toCheckPayload(keys.value, checks.value)
-      }
-    })
+      })
     orderNumber.value = res.order_number
     // Solo en memoria: se descarta al cerrar el modal (el backend no vuelve a mostrarlo).
     if (res.activation_code) receipt.value = { orderNumber: res.order_number, activationCode: res.activation_code }
@@ -455,10 +447,10 @@ const onClose = form.submit(async () => {
     currentId.value = null
     await refresh()
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
     if (isNotTurnOwnerError(e)) {
       // Mensaje del backend tal cual (el mapeo genérico del formulario lo reemplazaría) y re-sincroniza.
-      error.value = apiErrorMessage(e)
+      error.value = leoErrorMessage(e)
       await refresh()
       return
     }
@@ -471,7 +463,7 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
   returning.value = false
   try {
     await saveDemographics()
-    await api(`/queue/${current.value.id}/return`, { method: 'POST', body: payload })
+    await api.post(`/queue/${current.value.id}/return`, payload)
     toast.info('Paciente devuelto a pre-recepción.')
     currentId.value = null
     await refresh()
@@ -482,7 +474,7 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
 
 /** Muestra el error legible; si el turno es de otra persona (403 `not_turn_owner`), re-sincroniza la lista. */
 async function failWith(e: unknown) {
-  error.value = apiErrorMessage(e)
+  error.value = leoErrorMessage(e)
   toast.error(error.value)
   if (isNotTurnOwnerError(e)) await refresh()
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createLabelFiles, labelsFilename, labelsPath } from './labelFiles'
-import { safeDownloadName } from './downloadBlob'
+import { safeDownloadName } from '#andromeda/utils/downloadBlob'
 
 const blob = new Blob(['x'])
 
