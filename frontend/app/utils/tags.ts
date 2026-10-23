@@ -51,6 +51,12 @@ export const TAGS = {
     create: t('queue-admin', 'create'),
     update: t('queue-admin', 'update'),
     toggle: t('queue-admin', 'toggle')
+  },
+  // `incubus.settings.update` (evento de auditoría de los cambios) no se concede ni tiene pantalla.
+  settings: {
+    view: t('settings', 'view'),
+    edit: t('settings', 'edit'),
+    editSecurity: t('settings', 'edit-security')
   }
 } as const
 

@@ -15,9 +15,9 @@ enableAutoUnmount(afterEach)
 
 const row = (over: Record<string, unknown>) => ({
   id: 'x', code: 'x', name: 'X', is_active: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T10:00:00Z',
-  color_hex: '#336699', rank: 1, ...over
+  color_hex: '#336699', rank: 1, is_default: false, ...over
 })
-const MEDIA = row({ id: 'm', code: 'media', name: 'Media', rank: 2 })
+const MEDIA = row({ id: 'm', code: 'media', name: 'Media', rank: 2, is_default: true })
 const URGENTE = row({ id: 'u', code: 'urgente', name: 'Urgente', rank: 1 })
 const BAJA = row({ id: 'b', code: 'baja', name: 'Baja', rank: 3, is_active: false })
 
@@ -59,6 +59,7 @@ describe('QueueCatalogPanel · permisos por botón', () => {
     const wrapper = await mountPanel([TAGS.queueAdmin.view, TAGS.queueAdmin[verb]])
     expect(!!findButton(wrapper.element, 'Nueva prioridad')).toBe(verb === 'create')
     expect(!!rowButton(wrapper, 'Editar Urgente')).toBe(verb === 'update')
+    expect(!!rowButton(wrapper, 'Hacer predeterminada Urgente')).toBe(verb === 'update')
     expect(!!rowButton(wrapper, 'Desactivar Urgente')).toBe(verb === 'toggle')
     expect(!!rowButton(wrapper, 'Reactivar Baja')).toBe(verb === 'toggle')
   })
@@ -74,6 +75,12 @@ describe('QueueCatalogPanel · permisos por botón', () => {
     expect(wrapper.find('span[style*="background-color"]').exists()).toBe(true)
   })
 
+  it('«Por defecto» solo marca la prioridad predeterminada', async () => {
+    const wrapper = await mountPanel(ALL)
+    expect(wrapper.text().match(/Por defecto/g)).toHaveLength(1)
+    expect(wrapper.text().indexOf('Por defecto')).toBeGreaterThan(wrapper.text().indexOf('Media'))
+  })
+
   it('en motivos el botón dice «Nuevo motivo de retiro» y no hay columna de orden', async () => {
     fake.routes['GET /queue-admin/removal-reasons'] = {
       items: [row({ code: 'duplicado', name: 'Duplicado', color_hex: null, rank: null })], page: 1, page_size: 20, total: 1
@@ -85,7 +92,7 @@ describe('QueueCatalogPanel · permisos por botón', () => {
 })
 
 describe('QueueCatalogPanel · desactivar y reactivar', () => {
-  it('«media» no se puede desactivar: botón deshabilitado con la explicación', async () => {
+  it('la prioridad por defecto no se puede desactivar: botón deshabilitado con la explicación', async () => {
     const wrapper = await mountPanel(ALL)
     const media = rowButton(wrapper, 'Desactivar Media')!
     expect(media.disabled).toBe(true)
@@ -130,6 +137,55 @@ describe('QueueCatalogPanel · desactivar y reactivar', () => {
     findButton(dialog(), 'Reactivar')!.click()
     await flushAll()
     expect(fake.requests).toHaveBeenCalledWith('POST', '/queue-admin/priorities/b/activate', expect.anything())
+  })
+})
+
+describe('QueueCatalogPanel · hacer predeterminada', () => {
+  it('solo se habilita en una prioridad activa que no es la predeterminada', async () => {
+    const wrapper = await mountPanel(ALL)
+    expect(rowButton(wrapper, 'Hacer predeterminada Urgente')!.disabled).toBe(false)
+    expect(rowButton(wrapper, 'Hacer predeterminada Media')!.disabled).toBe(true)
+    expect(rowButton(wrapper, 'Hacer predeterminada Baja')!.disabled).toBe(true)
+  })
+
+  it('no existe en los motivos', async () => {
+    fake.routes['GET /queue-admin/removal-reasons'] = {
+      items: [row({ code: 'duplicado', name: 'Duplicado', color_hex: null, rank: null, is_default: null })], page: 1, page_size: 20, total: 1
+    }
+    const wrapper = await mountPanel(ALL, 'removal-reasons')
+    expect(rowButton(wrapper, 'Hacer predeterminada Duplicado')).toBeNull()
+  })
+
+  it('confirma con motivo opcional: sin motivo el cuerpo va vacío', async () => {
+    const wrapper = await mountPanel(ALL)
+    rowButton(wrapper, 'Hacer predeterminada Urgente')!.click()
+    await flushAll()
+    expect(fake.requests).not.toHaveBeenCalledWith('POST', '/queue-admin/priorities/u/set-default', expect.anything())
+    submitButton().click()
+    await flushAll()
+    expect(fake.bodies('POST', '/queue-admin/priorities/u/set-default')).toEqual([{}])
+    expect(dialog()).toBeNull()
+  })
+
+  it('envía el motivo cuando se escribe', async () => {
+    const wrapper = await mountPanel(ALL)
+    rowButton(wrapper, 'Hacer predeterminada Urgente')!.click()
+    await flushAll()
+    await type(dialog().querySelector('textarea')!, 'Pedido de dirección')
+    submitButton().click()
+    await flushAll()
+    expect(fake.bodies('POST', '/queue-admin/priorities/u/set-default')).toEqual([{ reason: 'Pedido de dirección' }])
+  })
+
+  it('un 409 se muestra legible dentro del modal y no lo cierra', async () => {
+    fake.routes['POST /queue-admin/priorities/u/set-default'] = () =>
+      Promise.reject(new LeoApiError(409, 'conflict', 'La prioridad está inactiva.', null))
+    const wrapper = await mountPanel(ALL)
+    rowButton(wrapper, 'Hacer predeterminada Urgente')!.click()
+    await flushAll()
+    submitButton().click()
+    await flushAll()
+    expect(dialog().textContent).toContain('La prioridad está inactiva.')
   })
 })
 

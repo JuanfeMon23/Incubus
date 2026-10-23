@@ -3,6 +3,7 @@ import { normalizeSearchTerm } from '#andromeda/utils/search'
 import { toUserMessage } from '#andromeda/utils/userMessage'
 import { zRequiredNumber, zRequiredText } from '#andromeda/utils/zodFields'
 import type { QueueAdminItem, QueueAdminKind } from '../types'
+import { pageSizeMessage } from './apiErrors'
 
 /** Catálogos de la pantalla «Catálogos de la cola», en el orden de las pestañas. */
 export const QUEUE_ADMIN_KINDS: QueueAdminKind[] = ['priorities', 'removal-reasons', 'return-reasons']
@@ -27,8 +28,6 @@ export const isPriorityKind = (kind: QueueAdminKind) => kind === 'priorities'
 
 export const CODE_PATTERN = /^[a-z0-9]+([-_][a-z0-9]+)*$/
 export const HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/
-/** Código de la prioridad por defecto de la cola: el backend no permite desactivarla. */
-export const PROTECTED_PRIORITY_CODE = 'media'
 export const PAGE_SIZE = 20
 
 export interface CatalogFormInput {
@@ -94,13 +93,23 @@ export function buildUpdatePayload(kind: QueueAdminKind, values: CatalogFormValu
   return Object.keys(body).length ? body : null
 }
 
-/** La prioridad «media» no se puede desactivar: se explica en lugar de ofrecer el botón. */
-export function deactivateBlockedReason(kind: QueueAdminKind, item: Pick<QueueAdminItem, 'code' | 'is_active'>): string | null {
-  if (isPriorityKind(kind) && item.code === PROTECTED_PRIORITY_CODE) {
-    return 'La prioridad «Media» es la predeterminada de la cola y no se puede desactivar.'
+/** La prioridad por defecto no se puede desactivar: se explica en lugar de ofrecer el botón. */
+export function deactivateBlockedReason(kind: QueueAdminKind, item: Pick<QueueAdminItem, 'is_default'>): string | null {
+  if (isPriorityKind(kind) && item.is_default === true) {
+    return 'Es la prioridad predeterminada de la cola y no se puede desactivar. Haz predeterminada otra prioridad primero.'
   }
   return null
 }
+
+/** «Hacer predeterminada» solo aplica a una prioridad activa que aún no lo es. */
+export function canMakeDefault(kind: QueueAdminKind, item: Pick<QueueAdminItem, 'is_active' | 'is_default'>): boolean {
+  return isPriorityKind(kind) && item.is_active && item.is_default !== true
+}
+
+/** Motivo opcional al cambiar la predeterminada: se omite si queda vacío. */
+export const setDefaultSchema = z.object({
+  reason: z.string().trim().max(255, 'Máximo 255 caracteres.').optional()
+})
 
 /** Valor para `<input type="color">` (exige #rrggbb válido). */
 export function colorInputValue(hex: string | null | undefined): string {
@@ -137,5 +146,5 @@ export function queueAdminErrorMessage(err: unknown, kind: QueueAdminKind): stri
     if (details.field === 'name') return `Ya existe ${article} ${noun} con el nombre${value}. Usa un nombre distinto.`
     if (details.field === 'code') return `Ya existe ${article} ${noun} con el código${value}. Usa un código distinto.`
   }
-  return toUserMessage(err)
+  return pageSizeMessage(err) ?? toUserMessage(err)
 }

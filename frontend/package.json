@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@vee-validate/zod": "^4.15.1",
-    "andromeda": "github:JuanfeMon23/Andromeda#v0.6.0",
+    "andromeda": "github:JuanfeMon23/Andromeda#v0.7.0",
     "leo-client": "github:JuanfeMon23/Leo#v0.4.0&path:/client",
     "nuxt": "4.5.2",
     "socket.io-client": "^4.8.4",

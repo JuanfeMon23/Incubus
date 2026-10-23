@@ -1,4 +1,5 @@
 import type { QueueAdminItem, QueueAdminKind, QueueAdminPage } from '../types'
+import { pageSizeMessage } from '../utils/apiErrors'
 import { listParams, PAGE_SIZE } from '../utils/queueAdmin'
 
 /** Llamadas a `/queue-admin/{kind}` (catálogos de la cola) con el cliente de Leo. */
@@ -10,7 +11,10 @@ export function useQueueAdminApi(kind: QueueAdminKind) {
     create: (body: Record<string, unknown>) => api.post<QueueAdminItem>(base, body),
     update: (id: string, body: Record<string, unknown>) => api.patch<QueueAdminItem>(`${base}/${id}`, body),
     deactivate: (id: string, reason: string) => api.post<QueueAdminItem>(`${base}/${id}/deactivate`, { reason }),
-    activate: (id: string) => api.post<QueueAdminItem>(`${base}/${id}/activate`, {})
+    activate: (id: string) => api.post<QueueAdminItem>(`${base}/${id}/activate`, {}),
+    /** Solo prioridades; el motivo es opcional. */
+    setDefault: (id: string, reason?: string) =>
+      api.post<QueueAdminItem>(`${base}/${id}/set-default`, reason ? { reason } : {})
   }
 }
 
@@ -29,7 +33,7 @@ export function useQueueAdminList(kind: QueueAdminKind) {
     pageSize: PAGE_SIZE,
     filters: [activeFilter],
     search,
-    mapError: err => `No se pudo cargar el listado. ${toUserMessage(err)}`
+    mapError: err => `No se pudo cargar el listado. ${pageSizeMessage(err) ?? toUserMessage(err)}`
   })
   return { ...list, search, activeFilter }
 }

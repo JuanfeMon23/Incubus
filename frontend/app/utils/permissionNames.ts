@@ -35,5 +35,8 @@ export const PERMISSION_NAMES: Record<string, string> = {
   [TAGS.queueAdmin.view]: 'Consultar los catálogos de la cola',
   [TAGS.queueAdmin.create]: 'Crear prioridades y motivos de la cola',
   [TAGS.queueAdmin.update]: 'Editar prioridades y motivos de la cola',
-  [TAGS.queueAdmin.toggle]: 'Activar y desactivar prioridades y motivos de la cola'
+  [TAGS.queueAdmin.toggle]: 'Activar y desactivar prioridades y motivos de la cola',
+  [TAGS.settings.view]: 'Consultar los ajustes del sistema',
+  [TAGS.settings.edit]: 'Modificar los ajustes del sistema',
+  [TAGS.settings.editSecurity]: 'Modificar los ajustes de seguridad'
 }

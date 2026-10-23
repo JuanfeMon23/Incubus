@@ -3,18 +3,21 @@ import type { QueueAdminItem } from '../types'
 import {
   buildCreatePayload,
   buildUpdatePayload,
+  canMakeDefault,
   catalogFormSchema,
   colorInputValue,
   deactivateBlockedReason,
   deactivateSchema,
   listParams,
-  queueAdminErrorMessage
+  queueAdminErrorMessage,
+  setDefaultSchema
 } from './queueAdmin'
+import { pageSizeMessage } from './apiErrors'
 
 const item = (over: Partial<QueueAdminItem> = {}): QueueAdminItem => ({
   id: 'p1', code: 'urgente', name: 'Urgente', is_active: true,
   created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
-  color_hex: '#FF0000', rank: 2, ...over
+  color_hex: '#FF0000', rank: 2, is_default: false, ...over
 })
 
 describe('schema de creación', () => {
@@ -62,10 +65,26 @@ describe('desactivar', () => {
     expect(deactivateSchema.safeParse({ reason: 'Ya no se usa' }).success).toBe(true)
   })
 
-  it('«media» está bloqueada con explicación; otras no', () => {
-    expect(deactivateBlockedReason('priorities', item({ code: 'media' }))).toMatch(/predeterminada/)
+  it('la prioridad por defecto está bloqueada con explicación (aunque no se llame «media»); otras no', () => {
+    expect(deactivateBlockedReason('priorities', item({ code: 'normal', is_default: true }))).toMatch(/predeterminada/)
+    expect(deactivateBlockedReason('priorities', item({ code: 'media' }))).toBeNull()
     expect(deactivateBlockedReason('priorities', item())).toBeNull()
-    expect(deactivateBlockedReason('removal-reasons', item({ code: 'media' }))).toBeNull()
+    expect(deactivateBlockedReason('removal-reasons', item({ is_default: null }))).toBeNull()
+  })
+})
+
+describe('hacer predeterminada', () => {
+  it('solo una prioridad activa que no lo es ya', () => {
+    expect(canMakeDefault('priorities', item())).toBe(true)
+    expect(canMakeDefault('priorities', item({ is_active: false }))).toBe(false)
+    expect(canMakeDefault('priorities', item({ is_default: true }))).toBe(false)
+    expect(canMakeDefault('removal-reasons', item({ is_default: null }))).toBe(false)
+  })
+
+  it('el motivo es opcional pero acotado', () => {
+    expect(setDefaultSchema.safeParse({ reason: '' }).success).toBe(true)
+    expect(setDefaultSchema.safeParse({}).success).toBe(true)
+    expect(setDefaultSchema.safeParse({ reason: 'x'.repeat(256) }).success).toBe(false)
   })
 })
 
@@ -118,5 +137,20 @@ describe('mensajes de error', () => {
     const e = { status: 409, code: 'conflict', message: 'No se puede desactivar la última prioridad activa.', data: { code: 'conflict', message: 'No se puede desactivar la última prioridad activa.' } }
     expect(queueAdminErrorMessage(e, 'priorities')).toBe('No se puede desactivar la última prioridad activa.')
     expect(queueAdminErrorMessage(new TypeError('Failed to fetch'), 'priorities')).not.toMatch(/fetch/i)
+  })
+})
+
+describe('tope de page_size (ajuste del backend)', () => {
+  const tooBig = (details: unknown) => ({ status: 422, code: 'validation_error', message: 'crudo', details })
+
+  it('el 422 sobre page_size nombra el máximo vigente que trae el servidor', () => {
+    expect(queueAdminErrorMessage(tooBig({ field: 'page_size', max: 50 }), 'priorities')).toContain('máximo 50')
+    expect(pageSizeMessage(tooBig({ field: 'page_size' }))).toBe('Se pidieron más registros por página de los permitidos.')
+  })
+
+  it('otros errores no son del tope', () => {
+    expect(pageSizeMessage(tooBig({ field: 'q' }))).toBeNull()
+    expect(pageSizeMessage({ status: 409, details: { field: 'page_size' } })).toBeNull()
+    expect(pageSizeMessage(null)).toBeNull()
   })
 })

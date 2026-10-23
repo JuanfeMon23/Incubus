@@ -104,13 +104,14 @@ const { entries, error: listError, loading: listLoading, refresh } = useQueueLis
 
 const priorities = ref<Priority[]>([])
 const removalReasons = ref<Reason[]>([])
+const defaultPriorityId = () => priorities.value.find((p) => p.is_default === true)?.id ?? ''
 onMounted(async () => {
   ;[priorities.value, removalReasons.value, documentTypes.value] = await Promise.all([
     api.get<Priority[]>('/priorities'),
     api.get<Reason[]>('/removal-reasons'),
     api.get<Reason[]>('/document-types')
   ])
-  priorityId.value = priorities.value.find((p) => p.code === 'media')?.id ?? ''
+  priorityId.value = defaultPriorityId()
 })
 
 const blank = () => ({
@@ -193,7 +194,7 @@ const onSubmit = form.submit(async (values) => {
     throw e
   }
   form.reset()
-  priorityId.value = priorities.value.find((p) => p.code === 'media')?.id ?? ''
+  priorityId.value = defaultPriorityId()
   toast.success('Paciente ingresado a la cola.')
   await refresh()
 })

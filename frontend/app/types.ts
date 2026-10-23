@@ -9,7 +9,7 @@ export type QueueStatus =
   | 'finalizada'
   | 'retirado'
 
-export interface Priority { id: string; code: string; name: string; color_hex: string; rank: number }
+export interface Priority { id: string; code: string; name: string; color_hex: string; rank: number; is_default?: boolean }
 export interface Reason { id: string; code: string; name: string }
 export interface Patient {
   id: string
@@ -215,6 +215,8 @@ export interface QueueAdminItem {
   updated_at: string
   color_hex: string | null
   rank: number | null
+  /** Prioridad por defecto de la cola; `null` en los motivos. */
+  is_default: boolean | null
 }
 export interface QueueAdminPage {
   items: QueueAdminItem[]

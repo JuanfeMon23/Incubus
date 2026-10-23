@@ -14,7 +14,8 @@ describe('menú por permiso', () => {
       '/recepcion-laboratorio': TAGS.labReception.view,
       '/resultados': TAGS.results.view,
       '/trazabilidad': TAGS.results.trace,
-      '/catalogos-cola': TAGS.queueAdmin.view
+      '/catalogos-cola': TAGS.queueAdmin.view,
+      '/ajustes': TAGS.settings.view
     })
   })
 
