@@ -47,7 +47,7 @@
                 <span class="ml-1 rounded bg-white/70 px-1.5 py-0.5 font-mono text-xs">{{ t.code }}</span>
               </p>
               <p class="text-xs text-success-700">
-                {{ validationLabels(t, user?.id).professional || 'Validado' }}<template v-if="t.validated_at"> · {{ timeLabel(t.validated_at) }}</template>
+                {{ validationLabels(t, user?.id).professional || 'Validado' }}<template v-if="t.validated_at"> · {{ formatDateTime(t.validated_at) }}</template>
               </p>
               <p v-if="validationLabels(t, user?.id).executor" class="text-xs text-success-700">
                 {{ validationLabels(t, user?.id).executor }}
@@ -125,7 +125,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const api = useApi()
+const api = useLeoAppApi()
 const user = useLeoUser()
 const toast = useToast()
 
@@ -158,14 +158,8 @@ function setFormRef(id: string, el: unknown) {
   formRefs.set(id, (el as { flush: () => Promise<void> } | null) ?? null)
 }
 
-function timeLabel(iso: string) {
-  return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
-}
-
 async function load() {
-  order.value = await api<OrderValidationView>(`/results/orders/${props.entryId}`, {
-    query: { professional_id: props.professionalId }
-  })
+  order.value = await api.get<OrderValidationView>(`/results/orders/${props.entryId}`, { query: { professional_id: props.professionalId } })
 }
 
 onMounted(async () => {
@@ -179,7 +173,7 @@ onMounted(async () => {
       mounted.value = new Set([first.order_test_id])
     }
   } catch (e) {
-    error.value = apiErrorMessage(e)
+    error.value = leoErrorMessage(e)
     toast.error(error.value)
   } finally {
     loading.value = false
@@ -191,7 +185,7 @@ async function onValidated(payload: { orderTestId: string }) {
   try {
     await load()
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
   }
   const next = order.value?.tests.find(
     (t) => t.validation_status !== 'validated' && t.order_test_id !== payload.orderTestId

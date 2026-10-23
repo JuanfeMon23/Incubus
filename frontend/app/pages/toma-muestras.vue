@@ -165,7 +165,7 @@ const canCollect = useCan(TAGS.sampling.collect)
 const canFinish = useCan(TAGS.sampling.finish)
 const canReturn = useCan(TAGS.sampling.return)
 const collectName = permissionName(TAGS.sampling.collect)
-const api = useApi()
+const api = useLeoAppApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(
   ['en_espera_toma_muestras', 'en_atencion_toma_muestras'],
@@ -206,8 +206,8 @@ const returning = ref(false)
 const returnReasons = ref<Reason[]>([])
 
 onMounted(async () => {
-  returnReasons.value = await api<Reason[]>('/return-reasons')
-  staff.value = await api<StaffMember[]>('/catalog/staff')
+  returnReasons.value = await api.get<Reason[]>('/return-reasons')
+  staff.value = await api.get<StaffMember[]>('/catalog/staff')
   try {
     professionalId.value = localStorage.getItem('incubus.professional') ?? ''
   } catch {
@@ -228,7 +228,7 @@ watch(professionalId, (id) => {
 /** Otro puesto marcó un tubo del paciente abierto: actualiza solo los tubos. */
 function onLiveEvent(name: LiveEventName, ev: LiveEvent) {
   if (name !== 'sample:updated' || ev.id !== currentId.value || togglingId.value) return
-  api<OrderDetail>(`/orders/by-entry/${ev.id}`)
+  api.get<OrderDetail>(`/orders/by-entry/${ev.id}`)
     .then((fresh) => {
       if (order.value && currentId.value === ev.id) order.value = { ...order.value, samples: fresh.samples }
     })
@@ -242,7 +242,7 @@ async function select(e: QueueEntry) {
   error.value = ''
   order.value = null
   try {
-    order.value = await api<OrderDetail>(`/orders/by-entry/${e.id}`)
+    order.value = await api.get<OrderDetail>(`/orders/by-entry/${e.id}`)
     const initial = emptyChecks(order.value.preconditions.map((p) => p.key))
     for (const p of order.value.preconditions) {
       if (p.sampling_met !== null && p.sampling_met !== undefined) {
@@ -251,7 +251,7 @@ async function select(e: QueueEntry) {
     }
     checks.value = initial
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
     toast.error(error.value)
   }
 }
@@ -260,15 +260,12 @@ async function claim(e: QueueEntry) {
   error.value = ''
   claimingId.value = e.id
   try {
-    await api(`/queue/${e.id}/claim`, {
-      method: 'POST',
-      body: { professional_id: professionalId.value }
-    })
+    await api.post(`/queue/${e.id}/claim`, { professional_id: professionalId.value })
     await refresh()
     const fresh = entries.value.find((x) => x.id === e.id)
     if (fresh) await select(fresh)
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
     toast.error(error.value)
     await refresh()
   } finally {
@@ -280,17 +277,14 @@ async function toggle(sample: OrderSample, collected: boolean) {
   if (!order.value) return
   togglingId.value = sample.id
   try {
-    const updated = await api<OrderSample>(
-      `/orders/samples/${sample.id}/${collected ? 'collect' : 'uncollect'}`,
-      { method: 'POST' }
-    )
+    const updated = await api.post<OrderSample>(`/orders/samples/${sample.id}/${collected ? 'collect' : 'uncollect'}`)
     order.value = {
       ...order.value,
       samples: order.value.samples.map((s) => (s.id === updated.id ? updated : s))
     }
     if (collected) toast.success(`Tubo «${sample.name}» marcado como tomado.`)
   } catch (err) {
-    error.value = sampleToggleError(err, apiErrorMessage)
+    error.value = sampleToggleError(err, leoErrorMessage)
     toast.error(error.value)
     await refresh() // el paciente pudo cambiar de etapa: re-sincroniza la lista
   } finally {
@@ -304,18 +298,15 @@ async function finish() {
   error.value = ''
   try {
     if (canCollect.value) {
-      await api(`/orders/by-entry/${current.value.id}/precondition-checks`, {
-        method: 'POST',
-        body: { stage: 'sampling', checks: toCheckPayload(checkKeys.value, checks.value) }
-      })
+      await api.post(`/orders/by-entry/${current.value.id}/precondition-checks`, { stage: 'sampling', checks: toCheckPayload(checkKeys.value, checks.value) })
     }
-    await api(`/queue/${current.value.id}/finish-sampling`, { method: 'POST' })
+    await api.post(`/queue/${current.value.id}/finish-sampling`)
     toast.success('Toma de muestras finalizada.')
     currentId.value = null
     order.value = null
     await refresh()
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
     toast.error(error.value)
     if (isNotTurnOwnerError(err)) await refresh()
   } finally {
@@ -327,16 +318,13 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
   if (!current.value) return
   returning.value = false
   try {
-    await api(`/queue/${current.value.id}/return`, {
-      method: 'POST',
-      body: payload
-    })
+    await api.post(`/queue/${current.value.id}/return`, payload)
     toast.info('Paciente devuelto a espera de toma de muestras.')
     currentId.value = null
     order.value = null
     await refresh()
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
     toast.error(error.value)
     if (isNotTurnOwnerError(err)) await refresh()
   }

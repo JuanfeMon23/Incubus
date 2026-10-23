@@ -1,35 +1,21 @@
 <template>
-  <div class="min-h-screen bg-background text-text">
-    <UiSidebar
-      v-model:collapsed="collapsedPad"
-      :items="menu"
-      brand="Incubus"
-      storage-key="incubus.sidebar.collapsed"
-    >
-      <template #footer="{ collapsed }">
-        <UiStatusBadge
-          v-if="!collapsed"
-          dot
-          :variant="connected ? 'success' : 'warning'"
-          :label="liveLabel"
-        />
-        <span
-          v-else
-          class="h-3 w-3 rounded-full"
-          :class="connected ? 'bg-success-500' : 'bg-warning-500'"
-          :title="liveLabel"
-        />
-      </template>
-    </UiSidebar>
-
-    <!-- El contenido deja el espacio de la barra lateral en pantallas grandes -->
-    <div class="transition-all duration-200 lg:pl-64" :class="{ 'lg:!pl-[4.5rem]': collapsedPad }">
-      <LeoTopBar />
-      <main class="mx-auto max-w-6xl px-4 py-6">
-        <slot />
-      </main>
-    </div>
-  </div>
+  <LeoAppShell :items="menu" brand="Incubus" storage-key="incubus.sidebar.collapsed">
+    <template #sidebar-footer="{ collapsed }">
+      <UiStatusBadge
+        v-if="!collapsed"
+        dot
+        :variant="connected ? 'success' : 'warning'"
+        :label="liveLabel"
+      />
+      <span
+        v-else
+        class="h-3 w-3 rounded-full"
+        :class="connected ? 'bg-success-500' : 'bg-warning-500'"
+        :title="liveLabel"
+      />
+    </template>
+    <slot />
+  </LeoAppShell>
 </template>
 
 <script setup lang="ts">
@@ -60,6 +46,4 @@ const menu = computed<UiSidebarItem[]>(() =>
   visibleScreens(can).map(({ section, label, to, icon }) => ({ section, label, to, icon: ICONS[icon] }))
 )
 
-// La barra avisa si está contraída para ajustar el margen del contenido.
-const collapsedPad = ref(false)
 </script>

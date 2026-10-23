@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LeoApiError } from '#leo-client/lib/errors'
 import { findButton, flushAll } from '~/testing/dom'
 import { entry, order, sample } from '~/testing/fixtures'
-import { ALL, allExcept, signInWith } from '~/testing/session'
+import { signInWith } from '#leo-client/testing/session'
+import { ALL, allExcept } from '~/testing/session'
 import { TAGS } from '~/utils/tags'
 import QueueHistoryButton from '../components/QueueHistoryButton.vue'
 import QueueHistoryModal from '../components/QueueHistoryModal.vue'
@@ -13,7 +14,7 @@ import SamplingPage from './toma-muestras.vue'
 import ExamValidationForm from '../components/ExamValidationForm.vue'
 
 const fake = await vi.hoisted(async () => (await import('~/testing/fakeApi')).createFakeApi())
-mockNuxtImport('useApi', () => () => fake.api)
+mockNuxtImport('useLeoAppApi', () => () => fake.client)
 mockNuxtImport('useQueueSocket', () => () => ({
   connected: { value: true },
   reconnecting: { value: false },

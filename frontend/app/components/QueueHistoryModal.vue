@@ -32,7 +32,7 @@ import { historyItems } from '../utils/queueHistory'
 const props = defineProps<{ entryId: string }>()
 const emit = defineEmits<{ close: [] }>()
 
-const api = useApi()
+const api = useLeoAppApi()
 const user = useLeoUser()
 const rows = ref<QueueHistoryRow[]>([])
 const loading = ref(true)
@@ -41,9 +41,9 @@ const items = computed(() => historyItems(rows.value, user.value?.id))
 
 onMounted(async () => {
   try {
-    rows.value = await api<QueueHistoryRow[]>(`/queue/${props.entryId}/history`)
+    rows.value = await api.get<QueueHistoryRow[]>(`/queue/${props.entryId}/history`)
   } catch (err) {
-    error.value = apiErrorMessage(err)
+    error.value = leoErrorMessage(err)
   } finally {
     loading.value = false
   }

@@ -1,3 +1,4 @@
+import { formatDateTime } from '#andromeda/utils/formatDateTime'
 import type { QueueHistoryRow, QueueStatus } from '../types'
 
 const STAGE_NAMES: Record<QueueStatus, string> = {
@@ -35,12 +36,6 @@ export function actorLabel(
 ): string {
   if (currentUserId && row.actor_user_id === currentUserId) return 'Tú'
   return row.actor || 'Sin registro'
-}
-
-export function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 export interface HistoryItem {

@@ -2,10 +2,10 @@ import { TAGS } from './tags'
 
 /**
  * Nombres legibles de los permisos (tags) de Incubus, para mensajes al
- * usuario ("No tienes permiso para: …"). Son los mismos del catálogo que el
+ * usuario ("No tienes permiso para: …"). Se registran en leo-client (plugin permissionNames) para sus mensajes 403. Son los mismos del catálogo que el
  * backend publica en Leo (`backend/app/core/permissions.py`).
  */
-const PERMISSION_NAMES: Record<string, string> = {
+export const PERMISSION_NAMES: Record<string, string> = {
   [TAGS.preReception.view]: 'Consultar la cola de pre-recepción',
   [TAGS.preReception.enqueue]: 'Ingresar pacientes a la cola',
   [TAGS.preReception.remove]: 'Retirar pacientes de la cola',
@@ -31,24 +31,4 @@ const PERMISSION_NAMES: Record<string, string> = {
   [TAGS.results.enter]: 'Capturar resultados',
   [TAGS.results.validate]: 'Validar resultados',
   [TAGS.resultsDelivery.view]: 'Consultar resultados entregados'
-}
-
-export function permissionName(tag: string | undefined | null): string | null {
-  return (tag && PERMISSION_NAMES[tag]) || null
-}
-
-/** Detalle de un 403 `forbidden` del backend: un tag (`action`) o varios alternativos (`any_of`). */
-export interface ForbiddenDetails {
-  action?: string
-  any_of?: string[]
-}
-
-/**
- * Mensaje de un 403 `forbidden`: nombra el permiso que falta si se conoce
- * ("No tienes permiso para: X"; con alternativas, "X o Y"); si no, el de respaldo.
- */
-export function forbiddenMessage(details: ForbiddenDetails | null | undefined, fallback: string): string {
-  const tags = details?.any_of?.length ? details.any_of : details?.action ? [details.action] : []
-  const names = [...new Set(tags.map((tag) => permissionName(tag)).filter((n): n is string => !!n))]
-  return names.length ? `No tienes permiso para: ${names.join(' o ')}` : fallback
 }

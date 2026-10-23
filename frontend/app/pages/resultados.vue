@@ -86,7 +86,7 @@ import type { ResultsQueueOrder, ValidatorStaff } from '../types'
 // Pantalla: results.view. Capturar (enter) y validar (validate) se controlan en cada examen.
 definePageMeta({ leo: { tag: TAGS.results.view } })
 const canWork = useCan([TAGS.results.enter, TAGS.results.validate], 'any')
-const api = useApi()
+const api = useLeoAppApi()
 const toast = useToast()
 
 const validators = ref<ValidatorStaff[]>([])
@@ -102,11 +102,11 @@ const openFocus = ref<string | null>(null)
 
 onMounted(async () => {
   try {
-    validators.value = await api<ValidatorStaff[]>('/catalog/validators')
+    validators.value = await api.get<ValidatorStaff[]>('/catalog/validators')
     const saved = localStorage.getItem('incubus.validator') ?? ''
     if (validators.value.some((v) => v.id === saved)) professionalId.value = saved
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
   }
 })
 
@@ -117,11 +117,9 @@ async function load() {
   }
   loading.value = true
   try {
-    orders.value = await api<ResultsQueueOrder[]>('/results/queue', {
-      query: { professional_id: professionalId.value, ...(search.value.trim() ? { q: search.value.trim() } : {}) }
-    })
+    orders.value = await api.get<ResultsQueueOrder[]>('/results/queue', { query: { professional_id: professionalId.value, ...(search.value.trim() ? { q: search.value.trim() } : {}) } })
   } catch (e) {
-    toast.error(apiErrorMessage(e))
+    toast.error(leoErrorMessage(e))
   } finally {
     loading.value = false
   }

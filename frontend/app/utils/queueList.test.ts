@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { QueueEntry } from '../types'
-import { createFakeSocket } from './fakeSocket'
+import { createFakeSocket } from '../testing/fakeSocket'
 import { createQueueList, createQueueRefresh } from './queueList'
 import { createQueueRealtime } from './queueRealtime'
 import type { LiveEvent } from './queueLive'
