@@ -1,9 +1,8 @@
 import { z } from 'zod'
 import { normalizeSearchTerm } from '#andromeda/utils/search'
-import { toUserMessage } from '#andromeda/utils/userMessage'
+import { leoErrorMessage } from '#leo-client/lib/errors'
 import { zRequiredNumber, zRequiredText } from '#andromeda/utils/zodFields'
 import type { QueueAdminItem, QueueAdminKind } from '../types'
-import { pageSizeMessage } from './apiErrors'
 
 /** Catálogos de la pantalla «Catálogos de la cola», en el orden de las pestañas. */
 export const QUEUE_ADMIN_KINDS: QueueAdminKind[] = ['priorities', 'removal-reasons', 'return-reasons']
@@ -132,7 +131,7 @@ interface ErrorShape { status?: number, code?: string, details?: unknown }
 /**
  * Mensaje legible de un error de la administración de catálogos. Los 409 de unicidad
  * (`details.field`/`value`) se explican con el campo; el del orden aclara cómo intercambiar.
- * Cualquier otro error pasa por `toUserMessage` (nunca el texto crudo).
+ * Cualquier otro error pasa por `leoErrorMessage` (nunca el texto crudo).
  */
 export function queueAdminErrorMessage(err: unknown, kind: QueueAdminKind): string {
   const e = (err ?? {}) as ErrorShape
@@ -146,5 +145,5 @@ export function queueAdminErrorMessage(err: unknown, kind: QueueAdminKind): stri
     if (details.field === 'name') return `Ya existe ${article} ${noun} con el nombre${value}. Usa un nombre distinto.`
     if (details.field === 'code') return `Ya existe ${article} ${noun} con el código${value}. Usa un código distinto.`
   }
-  return pageSizeMessage(err) ?? toUserMessage(err)
+  return leoErrorMessage(err)
 }

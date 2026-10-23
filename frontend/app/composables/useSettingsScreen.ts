@@ -1,6 +1,5 @@
 import type { SettingHistoryPage, SettingItem, SettingsListResponse, SettingUpdateBody } from '#andromeda/types/settings'
 import { useSettingsAdmin } from '#andromeda/composables/useSettingsAdmin'
-import { pageSizeMessage } from '../utils/apiErrors'
 import { TAGS } from '../utils/tags'
 
 /** Llamadas a `/settings` de Incubus con el cliente de Leo (lanzan `LeoApiError`). */
@@ -26,7 +25,7 @@ export function useSettingsScreen() {
     ...api,
     canEdit: useCan(TAGS.settings.edit),
     canEditSecurity: useCan(TAGS.settings.editSecurity),
-    mapError: (err) => pageSizeMessage(err) ?? leoErrorMessage(err),
+    mapError: (err) => leoErrorMessage(err),
     notify: (kind, message) => toast[kind](message)
   })
 }
