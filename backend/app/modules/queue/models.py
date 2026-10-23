@@ -130,12 +130,13 @@ class QueueEntry(UUIDv7PK, Timestamps, Base):
 
     __table_args__ = (
         CheckConstraint(f"status IN ({_STATUS_IN})", name="status_values"),
-        # Un paciente no puede estar dos veces en la cola a la vez.
+        # Un paciente no puede estar dos veces en la cola a la vez (un turno
+        # retirado o finalizado ya no cuenta como activo).
         Index(
             "uq_queue_entries_active_patient",
             "patient_id",
             unique=True,
-            postgresql_where=text("status <> 'retirado'"),
+            postgresql_where=text("status NOT IN ('retirado', 'finalizada')"),
         ),
         Index("ix_queue_entries_status_priority", "status", "priority_id"),
     )

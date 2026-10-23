@@ -23,3 +23,15 @@ Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js con [pnpm](https://pnpm.
    pnpm install
    pnpm run dev
    ```
+
+## Datos de prueba (solo desarrollo)
+
+Con Leo, Vladimir y el backend de Incubus arrancados, genera órdenes finalizadas de un paciente existente recorriendo todo el flujo por la API (por defecto 10 órdenes para CC 792083643; tarda unos minutos):
+
+```bash
+cd backend
+uv run python -m scripts.seed_demo_flow
+uv run python -m scripts.seed_demo_flow --document-type CC --document-number 792083643 --count 10
+```
+
+Usa el administrador de desarrollo de `leo/backend/.env` (o `LEO_ADMIN_USERNAME`/`LEO_ADMIN_PASSWORD`; `--leo-env` para otra ruta). Si el paciente no existe aborta, salvo `--create-patient`.
