@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.leo import auth
 from app.core.realtime import QUEUE_NAMESPACE, sio
+from app.modules.activation.router import router as activation_router
 from app.modules.catalog_client.client import close_token_provider
 from app.modules.orders.router import catalog_router
 from app.modules.orders.router import router as orders_router
@@ -81,6 +82,7 @@ app.include_router(validators_router, prefix="/api/v1/catalog")
 app.include_router(lab_router, prefix="/api/v1/lab")
 app.include_router(results_router, prefix="/api/v1/results")
 app.include_router(delivery_router, prefix="/api/v1/delivery")
+app.include_router(activation_router, prefix="/api/v1/delivery")
 
 # Socket.IO en /socket.io (namespace /queue). `app` sigue siendo la app FastAPI.
 sio.register_namespace(queue_namespace)

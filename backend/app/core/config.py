@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     # paquete `redis` (`uv add redis`), que NO se instala por defecto.
     socketio_redis_url: str | None = None
 
+    # Codigo de activacion (opcionales). Llave del HMAC del codigo; si falta se
+    # deriva del secreto de la app en Leo. Vigencia en dias.
+    activation_code_pepper: str | None = None
+    activation_code_ttl_days: int = 30
+    # Intentos de verificacion por ventana (IP+documento / solo documento).
+    activation_verify_max_per_ip_doc: int = 5
+    activation_verify_max_per_doc: int = 15
+    activation_verify_window_seconds: int = 900
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

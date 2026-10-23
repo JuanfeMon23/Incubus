@@ -1,9 +1,9 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Path, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -300,3 +300,70 @@ async def delivery_report(
             "Content-Disposition": f'inline; filename="resultados-{order_number}.pdf"'
         },
     )
+
+
+@delivery_router.get("/patients/{document_type}/{document_number}/orders")
+async def delivery_patient_orders(
+    document_type: Annotated[str, Path(max_length=8)],
+    document_number: Annotated[str, Path(max_length=20)],
+    session: Session,
+    _user: CanViewDelivery,
+    page: Annotated[int, Query(ge=1, le=10_000)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> dict:
+    """Ordenes con resultados disponibles (finalizadas) de un paciente, la mas
+    reciente primero. Datos minimos; el detalle y el PDF van por
+    `/orders/{order_number}` y `/orders/{order_number}/report.pdf`."""
+    base = (
+        select(Order.id)
+        .join(QueueEntry, QueueEntry.id == Order.queue_entry_id)
+        .join(Patient, Patient.id == Order.patient_id)
+        .where(
+            Patient.document_type == document_type.strip().upper(),
+            Patient.document_number == document_number.strip(),
+            QueueEntry.status == QueueStatus.FINALIZADA.value,
+        )
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(base.subquery()))
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            select(
+                Order.id,
+                Order.order_number,
+                Order.created_at,
+                select(func.max(OrderTest.validated_at))
+                .where(OrderTest.order_id == Order.id)
+                .scalar_subquery(),
+            )
+            .where(Order.id.in_(base))
+            .order_by(Order.created_at.desc(), Order.id.desc())
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )
+    ).all()
+    names: dict = {}
+    if rows:
+        for oid, name in await session.execute(
+            select(OrderTest.order_id, OrderTest.test_name)
+            .where(OrderTest.order_id.in_([r[0] for r in rows]))
+            .order_by(OrderTest.test_code)
+        ):
+            names.setdefault(oid, []).append(name)
+    return {
+        "items": [
+            {
+                "order_number": number,
+                "date": created.isoformat(),
+                "finalized_at": finalized.isoformat() if finalized else None,
+                "status": "finalizada",
+                "tests": names.get(oid, []),
+                "has_pdf": True,
+            }
+            for oid, number, created, finalized in rows
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }

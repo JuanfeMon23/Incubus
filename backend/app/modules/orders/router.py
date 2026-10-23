@@ -28,6 +28,7 @@ from app.core.permissions import (
     CanViewAnyStage,
     CanViewLabels,
 )
+from app.modules.activation import service as activation_service
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders import service
 from app.modules.orders.labels import (
@@ -142,6 +143,7 @@ async def close_reception(
             [c.model_dump() for c in body.precondition_checks],
             supervisor=can_supervise(user, QueueStatus.EN_ATENCION_RECEPCION.value),
         )
+    activation_code = await activation_service.issue_code(session, order)
     await session.commit()
     await events.publish_entry(
         session,
@@ -156,7 +158,12 @@ async def close_reception(
             },
         ),
     )
-    return {"order_number": order.order_number, "order_id": str(order.id)}
+    # El codigo de activacion solo existe en claro en esta respuesta (imprimir).
+    return {
+        "order_number": order.order_number,
+        "order_id": str(order.id),
+        "activation_code": activation_code,
+    }
 
 
 def sample_dict(s: OrderSample) -> dict:
