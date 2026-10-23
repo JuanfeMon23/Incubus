@@ -148,6 +148,12 @@ RES_VALIDATE = _action(
     "Validar un examen; al validar toda la orden se finaliza.",
 )  # fmt: skip
 
+RES_TRACE = _action(
+    _RES, "trace", "Consultar la trazabilidad de una prueba",
+    "Ver la línea de tiempo de una prueba: quién hizo qué y cuándo, desde el "
+    "ingreso hasta la entrega.",
+)  # fmt: skip
+
 # --- Entrega de resultados (API para otro servicio) ------------------------------
 _DEL = _module(
     "results-delivery", "Entrega de resultados",
@@ -157,6 +163,28 @@ DEL_VIEW = _action(
     _DEL, "view", "Consultar resultados entregados",
     "Leer los resultados finalizados de una orden (JSON y PDF). Acepta "
     "credenciales de servicio.",
+)  # fmt: skip
+
+# --- Administracion de catalogos de la cola ---------------------------------------
+_QAD = _module(
+    "queue-admin", "Catálogos de la cola",
+    "Administración de prioridades y motivos de retiro y devolución.",
+)  # fmt: skip
+QAD_VIEW = _action(
+    _QAD, "view", "Consultar los catálogos de la cola",
+    "Listar prioridades y motivos de retiro y devolución, también los inactivos.",
+)  # fmt: skip
+QAD_CREATE = _action(
+    _QAD, "create", "Crear elementos de los catálogos de la cola",
+    "Crear prioridades y motivos de retiro o devolución.",
+)  # fmt: skip
+QAD_UPDATE = _action(
+    _QAD, "update", "Editar elementos de los catálogos de la cola",
+    "Cambiar nombre, color y orden de una prioridad o el nombre de un motivo.",
+)  # fmt: skip
+QAD_TOGGLE = _action(
+    _QAD, "toggle", "Activar o desactivar elementos de los catálogos de la cola",
+    "Activar o desactivar prioridades y motivos (nada se borra).",
 )  # fmt: skip
 
 # Etapa (estado de la cola) -> permiso `view` de la pantalla que la muestra.
@@ -220,7 +248,12 @@ CanUnreceive = Annotated[LeoUser, _one(LAB_UNRECEIVE)]
 CanViewResults = Annotated[LeoUser, _one(RES_VIEW)]
 CanEnterResults = Annotated[LeoUser, _one(RES_ENTER)]
 CanValidateResults = Annotated[LeoUser, _one(RES_VALIDATE)]
+CanViewTrace = Annotated[LeoUser, _one(RES_TRACE)]
 CanViewDelivery = Annotated[LeoUser, _one(DEL_VIEW)]
+CanViewQueueAdmin = Annotated[LeoUser, _one(QAD_VIEW)]
+CanCreateQueueAdmin = Annotated[LeoUser, _one(QAD_CREATE)]
+CanUpdateQueueAdmin = Annotated[LeoUser, _one(QAD_UPDATE)]
+CanToggleQueueAdmin = Annotated[LeoUser, _one(QAD_TOGGLE)]
 
 # Varios tags posibles (basta uno); el de la etapa concreta se exige despues
 # con `authorize` cuando depende del estado de la entrada.

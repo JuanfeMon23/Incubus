@@ -6,13 +6,16 @@ import re
 import secrets
 from datetime import UTC, date, datetime, timedelta
 
+from leo_sdk import LeoUser
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
+from app.core.leo import Actor
 from app.core.leo import settings as leo_settings
 from app.core.rate_limit import SlidingWindowLimiter
+from app.core.trace import record_test_event
 from app.modules.activation.models import ActivationCode
 from app.modules.orders.models import Order
 from app.modules.queue.models import Patient
@@ -56,19 +59,32 @@ def hash_code(code: str) -> str:
     return hmac.new(_key(), code.encode(), hashlib.sha256).hexdigest()
 
 
-async def issue_code(session: AsyncSession, order: Order) -> str:
+async def issue_code(
+    session: AsyncSession, order: Order, actor: Actor | None = None
+) -> str:
     """Crea el codigo de la orden y lo devuelve en claro (UNICA vez)."""
     code = generate_code()
+    expires_at = datetime.now(UTC) + timedelta(
+        days=get_settings().activation_code_ttl_days
+    )
     session.add(
         ActivationCode(
             patient_id=order.patient_id,
             order_id=order.id,
             code_hash=hash_code(code),
-            expires_at=datetime.now(UTC)
-            + timedelta(days=get_settings().activation_code_ttl_days),
+            expires_at=expires_at,
+            created_by_user_id=actor.user_id if actor else None,
         )
     )
     await session.flush()
+    await record_test_event(
+        session,
+        "activation.issued",
+        actor,
+        order.id,
+        summary="Código de activación emitido",
+        details={"expires_at": expires_at},  # nunca el codigo
+    )
     return display_code(code)
 
 
@@ -93,6 +109,9 @@ async def consume_code(
     document_type: str,
     document_number: str,
     birth_date: date,
+    *,
+    actor: Actor | LeoUser | None = None,
+    client: str | None = None,
 ) -> Patient | None:
     """Marca el codigo como usado SOLO si todo coincide, en una sentencia atomica.
 
@@ -104,7 +123,7 @@ async def consume_code(
     if code is None:
         return None
     now = datetime.now(UTC)
-    patient_id = (
+    row = (
         await session.execute(
             update(ActivationCode)
             .where(
@@ -116,9 +135,20 @@ async def consume_code(
                 Patient.document_number == document_number.strip(),
                 Patient.birth_date == birth_date,
             )
-            .values(used_at=now)
-            .returning(ActivationCode.patient_id)
+            .values(used_at=now, used_by_client=client[:64] if client else None)
+            .returning(ActivationCode.patient_id, ActivationCode.order_id)
             .execution_options(synchronize_session=False)
         )
-    ).scalar_one_or_none()
-    return None if patient_id is None else await session.get(Patient, patient_id)
+    ).first()
+    if row is None:
+        return None
+    patient_id, order_id = row
+    await record_test_event(
+        session,
+        "activation.used",
+        actor,
+        order_id,
+        summary="Código de activación usado",
+        details={"client": client},  # nunca el codigo ni datos del paciente
+    )
+    return await session.get(Patient, patient_id)

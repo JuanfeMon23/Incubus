@@ -13,6 +13,7 @@ from app.core.exceptions import (
     ValidationAppError,
 )
 from app.core.leo import Actor, uuid_str
+from app.core.trace import record_sample_events, record_test_event
 from app.modules.catalog_client.client import CatalogClient
 from app.modules.orders.models import Order, OrderResult, OrderSample, OrderTest
 from app.modules.queue import service as queue_service
@@ -213,7 +214,10 @@ def _store_value(row: OrderResult, typed: object, at: datetime, actor: Actor) ->
 
 def _apply_values(
     rows: list[OrderResult], values: dict, patient: Patient, actor: Actor
-) -> None:
+) -> list[dict]:
+    """Aplica los valores y devuelve los cambios reales (analito, antes, despues,
+    bandera, si es calculado) para la traza; un valor igual no genera cambio."""
+    before = {r.analyte_code: (r.value or {}).get("v") for r in rows}
     by_code = {r.analyte_code: r for r in rows}
     unknown = [c for c in values if c not in by_code]
     if unknown:
@@ -261,6 +265,57 @@ def _apply_values(
         rng = pick_range(row.ranges, patient.sex, age)
         row.flag = evaluate_flag(value, rng) if value is not None else None
 
+    return [
+        {
+            "analyte_code": r.analyte_code,
+            "analyte_name": r.analyte_name,
+            "before": before[r.analyte_code],
+            "after": (r.value or {}).get("v"),
+            "flag": r.flag,
+            "calculated": r.result_type == "calculated",
+        }
+        for r in rows
+        if before[r.analyte_code] != (r.value or {}).get("v")
+    ]
+
+
+async def _record_changes(
+    session: AsyncSession,
+    actor: Actor,
+    test: OrderTest,
+    changes: list[dict],
+    professional_id: str,
+) -> None:
+    for c in changes:
+        if c["before"] is None:
+            step, verb = "result.entered", "capturado"
+        elif c["after"] is None:
+            step, verb = "result.cleared", "borrado"
+        else:
+            step, verb = "result.changed", "modificado"
+        auto = c["calculated"]
+        summary = (
+            f"{c['analyte_name']} {verb} (calculado automáticamente)"
+            if auto
+            else f"{c['analyte_name']} {verb}"
+        )
+        await record_test_event(
+            session,
+            step,
+            actor,
+            test.order_id,
+            test.id,
+            summary=summary,
+            details={
+                "analyte_code": c["analyte_code"],
+                "before": c["before"],
+                "after": c["after"],
+                "flag": c["flag"],
+                "calculated": auto,
+            },
+            staff_id=professional_id,
+        )
+
 
 async def save_values(
     session: AsyncSession,
@@ -281,7 +336,8 @@ async def save_values(
         )
     rows = await ensure_structure(session, catalog, test)
     patient = await session.get(Patient, order.patient_id)
-    _apply_values(rows, values, patient, actor)
+    changes = _apply_values(rows, values, patient, actor)
+    await _record_changes(session, actor, test, changes, professional_id)
     test.validation_status = (
         "draft" if any(r.value is not None for r in rows) else "pending"
     )
@@ -333,6 +389,26 @@ async def validate_test(
     test.validated_by_name = professional_name
     test.validated_by_user_id = actor.user_id  # quien ejecuto la validacion
     await session.flush()
+    abnormal = [
+        {"analyte_code": r.analyte_code, "flag": r.flag}
+        for r in rows
+        if r.flag not in (None, "normal")
+    ]
+    await record_test_event(
+        session,
+        "test.validated",
+        actor,
+        test.order_id,
+        test.id,
+        summary=f"Prueba {test.test_code} validada"
+        + (f" con {len(abnormal)} resultado(s) fuera de rango" if abnormal else ""),
+        details={
+            "abnormal_flags": abnormal,
+            "validated_by": professional_name,
+            "validated_by_id": professional_id,
+        },
+        staff_id=professional_id,
+    )
 
     order = await session.get(Order, test.order_id)
     pending = (
@@ -351,6 +427,14 @@ async def validate_test(
             QueueStatus.FINALIZADA,
             actor=actor,
             note=f"orden {order.order_number} validada",
+        )
+        await record_test_event(
+            session,
+            "order.finalized",
+            actor,
+            order.id,
+            summary=f"Orden {order.order_number} finalizada",
+            details={"order_number": order.order_number},
         )
     detail = await test_detail(session, catalog, order_test_id, professional_id)
     return detail, finalized
@@ -560,6 +644,18 @@ async def set_received(
     sample.received_by = owner.name
     sample.received_by_user_id = owner.user_id
     await session.flush()
+    await record_sample_events(
+        session,
+        "lab.received" if received else "lab.unreceived",
+        actor,
+        sample,
+        summary=f"Tubo {sample.name} "
+        + (
+            "recibido en laboratorio"
+            if received
+            else "devuelto a pendiente de recepción"
+        ),
+    )
     await queue_service.touch_entry(session, entry.id)
     status = entry.status
     if received:

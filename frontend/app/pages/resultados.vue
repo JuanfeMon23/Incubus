@@ -58,6 +58,7 @@
                   :variant="t.validation_status === 'draft' ? 'warning' : 'neutral'"
                   :label="t.validation_status === 'draft' ? 'Borrador' : 'Pendiente'"
                 />
+                <TraceButton :order-number="o.order_number" :test-id="t.order_test_id" />
                 <UiButton size="sm" @click="openOrder(o.entry_id, t.order_test_id)">{{ canWork ? 'Validar' : 'Ver' }}</UiButton>
               </li>
             </ul>

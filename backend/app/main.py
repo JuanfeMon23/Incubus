@@ -15,12 +15,14 @@ from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.leo import auth
 from app.core.realtime import QUEUE_NAMESPACE, sio
+from app.core.trace import RequestIdMiddleware
 from app.modules.activation.router import router as activation_router
 from app.modules.catalog_client.client import close_token_provider
 from app.modules.orders.router import catalog_router
 from app.modules.orders.router import router as orders_router
 from app.modules.queue.router import catalogs_router, patients_router, queue_router
 from app.modules.queue.socket_handlers import QueueNamespace
+from app.modules.queue_admin.router import router as queue_admin_router
 from app.modules.results.router import (
     delivery_router,
     lab_router,
@@ -69,6 +71,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "DPoP", "Authorization", "X-Request-ID"],
 )
 
+app.add_middleware(RequestIdMiddleware)
 register_exception_handlers(app)
 auth.install(app)  # errores de Leo con el formato {code, message, details}
 app.include_router(leo_router(auth))  # /auth/login /callback /me /activity /logout
@@ -76,6 +79,7 @@ app.include_router(leo_router(auth))  # /auth/login /callback /me /activity /log
 app.include_router(catalogs_router, prefix="/api/v1")
 app.include_router(patients_router, prefix="/api/v1/patients")
 app.include_router(queue_router, prefix="/api/v1/queue")
+app.include_router(queue_admin_router, prefix="/api/v1/queue-admin")
 app.include_router(orders_router, prefix="/api/v1/orders")
 app.include_router(catalog_router, prefix="/api/v1/catalog")
 app.include_router(validators_router, prefix="/api/v1/catalog")

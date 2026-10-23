@@ -202,3 +202,44 @@ export interface QueueHistoryRow {
   removal_reason_name?: string | null
   return_reason_name?: string | null
 }
+
+/** Catálogos administrables de la cola (`/queue-admin/{kind}`). */
+export type QueueAdminKind = 'priorities' | 'removal-reasons' | 'return-reasons'
+/** Fila de un catálogo; `color_hex` y `rank` solo vienen en prioridades. */
+export interface QueueAdminItem {
+  id: string
+  code: string
+  name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  color_hex: string | null
+  rank: number | null
+}
+export interface QueueAdminPage {
+  items: QueueAdminItem[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export type TraceScope = 'test' | 'order' | 'sample'
+/** Evento de `GET /orders/{order_number}/tests/{test_id}/trace`. */
+export interface TraceEvent {
+  at: string
+  step: string
+  scope: TraceScope
+  actor: { id: string | null; name: string | null; staff_id: string | null }
+  summary: string
+  details: Record<string, any>
+  source: 'event' | 'derived'
+}
+export interface TracePage {
+  order_number: string
+  order_id: string
+  test: { id: string; code: string; name: string; area_code: string | null; validation_status: string; created_at: string }
+  events: TraceEvent[]
+  page: number
+  page_size: number
+  total: number
+}

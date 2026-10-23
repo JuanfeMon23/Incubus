@@ -2,13 +2,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, Response
+from leo_sdk import LeoUser
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.exceptions import NotFoundError
-from app.core.leo import Actor, CatalogReader, record_audit
+from app.core.leo import Actor, CatalogReader, client_of, record_audit
 from app.core.permissions import (
     RES_ENTER,
     RES_VALIDATE,
@@ -18,6 +19,7 @@ from app.core.permissions import (
     CanViewLab,
     CanViewResults,
 )
+from app.core.trace import record_test_event
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
 from app.modules.orders.models import Order, OrderResult, OrderTest
 from app.modules.queue import events
@@ -214,6 +216,20 @@ async def _finalized_order(
     return order, await session.get(Patient, order.patient_id)
 
 
+async def _record_delivery(
+    session: AsyncSession, user: LeoUser, step: str, order_id: UUID, summary: str
+) -> None:
+    """Evento de entrega (de la orden). Solo el cliente, nunca datos de salud."""
+    await record_test_event(
+        session,
+        step,
+        user,
+        order_id,
+        summary=summary,
+        details={"client": client_of(user)},
+    )
+
+
 async def _delivery_payload(
     session: AsyncSession, order: Order, patient: Patient
 ) -> dict:
@@ -280,19 +296,32 @@ async def _delivery_payload(
 
 @delivery_router.get("/orders/{order_number}")
 async def delivery_order(
-    order_number: str, session: Session, _user: CanViewDelivery
+    order_number: str, session: Session, user: CanViewDelivery
 ) -> dict:
     """Resultados finalizados de una orden (para el servicio de pacientes)."""
     order, patient = await _finalized_order(session, order_number)
-    return await _delivery_payload(session, order, patient)
+    payload = await _delivery_payload(session, order, patient)
+    await _record_delivery(
+        session,
+        user,
+        "delivery.order_viewed",
+        order.id,
+        "Resultados de la orden consultados",
+    )
+    await session.commit()
+    return payload
 
 
 @delivery_router.get("/orders/{order_number}/report.pdf")
 async def delivery_report(
-    order_number: str, session: Session, _user: CanViewDelivery
+    order_number: str, session: Session, user: CanViewDelivery
 ) -> Response:
     order, patient = await _finalized_order(session, order_number)
     data = await _delivery_payload(session, order, patient)
+    await _record_delivery(
+        session, user, "delivery.report_downloaded", order.id, "Informe PDF descargado"
+    )
+    await session.commit()
     return Response(
         content=render_report_pdf(data),
         media_type="application/pdf",
@@ -307,7 +336,7 @@ async def delivery_patient_orders(
     document_type: Annotated[str, Path(max_length=8)],
     document_number: Annotated[str, Path(max_length=20)],
     session: Session,
-    _user: CanViewDelivery,
+    user: CanViewDelivery,
     page: Annotated[int, Query(ge=1, le=10_000)] = 1,
     page_size: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> dict:
@@ -351,6 +380,16 @@ async def delivery_patient_orders(
             .order_by(OrderTest.test_code)
         ):
             names.setdefault(oid, []).append(name)
+    for oid, *_ in rows:
+        await _record_delivery(
+            session,
+            user,
+            "delivery.patient_orders_listed",
+            oid,
+            "Orden incluida en el listado de órdenes del paciente",
+        )
+    if rows:
+        await session.commit()
     return {
         "items": [
             {

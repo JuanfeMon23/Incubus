@@ -29,6 +29,14 @@ PUBLIC = {f"{API}/orders/barcode/{{order_number}}.svg"}
 
 # (metodo, ruta, tag unico que la protege). `{x}` se reemplaza por un UUID.
 SINGLE_TAG = [
+    ("GET", "/queue-admin/priorities", p.QAD_VIEW),
+    ("GET", "/queue-admin/priorities/{x}", p.QAD_VIEW),
+    ("POST", "/queue-admin/priorities", p.QAD_CREATE),
+    ("PATCH", "/queue-admin/removal-reasons/{x}", p.QAD_UPDATE),
+    ("POST", "/queue-admin/return-reasons/{x}/activate", p.QAD_TOGGLE),
+    ("POST", "/queue-admin/return-reasons/{x}/deactivate", p.QAD_TOGGLE),
+    ("GET", "/orders/{x}/tests/{x}/trace", p.RES_TRACE),
+    ("GET", "/orders/{x}/tests", p.RES_TRACE),
     ("POST", "/queue", p.PRE_ENQUEUE),
     ("POST", "/queue/call-next", p.REC_CALL_NEXT),
     ("PATCH", "/patients/{x}", p.REC_EDIT_PATIENT),
@@ -359,7 +367,7 @@ async def test_a_service_with_delivery_permission_reads_delivery(
 def test_catalog_declared_equals_used_tags() -> None:
     auth.check_catalog()  # ningun tag usado sin declarar
     assert set(catalog.tags) == set(auth.used_tags)
-    assert len(catalog.tags) == 25
+    assert len(catalog.tags) == 30
 
 
 def test_catalog_payload_has_readable_unique_names_per_module() -> None:
@@ -373,6 +381,7 @@ def test_catalog_payload_has_readable_unique_names_per_module() -> None:
         "lab-reception",
         "results",
         "results-delivery",
+        "queue-admin",
     ]
     for module in payload["modules"]:
         names = [a["name"] for a in module["actions"]]

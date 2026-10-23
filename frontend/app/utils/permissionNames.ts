@@ -30,5 +30,10 @@ export const PERMISSION_NAMES: Record<string, string> = {
   [TAGS.results.view]: 'Consultar resultados por validar',
   [TAGS.results.enter]: 'Capturar resultados',
   [TAGS.results.validate]: 'Validar resultados',
-  [TAGS.resultsDelivery.view]: 'Consultar resultados entregados'
+  [TAGS.results.trace]: 'Consultar la trazabilidad de una prueba',
+  [TAGS.resultsDelivery.view]: 'Consultar resultados entregados',
+  [TAGS.queueAdmin.view]: 'Consultar los catálogos de la cola',
+  [TAGS.queueAdmin.create]: 'Crear prioridades y motivos de la cola',
+  [TAGS.queueAdmin.update]: 'Editar prioridades y motivos de la cola',
+  [TAGS.queueAdmin.toggle]: 'Activar y desactivar prioridades y motivos de la cola'
 }
