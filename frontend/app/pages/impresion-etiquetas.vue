@@ -113,7 +113,9 @@ async function loadStaff() {
   }
 }
 
-onMounted(loadStaff)
+onMounted(() => {
+  if (canPrint.value) loadStaff()
+})
 
 /** Descarga el ZPL (203 dpi, 70x35 mm) para la impresora térmica, con petición firmada (DPoP). */
 async function downloadZpl() {
