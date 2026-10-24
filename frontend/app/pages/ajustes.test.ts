@@ -33,6 +33,7 @@ async function mountPage(tags: string[]) {
 
 const input = (wrapper: { element: Element }, key: string) =>
   wrapper.element.querySelector(`[data-key="${key}"] input`) as HTMLInputElement
+const row = (wrapper: { element: Element }, key: string) => wrapper.element.querySelector(`[data-key="${key}"]`) as HTMLElement
 const saveButton = (wrapper: { element: Element }, key: string) =>
   wrapper.element.querySelector(`[data-key="${key}"] [data-testid="setting-save"]`) as HTMLButtonElement
 const dialog = () => document.querySelector('[role="dialog"]') as HTMLElement
@@ -56,18 +57,37 @@ describe('ajustes del sistema', () => {
 
   it('solo con view es de solo lectura', async () => {
     const wrapper = await mountPage([TAGS.settings.view])
-    expect(input(wrapper, 'queue.timeout').disabled).toBe(true)
+    expect(input(wrapper, 'queue.timeout')).toBeNull()
     expect(wrapper.text()).toContain('No tienes permiso para modificar ajustes.')
   })
 
-  it('con edit se edita lo común pero no lo de seguridad; edit-security lo habilita', async () => {
+  it('sin incubus.settings.edit no hay controles de edición y el valor se muestra como texto', async () => {
+    fake.routes['GET /settings'] = { groups: [{ group: 'Cola', settings: [TIMEOUT, setting({ key: 'queue.flag', type: 'bool', value: true, default: false, description: 'Aviso' })] }] }
+    const wrapper = await mountPage([TAGS.settings.view])
+    for (const key of ['queue.timeout', 'queue.flag']) {
+      const el = row(wrapper, key)
+      expect(el.querySelector('input, textarea, [role="switch"]')).toBeNull()
+      expect(el.querySelector('[data-testid="setting-save"]')).toBeNull()
+      expect(el.querySelector('[data-testid="setting-reset"]')).toBeNull()
+      expect(el.querySelector('[data-testid="setting-history"]')).not.toBeNull()
+    }
+    expect(row(wrapper, 'queue.timeout').querySelector('[data-testid="setting-readonly"]')!.textContent).toContain('10')
+  })
+
+  it('con edit se edita lo común; lo de seguridad es texto sin controles hasta tener edit-security', async () => {
     const edit = await mountPage([TAGS.settings.view, TAGS.settings.edit])
     expect(input(edit, 'queue.timeout').disabled).toBe(false)
-    expect(input(edit, 'security.pin').disabled).toBe(true)
+    expect(input(edit, 'security.pin')).toBeNull()
+    const locked = row(edit, 'security.pin')
+    expect(locked.querySelector('[data-testid="setting-save"]')).toBeNull()
+    expect(locked.querySelector('[data-testid="setting-reset"]')).toBeNull()
+    expect(locked.querySelector('[data-testid="setting-readonly"]')!.textContent).toContain('10')
+    expect(locked.querySelector('[data-testid="setting-locked"]')).not.toBeNull()
     expect(edit.text()).toContain('Solo con permiso de seguridad.')
 
     const security = await mountPage([TAGS.settings.view, TAGS.settings.edit, TAGS.settings.editSecurity])
     expect(input(security, 'security.pin').disabled).toBe(false)
+    expect(row(security, 'security.pin').querySelector('[data-testid="setting-save"]')).not.toBeNull()
   })
 
   it('guardar pide motivo y envía value, reason y expected_version', async () => {

@@ -70,12 +70,13 @@
             <div class="space-y-1">
               <div class="flex items-center gap-2">
                 <div class="min-w-0 flex-1">
+                  <p v-if="!canWork" class="text-sm font-medium" data-testid="result-value">{{ displayValue(r) }}</p>
                   <UiSelect
-                    v-if="isOption(r)"
+                    v-else-if="isOption(r)"
                     :model-value="String(form[r.code] ?? '')"
                     :options="r.options.map((o) => ({ value: o.id, label: o.label }))"
                     placeholder="Seleccione…"
-                    :disabled="readonly"
+                    :disabled="validated"
                     @update:model-value="setValue(r.code, $event)"
                   />
                   <UiSelect
@@ -83,20 +84,20 @@
                     :model-value="boolText(form[r.code])"
                     :options="[{ value: 'true', label: 'Sí / Positivo' }, { value: 'false', label: 'No / Negativo' }]"
                     placeholder="Seleccione…"
-                    :disabled="readonly"
+                    :disabled="validated"
                     @update:model-value="setValue(r.code, $event)"
                   />
                   <UiTextarea
                     v-else-if="r.result_type === 'text'"
                     :model-value="String(form[r.code] ?? '')"
                     :rows="2"
-                    :disabled="readonly"
+                    :disabled="validated"
                     @update:model-value="setValue(r.code, $event)"
                   />
                   <UiTextInput
                     v-else
                     :model-value="String(form[r.code] ?? '')"
-                    :disabled="readonly || r.result_type === 'calculated'"
+                    :disabled="validated || r.result_type === 'calculated'"
                     inputmode="decimal"
                     :placeholder="r.result_type === 'calculated' ? 'Automático' : 'Resultado'"
                     @update:model-value="setValue(r.code, $event)"
@@ -124,10 +125,10 @@
     </div>
 
     <div v-if="detail && canWork" class="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-      <UiButton v-if="canEnter" variant="secondary" :loading="saving" :disabled="readonly || finishing" @click="saveNow">
+      <UiButton v-if="canEnter" variant="secondary" :loading="saving" :disabled="validated || finishing" @click="saveNow">
         Guardar borrador
       </UiButton>
-      <UiButton v-if="canValidate" :loading="finishing" :disabled="readonly || loading" @click="finish">
+      <UiButton v-if="canValidate" :loading="finishing" :disabled="validated || loading" @click="finish">
         Finalizar validación de {{ detail.name }}
       </UiButton>
     </div>
@@ -167,7 +168,8 @@ const canValidate = useCan(TAGS.results.validate)
 const canWork = computed(() => canEnter.value || canValidate.value)
 const enterName = permissionName(TAGS.results.enter)
 const validateName = permissionName(TAGS.results.validate)
-const readonly = computed(() => detail.value?.validation_status === 'validated' || !canWork.value)
+// Validado (negocio): controles deshabilitados. Sin permiso: el valor se muestra como texto, sin controles.
+const validated = computed(() => detail.value?.validation_status === 'validated')
 const savingLabel = computed(() => {
   if (saving.value) return 'Guardando borrador…'
   if (dirty.value) return 'Cambios sin guardar'
@@ -190,6 +192,13 @@ const groups = computed(() => {
 
 const isOption = (r: ResultRow) =>
   ['qualitative', 'semi_quantitative', 'titer'].includes(r.result_type)
+function displayValue(r: ResultRow) {
+  const v = form[r.code]
+  if (v === null || v === undefined || v === '') return '—'
+  if (isOption(r)) return r.options.find((o) => o.id === String(v))?.label ?? String(v)
+  if (r.result_type === 'boolean') return v === true || v === 'true' ? 'Sí / Positivo' : 'No / Negativo'
+  return String(v)
+}
 const boolText = (v: unknown) => (v === true ? 'true' : v === false ? 'false' : '')
 
 function isCritical(flag: string | null) {
@@ -265,7 +274,7 @@ function applyServerErrors(e: unknown) {
 }
 
 async function save(silent = true) {
-  if (readonly.value || !detail.value) return true
+  if (validated.value || !canWork.value || !detail.value) return true
   saving.value = true
   try {
     const res = await api.put<ResultTestDetail>(`/results/tests/${props.orderTestId}/values`, {

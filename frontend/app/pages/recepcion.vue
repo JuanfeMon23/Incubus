@@ -154,6 +154,7 @@
                 </span>
                 <span class="min-w-0 flex-1 truncate text-sm">{{ t.name }}</span>
                 <button
+                  v-if="canEdit"
                   type="button"
                   class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-primary-700 transition-colors hover:bg-primary-100"
                   :aria-label="`Quitar ${t.name}`"

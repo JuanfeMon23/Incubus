@@ -22,6 +22,7 @@ export default defineVitestConfig({
     },
     // Lo puro de app/utils corre en el config unitario (node), salvo lo que necesita Nuxt.
     include: [
+      'app/errorPage.test.ts',
       'app/components/**/*.test.ts',
       'app/pages/**/*.test.ts',
       'app/layouts/**/*.test.ts',

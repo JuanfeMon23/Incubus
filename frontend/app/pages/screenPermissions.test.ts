@@ -130,6 +130,19 @@ describe('recepción', () => {
     expect(editable.text()).not.toContain('Solo lectura')
   })
 
+  it('"Quitar examen" (×) solo se renderiza con edit-patient', async () => {
+    fake.routes['GET /queue'] = [entry('pre_recepcion', 'w1'), entry('en_atencion_recepcion', 'a1', { draft: { test_codes: ['GLU'] } })]
+    fake.routes['GET /catalog/tests'] = [{ code: 'GLU', name: 'Glucosa' }]
+    fake.routes['POST /orders/preview'] = { preconditions: [] }
+    const readOnly = await mountPage(ReceptionPage, allExcept(TAGS.reception.editPatient))
+    await selectCard(readOnly)
+    expect(readOnly.text()).toContain('Glucosa')
+    expect(readOnly.element.querySelector('[aria-label="Quitar Glucosa"]')).toBeNull()
+    const editable = await mountPage(ReceptionPage, ALL)
+    await selectCard(editable)
+    expect(editable.element.querySelector('[aria-label="Quitar Glucosa"]')).not.toBeNull()
+  })
+
   it('"Cerrar y generar orden" exige close-reception y "Devolver" exige return', async () => {
     const without = await mountPage(ReceptionPage, allExcept(TAGS.reception.closeReception, TAGS.reception.return))
     await selectCard(without)
@@ -154,6 +167,15 @@ describe('impresión de etiquetas', () => {
     expect(wrapper.text()).toContain('Tubo rojo')
     expect(btn(wrapper, 'Descargar ZPL')).toBeNull()
     expect(btn(wrapper, 'Imprimir etiquetas y asignar')).toBeNull()
+  })
+
+  it('sin print no se renderiza el selector de profesional ni se carga /catalog/staff', async () => {
+    const wrapper = await mountPage(ImpresionPage, allExcept(TAGS.labelPrinting.print))
+    await selectCard(wrapper)
+    expect(wrapper.element.querySelector('select')).toBeNull()
+    expect(fake.requests).not.toHaveBeenCalledWith('GET', '/catalog/staff', expect.anything())
+    await mountPage(ImpresionPage, ALL)
+    expect(fake.requests).toHaveBeenCalledWith('GET', '/catalog/staff', expect.anything())
   })
 
   it('imprimir envía el profesional (sin actor) y abre el PDF con petición firmada (blob)', async () => {
@@ -210,6 +232,16 @@ describe('toma de muestras', () => {
     btn(wrapper, 'Tomar paciente')!.click()
     await flushAll()
     expect(fake.bodies('POST', '/queue/w1/claim')).toEqual([{ professional_id: 'st1' }])
+  })
+
+  it('sin claim no hay selector «Profesional» ni se carga /catalog/staff; con claim sí', async () => {
+    const without = await open(allExcept(TAGS.sampling.claim))
+    expect(without.element.querySelector('select')).toBeNull()
+    expect(without.text()).not.toContain('Profesional')
+    expect(fake.requests).not.toHaveBeenCalledWith('GET', '/catalog/staff', expect.anything())
+    const full = await open(ALL)
+    expect(full.element.querySelector('select')).not.toBeNull()
+    expect(fake.requests).toHaveBeenCalledWith('GET', '/catalog/staff', expect.anything())
   })
 
   it('marcar tubos exige collect; sin él la verificación y los tubos son de solo lectura', async () => {
@@ -325,13 +357,27 @@ describe('formulario de un examen', () => {
     expect(btn(onlyValidate, 'Finalizar validación de Glucosa')).not.toBeNull()
   })
 
-  it('con solo view es de solo lectura: campos deshabilitados y sin botones', async () => {
+  it('con solo view es de solo lectura: valor como texto, sin controles ni botones', async () => {
     const wrapper = await mountForm([TAGS.results.view])
     expect(wrapper.text()).toContain('Solo lectura')
     expect(wrapper.text()).toContain('Capturar resultados')
     expect(wrapper.text()).toContain('Validar resultados')
     expect(btn(wrapper, 'Guardar borrador')).toBeNull()
+    expect(wrapper.element.querySelector('input, select, textarea')).toBeNull()
+    expect(wrapper.find('[data-testid="result-value"]').element.textContent).toBe('90')
+  })
+
+  it('un examen validado con permiso mantiene los campos, deshabilitados', async () => {
+    fake.routes['GET /results/tests/t1'] = { ...DETAIL, validation_status: 'validated' }
+    signInWith(ALL)
+    const wrapper = (await mountSuspended(ExamValidationForm, {
+      props: { orderTestId: 't1', professionalId: 'v1', professionalName: 'Dr. Pérez' }
+    })) as unknown as Mounted
+    await flushAll()
     expect(wrapper.find('input').element.disabled).toBe(true)
+    expect(btn(wrapper, 'Guardar borrador')?.disabled).toBe(true)
+    expect(btn(wrapper, 'Finalizar validación de Glucosa')?.disabled).toBe(true)
+    expect(wrapper.element.querySelector('[data-testid="result-value"]')).toBeNull()
   })
 
   it('validar envía el profesional (dato de negocio) y los valores, sin actor', async () => {

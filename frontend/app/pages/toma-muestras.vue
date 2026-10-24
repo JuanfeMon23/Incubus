@@ -1,7 +1,7 @@
 <template>
   <div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
     <aside class="space-y-6">
-      <UiFormField label="Profesional" required>
+      <UiFormField v-if="canClaim" label="Profesional" required>
         <UiSelect
           v-model="professionalId"
           :options="staffOptions"
@@ -24,7 +24,7 @@
             <UiSpinner color="primary" label="Cargando cola" />
           </li>
           <li v-else-if="!waiting.length" class="rounded-xl border border-dashed border-border-strong p-6 text-center text-sm text-text-muted">
-            {{ professionalId ? 'Sin pacientes asignados.' : 'Seleccione un profesional.' }}
+            {{ professionalId || !canClaim ? 'Sin pacientes asignados.' : 'Seleccione un profesional.' }}
           </li>
         </ul>
       </section>
@@ -207,7 +207,7 @@ const returnReasons = ref<Reason[]>([])
 
 onMounted(async () => {
   returnReasons.value = await api.get<Reason[]>('/return-reasons')
-  staff.value = await api.get<StaffMember[]>('/catalog/staff')
+  if (canClaim.value) staff.value = await api.get<StaffMember[]>('/catalog/staff')
   try {
     professionalId.value = localStorage.getItem('incubus.professional') ?? ''
   } catch {
