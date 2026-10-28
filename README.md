@@ -24,6 +24,16 @@ Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js con [pnpm](https://pnpm.
    pnpm run dev
    ```
 
+## Permisos (tags de acciones)
+
+El catálogo vive en `backend/app/core/permissions.py`; el frontend lee el contrato generado `frontend/app/generated/permissions.json`. Al agregar, quitar o renombrar un tag, regenera y commitea el JSON:
+
+```bash
+cd backend
+uv run python -m app.core.permissions_export          # escribe el contrato
+uv run python -m app.core.permissions_export --check  # sale con 1 si está desalineado
+```
+
 ## Producción (backend)
 
 Requisitos: PostgreSQL 18 y un superusuario de PostgreSQL para crear los roles.
