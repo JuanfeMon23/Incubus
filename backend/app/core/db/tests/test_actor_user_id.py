@@ -142,7 +142,11 @@ async def test_indice_historial_por_usuario_y_fecha(session):
 
 
 def _migrate(db_url: str, *args: str) -> None:
-    env = {**os.environ, "DATABASE_URL": db_url}
+    env = {
+        **os.environ,
+        "DATABASE_URL": db_url,
+        "MIGRATION_DATABASE_URL": db_url,
+    }
     subprocess.run(
         [sys.executable, "-m", "alembic", *args],
         cwd=BACKEND_DIR,

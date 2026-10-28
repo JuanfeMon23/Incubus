@@ -24,6 +24,23 @@ Python 3.13+, [uv](https://docs.astral.sh/uv/), Node.js con [pnpm](https://pnpm.
    pnpm run dev
    ```
 
+## Producción (backend)
+
+Requisitos: PostgreSQL 18 y un superusuario de PostgreSQL para crear los roles.
+
+Roles de BD de mínimo privilegio: `incubus_migrator` (dueño del esquema; solo Alembic) e `incubus_app` (la API: DML sin DDL ni TRUNCATE; en las tablas append-only solo SELECT/INSERT).
+
+```bash
+cd backend
+psql -d incubus -v ON_ERROR_STOP=1 -f deploy/db_roles.sql   # crea los roles (sin contraseña)
+psql -d incubus -c "\password incubus_migrator"             # fija las contraseñas
+psql -d incubus -c "\password incubus_app"
+# .env: MIGRATION_DATABASE_URL con incubus_migrator, DATABASE_URL con incubus_app
+uv run alembic upgrade head                                 # corre como incubus_migrator
+psql -d incubus -v ON_ERROR_STOP=1 -f deploy/db_roles.sql   # re-aplicar tras cada migración que agregue tablas
+uv run uvicorn app.main:app --port 8001                     # corre como incubus_app
+```
+
 ## Datos de prueba (solo desarrollo)
 
 Con Leo, Vladimir y el backend de Incubus arrancados, genera órdenes finalizadas de un paciente existente recorriendo todo el flujo por la API (por defecto 10 órdenes para CC 792083643; tarda unos minutos):

@@ -34,6 +34,8 @@ def _prepare_test_database() -> None:
     os.environ["DATABASE_URL"] = url.set(database=test_name).render_as_string(
         hide_password=False
     )
+    # Un .env con MIGRATION_DATABASE_URL no debe apuntar Alembic a la BD de desarrollo.
+    os.environ["MIGRATION_DATABASE_URL"] = os.environ["DATABASE_URL"]
     from app.core.config import get_settings as _gs
 
     _gs.cache_clear()

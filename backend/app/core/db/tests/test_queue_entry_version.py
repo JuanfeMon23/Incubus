@@ -114,7 +114,11 @@ async def test_update_no_puede_bajar_ni_fijar_la_version(session):
 
 
 def _migrate(db_url: str, *args: str) -> None:
-    env = {**os.environ, "DATABASE_URL": db_url}
+    env = {
+        **os.environ,
+        "DATABASE_URL": db_url,
+        "MIGRATION_DATABASE_URL": db_url,
+    }
     subprocess.run(
         [sys.executable, "-m", "alembic", *args],
         cwd=BACKEND_DIR,

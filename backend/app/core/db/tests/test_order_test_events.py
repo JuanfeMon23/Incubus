@@ -256,7 +256,11 @@ def _migrate(db_url: str, *args: str) -> None:
     subprocess.run(
         [sys.executable, "-m", "alembic", *args],
         cwd=BACKEND_DIR,
-        env={**os.environ, "DATABASE_URL": db_url},
+        env={
+            **os.environ,
+            "DATABASE_URL": db_url,
+            "MIGRATION_DATABASE_URL": db_url,
+        },
         check=True,
         capture_output=True,
     )
