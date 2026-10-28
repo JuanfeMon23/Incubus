@@ -1,0 +1,306 @@
+{
+  "app": "incubus",
+  "modules": [
+    {
+      "slug": "pre-reception",
+      "name": "Pre-recepción",
+      "description": "Ingreso de pacientes a la cola.",
+      "actions": [
+        {
+          "tag": "incubus.pre-reception.view",
+          "verb": "view",
+          "name": "Consultar la cola de pre-recepción",
+          "description": "Ver los pacientes en pre-recepción.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.pre-reception.enqueue",
+          "verb": "enqueue",
+          "name": "Ingresar pacientes a la cola",
+          "description": "Registrar la llegada de un paciente (incluye leer la cédula y buscar al paciente por documento).",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.pre-reception.remove",
+          "verb": "remove",
+          "name": "Retirar pacientes de la cola",
+          "description": "Retirar a un paciente en pre-recepción con un motivo.",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "reception",
+      "name": "Recepción de órdenes",
+      "description": "Atención del paciente y orden.",
+      "actions": [
+        {
+          "tag": "incubus.reception.view",
+          "verb": "view",
+          "name": "Consultar la recepción de órdenes",
+          "description": "Ver los pacientes en atención de recepción.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.reception.call-next",
+          "verb": "call-next",
+          "name": "Llamar al siguiente paciente",
+          "description": "Tomar al siguiente paciente de pre-recepción.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.reception.edit-patient",
+          "verb": "edit-patient",
+          "name": "Editar datos del paciente y la orden",
+          "description": "Completar los datos del paciente y elegir los exámenes.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.reception.close-reception",
+          "verb": "close-reception",
+          "name": "Cerrar recepción de órdenes",
+          "description": "Crear la orden y enviarla a impresión de etiquetas.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.reception.return",
+          "verb": "return",
+          "name": "Devolver pacientes a pre-recepción",
+          "description": "Deshacer la atención de recepción con un motivo.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.reception.remove",
+          "verb": "remove",
+          "name": "Retirar pacientes en recepción",
+          "description": "Retirar a un paciente con un motivo (también en las etapas posteriores a la recepción).",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.reception.supervise",
+          "verb": "supervise",
+          "name": "Gestionar turnos de otros recepcionistas",
+          "description": "Devolver, cerrar o editar un turno de recepción que llamó otra persona.",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "label-printing",
+      "name": "Impresión de etiquetas",
+      "description": "Etiquetas de los tubos.",
+      "actions": [
+        {
+          "tag": "incubus.label-printing.view",
+          "verb": "view",
+          "name": "Consultar la impresión de etiquetas",
+          "description": "Ver las órdenes en espera de impresión y sus tubos.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.label-printing.print",
+          "verb": "print",
+          "name": "Imprimir etiquetas de tubos",
+          "description": "Imprimir o descargar las etiquetas y asignar al profesional de toma.",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "sampling",
+      "name": "Toma de muestras",
+      "description": "Extracción y marcado de tubos.",
+      "actions": [
+        {
+          "tag": "incubus.sampling.view",
+          "verb": "view",
+          "name": "Consultar la toma de muestras",
+          "description": "Ver los pacientes en espera y en atención de toma.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.sampling.claim",
+          "verb": "claim",
+          "name": "Tomar turnos de toma de muestras",
+          "description": "Tomar a un paciente asignado al profesional.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.sampling.collect",
+          "verb": "collect",
+          "name": "Marcar tubos tomados",
+          "description": "Marcar o desmarcar tubos y registrar la verificación de precondiciones de la toma.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.sampling.finish",
+          "verb": "finish",
+          "name": "Finalizar la toma de muestras",
+          "description": "Cerrar la toma cuando todos los tubos están tomados.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.sampling.return",
+          "verb": "return",
+          "name": "Devolver pacientes a espera de toma",
+          "description": "Deshacer la atención de toma con un motivo.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.sampling.supervise",
+          "verb": "supervise",
+          "name": "Gestionar turnos de otros técnicos",
+          "description": "Devolver, finalizar o marcar tubos de un turno de toma que tomó otra persona.",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "lab-reception",
+      "name": "Recepción en laboratorio",
+      "description": "Entrada de tubos.",
+      "actions": [
+        {
+          "tag": "incubus.lab-reception.view",
+          "verb": "view",
+          "name": "Consultar la recepción en laboratorio",
+          "description": "Ver las órdenes con tubos por recibir.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.lab-reception.receive",
+          "verb": "receive",
+          "name": "Recibir tubos en el laboratorio",
+          "description": "Marcar la entrada de un tubo al laboratorio.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.lab-reception.unreceive",
+          "verb": "unreceive",
+          "name": "Deshacer la recepción de tubos",
+          "description": "Desmarcar un tubo recibido por error.",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "results",
+      "name": "Resultados",
+      "description": "Captura y validación de resultados.",
+      "actions": [
+        {
+          "tag": "incubus.results.view",
+          "verb": "view",
+          "name": "Consultar resultados por validar",
+          "description": "Ver las órdenes y exámenes de las áreas del profesional.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.results.enter",
+          "verb": "enter",
+          "name": "Capturar resultados",
+          "description": "Guardar los valores de un examen sin validarlo.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.results.validate",
+          "verb": "validate",
+          "name": "Validar resultados",
+          "description": "Validar un examen; al validar toda la orden se finaliza.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.results.trace",
+          "verb": "trace",
+          "name": "Consultar la trazabilidad de una prueba",
+          "description": "Ver la línea de tiempo de una prueba: quién hizo qué y cuándo, desde el ingreso hasta la entrega.",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "results-delivery",
+      "name": "Entrega de resultados",
+      "description": "API de resultados finalizados para otras aplicaciones.",
+      "actions": [
+        {
+          "tag": "incubus.results-delivery.view",
+          "verb": "view",
+          "name": "Consultar resultados entregados",
+          "description": "Leer los resultados finalizados de una orden (JSON y PDF). Acepta credenciales de servicio.",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "queue-admin",
+      "name": "Catálogos de la cola",
+      "description": "Administración de prioridades y motivos de retiro y devolución.",
+      "actions": [
+        {
+          "tag": "incubus.queue-admin.view",
+          "verb": "view",
+          "name": "Consultar los catálogos de la cola",
+          "description": "Listar prioridades y motivos de retiro y devolución, también los inactivos.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.queue-admin.create",
+          "verb": "create",
+          "name": "Crear elementos de los catálogos de la cola",
+          "description": "Crear prioridades y motivos de retiro o devolución.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.queue-admin.update",
+          "verb": "update",
+          "name": "Editar elementos de los catálogos de la cola",
+          "description": "Cambiar nombre, color y orden de una prioridad o el nombre de un motivo.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.queue-admin.toggle",
+          "verb": "toggle",
+          "name": "Activar o desactivar elementos de los catálogos de la cola",
+          "description": "Activar o desactivar prioridades y motivos (nada se borra).",
+          "assignable": true
+        }
+      ]
+    },
+    {
+      "slug": "settings",
+      "name": "Ajustes",
+      "description": "Umbrales operativos de Incubus editables sin reiniciar (con historial).",
+      "actions": [
+        {
+          "tag": "incubus.settings.view",
+          "verb": "view",
+          "name": "Consultar los ajustes",
+          "description": "Ver los ajustes, su valor vigente, rango e historial de cambios.",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.settings.edit",
+          "verb": "edit",
+          "name": "Editar ajustes",
+          "description": "Cambiar el valor de los ajustes operativos (con motivo).",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.settings.edit-security",
+          "verb": "edit-security",
+          "name": "Editar ajustes de seguridad",
+          "description": "Cambiar además los ajustes marcados como de seguridad (vigencia y límites de intentos del código de activación). Se suma a «Editar ajustes».",
+          "assignable": true
+        },
+        {
+          "tag": "incubus.settings.update",
+          "verb": "update",
+          "name": "Evento: ajuste modificado",
+          "description": "Evento de auditoría con el valor anterior, el nuevo y el motivo.",
+          "assignable": false
+        }
+      ]
+    }
+  ]
+}

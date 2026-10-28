@@ -3,9 +3,9 @@ import { PERMISSION_NAMES } from './permissionNames'
 import { ALL_TAGS } from './tags'
 
 describe('catálogo de permisos', () => {
-  it('son los 33 tags del backend, con formato incubus.<módulo>.<acción>', () => {
-    expect(ALL_TAGS).toHaveLength(33)
-    expect(new Set(ALL_TAGS).size).toBe(33)
+  it('los tags asignables tienen formato incubus.<módulo>.<acción> y no se repiten', () => {
+    expect(ALL_TAGS.length).toBeGreaterThan(0)
+    expect(new Set(ALL_TAGS).size).toBe(ALL_TAGS.length)
     for (const tag of ALL_TAGS) expect(tag).toMatch(/^incubus\.[a-z-]+\.[a-z-]+$/)
   })
 

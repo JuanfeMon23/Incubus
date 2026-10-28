@@ -1,5 +1,5 @@
 <template>
-  <LeoAppShell :items="menu" brand="Incubus" storage-key="incubus.sidebar.collapsed">
+  <LeoAppShell :items="menu" brand="Incubus" storage-key="incubus:sidebar-collapsed">
     <template #sidebar-footer="{ collapsed }">
       <UiStatusBadge
         v-if="!collapsed"
