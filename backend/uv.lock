@@ -869,7 +869,7 @@ wheels = [
 [[package]]
 name = "leo-sdk"
 version = "0.6.0"
-source = { git = "https://github.com/JuanfeMon23/Leo.git?subdirectory=sdk%2Fpython&tag=v0.8.0#9da982a2c7837ebf041a27476b15a0e473ed7e02" }
+source = { git = "https://github.com/JuanfeMon23/Leo.git?subdirectory=sdk%2Fpython&tag=v0.8.0#6759d1ad1250f25e50302135d520ee6b3b2c706e" }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
