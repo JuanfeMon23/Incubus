@@ -7,3 +7,8 @@ __pycache__/
 node_modules/
 .nuxt/
 .output/
+
+# Agentic config
+.claude/
+AGENTS.md
+CLAUDE.md
