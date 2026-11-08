@@ -90,8 +90,8 @@ const props = withDefaults(
 const emit = defineEmits<{ select: [] }>()
 
 const initials = computed(() => {
-  const p = props.entry.patient
-  return `${p.first_name?.[0] ?? ''}${p.first_last_name?.[0] ?? ''}`.toUpperCase()
+  const entryPatient = props.entry.patient
+  return `${entryPatient.first_name?.[0] ?? ''}${entryPatient.first_last_name?.[0] ?? ''}`.toUpperCase()
 })
 /** Etiqueta de quien tomó el turno (toma de muestras: "Tomado por"). */
 const claimedLabel = computed(() => (props.entry.status === 'en_atencion_toma_muestras' ? 'Tomado por' : 'Atiende:'))

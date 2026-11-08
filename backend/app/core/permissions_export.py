@@ -17,9 +17,15 @@ from app.core import permissions  # noqa: F401  (declara el catalogo al importar
 from app.core.leo import APP_SLUG, catalog
 
 CONTRACT_PATH = (
-    Path(__file__).resolve().parents[3] / "frontend" / "app" / "generated" / "permissions.json"
+    Path(__file__).resolve().parents[3]
+    / "frontend"
+    / "app"
+    / "generated"
+    / "permissions.json"
 )
-MISMATCH_MESSAGE = "tags desalineados: ejecuta uv run python -m app.core.permissions_export"
+MISMATCH_MESSAGE = (
+    "tags desalineados: ejecuta uv run python -m app.core.permissions_export"
+)
 EVENT_PREFIX = "Evento:"
 
 
@@ -55,7 +61,11 @@ def render_contract() -> str:
 def main(argv: list[str]) -> int:
     rendered = render_contract()
     if "--check" in argv:
-        current = CONTRACT_PATH.read_bytes().decode("utf-8") if CONTRACT_PATH.exists() else None
+        current = (
+            CONTRACT_PATH.read_bytes().decode("utf-8")
+            if CONTRACT_PATH.exists()
+            else None
+        )
         if current != rendered:
             print(MISMATCH_MESSAGE)
             return 1

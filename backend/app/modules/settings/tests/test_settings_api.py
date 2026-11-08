@@ -4,12 +4,12 @@ errores, bloqueo optimista, historial y auditoria en Leo."""
 from sqlalchemy import text
 
 from app.conftest import FakeLeo, make_leo_user
-from app.core import permissions as p
+from app.core import permissions
 from app.core.leo import catalog
 
-S = "/api/v1/settings"
-PLAIN = f"{S}/realtime.sweep_seconds"
-SECURE = f"{S}/activation.code_ttl_days"
+SETTINGS_API = "/api/v1/settings"
+PLAIN = f"{SETTINGS_API}/realtime.sweep_seconds"
+SECURE = f"{SETTINGS_API}/activation.code_ttl_days"
 ALL = set(catalog.tags)
 
 
@@ -18,17 +18,24 @@ def _body(value, version=1, reason="Ajuste de prueba"):
 
 
 def _events(leo: FakeLeo) -> list[dict]:
-    return [e for e in leo.events if e["action_tag"] == p.SET_UPDATE]
+    return [
+        event for event in leo.events if event["action_tag"] == permissions.SET_UPDATE
+    ]
 
 
 async def test_listado_agrupado_con_las_trece_claves_y_su_contrato(client) -> None:
-    r = await client.get(S)
-    assert r.status_code == 200, r.text
-    groups = {g["group"]: g["settings"] for g in r.json()["groups"]}
+    response = await client.get(SETTINGS_API)
+    assert response.status_code == 200, response.text
+    groups = {
+        group_payload["group"]: group_payload["settings"]
+        for group_payload in response.json()["groups"]
+    }
     assert set(groups) == {"activation", "realtime", "pagination", "labels", "trace"}
-    assert sum(len(v) for v in groups.values()) == 13
+    assert sum(len(group_settings) for group_settings in groups.values()) == 13
     ttl = next(
-        s for s in groups["activation"] if s["key"] == "activation.code_ttl_days"
+        setting
+        for setting in groups["activation"]
+        if setting["key"] == "activation.code_ttl_days"
     )
     assert ttl == {
         **ttl,
@@ -42,10 +49,10 @@ async def test_listado_agrupado_con_las_trece_claves_y_su_contrato(client) -> No
         "requires_security_permission": True,
     }
     security = {
-        s["key"]
-        for g in groups.values()
-        for s in g
-        if s["requires_security_permission"]
+        setting["key"]
+        for group_settings in groups.values()
+        for setting in group_settings
+        if setting["requires_security_permission"]
     }
     assert security == {
         "activation.code_ttl_days",
@@ -58,10 +65,10 @@ async def test_listado_agrupado_con_las_trece_claves_y_su_contrato(client) -> No
 async def test_editar_cambia_el_valor_guarda_historial_y_audita(
     client, leo: FakeLeo, session
 ) -> None:
-    r = await client.put(PLAIN, json=_body(60))
-    assert r.status_code == 200, r.text
-    assert r.json()["value"] == 60 and r.json()["version"] == 2
-    assert r.json()["updated_by"] == str(leo.user.id)
+    response = await client.put(PLAIN, json=_body(60))
+    assert response.status_code == 200, response.text
+    assert response.json()["value"] == 60 and response.json()["version"] == 2
+    assert response.json()["updated_by"] == str(leo.user.id)
     history = (await client.get(f"{PLAIN}/history")).json()
     assert history["total"] == 1
     assert history["items"][0]["old_value"] == 30
@@ -75,24 +82,24 @@ async def test_editar_cambia_el_valor_guarda_historial_y_audita(
 
 
 async def test_ver_exige_view_y_editar_exige_edit(client, leo: FakeLeo) -> None:
-    leo.grant(*(ALL - {p.SET_VIEW}))
-    assert (await client.get(S)).status_code == 403
+    leo.grant(*(ALL - {permissions.SET_VIEW}))
+    assert (await client.get(SETTINGS_API)).status_code == 403
     assert (await client.get(f"{PLAIN}/history")).status_code == 403
-    leo.grant(p.SET_VIEW)
-    assert (await client.get(S)).status_code == 200
+    leo.grant(permissions.SET_VIEW)
+    assert (await client.get(SETTINGS_API)).status_code == 200
     assert (await client.put(PLAIN, json=_body(60))).status_code == 403
 
 
 async def test_claves_de_seguridad_exigen_edit_y_edit_security(
     client, leo: FakeLeo
 ) -> None:
-    leo.grant(p.SET_VIEW, p.SET_EDIT)
+    leo.grant(permissions.SET_VIEW, permissions.SET_EDIT)
     denied = await client.put(SECURE, json=_body(10))
     assert denied.status_code == 403
-    assert denied.json()["details"] == {"action": p.SET_EDIT_SECURITY}
-    leo.grant(p.SET_VIEW, p.SET_EDIT_SECURITY)
+    assert denied.json()["details"] == {"action": permissions.SET_EDIT_SECURITY}
+    leo.grant(permissions.SET_VIEW, permissions.SET_EDIT_SECURITY)
     assert (await client.put(SECURE, json=_body(10))).status_code == 403
-    leo.grant(p.SET_VIEW, p.SET_EDIT, p.SET_EDIT_SECURITY)
+    leo.grant(permissions.SET_VIEW, permissions.SET_EDIT, permissions.SET_EDIT_SECURITY)
     ok = await client.put(SECURE, json=_body(10))
     assert ok.status_code == 200 and ok.json()["value"] == 10
 
@@ -107,14 +114,16 @@ async def test_errores_de_validacion_version_y_clave(client, leo: FakeLeo) -> No
     assert (await client.put(PLAIN, json=_body(60))).status_code == 200
     stale = await client.put(PLAIN, json=_body(90, version=1))
     assert stale.status_code == 409
-    assert (await client.put(f"{S}/no.existe", json=_body(1))).status_code == 404
-    assert (await client.get(f"{S}/no.existe/history")).status_code == 404
+    assert (
+        await client.put(f"{SETTINGS_API}/no.existe", json=_body(1))
+    ).status_code == 404
+    assert (await client.get(f"{SETTINGS_API}/no.existe/history")).status_code == 404
     assert len(_events(leo)) == 1  # solo el cambio aplicado
 
 
 async def test_sin_sesion_da_401(client, leo: FakeLeo) -> None:
     leo.user = None
-    assert (await client.get(S)).status_code == 401
+    assert (await client.get(SETTINGS_API)).status_code == 401
     assert (await client.put(PLAIN, json=_body(60))).status_code == 401
 
 

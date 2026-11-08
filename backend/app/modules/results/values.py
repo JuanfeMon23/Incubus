@@ -40,7 +40,7 @@ def normalize_value(
         raise ResultValueError("El resultado debe ser si/no.")
 
     if result_type in OPTION_TYPES:
-        valid = {str(o["id"]) for o in (options or [])}
+        valid = {str(option["id"]) for option in (options or [])}
         if str(raw) not in valid:
             raise ResultValueError("La opcion elegida no pertenece al conjunto.")
         return str(raw)

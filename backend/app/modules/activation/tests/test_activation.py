@@ -44,7 +44,7 @@ def test_generated_codes_use_the_unambiguous_alphabet_and_have_entropy():
     assert len(ALPHABET) == 32 and not set("0O1I") & set(ALPHABET)
     codes = {service.generate_code() for _ in range(500)}
     assert len(codes) == 500
-    assert all(len(c) == 10 and set(c) <= set(ALPHABET) for c in codes)
+    assert all(len(code) == 10 and set(code) <= set(ALPHABET) for code in codes)
 
 
 def test_normalize_accepts_hyphen_case_and_spaces_and_rejects_ambiguous():
@@ -88,9 +88,9 @@ async def test_no_read_route_exposes_the_code(client, catalog):
 
 async def test_verify_ok_marks_used_and_returns_minimal_patient(client, catalog):
     _, _, code = await _order(client, catalog)
-    r = await _verify(client, code.lower())  # tolera minusculas
-    assert r.status_code == 200, r.text
-    assert r.json() == {
+    response = await _verify(client, code.lower())  # tolera minusculas
+    assert response.status_code == 200, response.text
+    assert response.json() == {
         "first_name": "MARIA",
         "second_name": None,
         "first_last_name": "RUIZ",
@@ -175,7 +175,7 @@ async def test_concurrent_verifications_consume_the_code_exactly_once(
     client = committed_client
     _, _, code = await _order(client, catalog)
     results = await asyncio.gather(*[_verify(client, code) for _ in range(4)])
-    assert sorted(r.status_code for r in results) == [200, 404, 404, 404]
+    assert sorted(result.status_code for result in results) == [200, 404, 404, 404]
 
 
 # ----------------------------------------------------------- lista de ordenes
@@ -187,8 +187,10 @@ async def _finalize(client, number):
             "/api/v1/results/queue", params={"professional_id": "staff-qc"}
         )
     ).json()
-    order = next(o for o in queue if o["order_number"] == number)
-    r = await client.post(
+    order = next(
+        queue_entry for queue_entry in queue if queue_entry["order_number"] == number
+    )
+    response = await client.post(
         f"/api/v1/results/tests/{order['tests'][0]['order_test_id']}/validate",
         json={
             "professional_id": "staff-qc",
@@ -196,7 +198,7 @@ async def _finalize(client, number):
             "values": {"GLU": "95"},
         },
     )
-    assert r.status_code == 200, r.text
+    assert response.status_code == 200, response.text
 
 
 async def test_orders_list_only_finalized_paginated_and_minimal(client, catalog):
@@ -224,8 +226,12 @@ async def test_orders_list_only_finalized_paginated_and_minimal(client, catalog)
 
 
 async def test_orders_list_unknown_patient_is_empty_and_params_are_bounded(client):
-    r = await client.get(f"{API}/patients/CC/000/orders")
-    assert r.status_code == 200 and r.json()["items"] == [] and r.json()["total"] == 0
+    response = await client.get(f"{API}/patients/CC/000/orders")
+    assert (
+        response.status_code == 200
+        and response.json()["items"] == []
+        and response.json()["total"] == 0
+    )
     assert (
         await client.get(f"{API}/patients/CC/0/orders?page_size=500")
     ).status_code == 422

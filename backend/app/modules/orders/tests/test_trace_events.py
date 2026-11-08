@@ -40,7 +40,10 @@ async def _events(session, step=None, order_number=None):
 async def _tid(client, code):
     queue = (await client.get(f"{RES}/queue", params={"professional_id": QC})).json()
     return next(
-        t["order_test_id"] for o in queue for t in o["tests"] if t["code"] == code
+        test["order_test_id"]
+        for queue_entry in queue
+        for test in queue_entry["tests"]
+        if test["code"] == code
     )
 
 
@@ -104,14 +107,20 @@ async def test_close_reception_one_event_per_test_and_created_by(
     user = _as(leo, "Recepcion Uno", ALL)
     _, number = await _reception_closed(client, catalog)
     events = await _events(session, "order.test_added", number)
-    assert sorted(e.details["test_code"] for e in events) == ["COL", "HEM", "TRI"]
-    assert all(e.order_test_id and e.actor_user_id == user.id for e in events)
+    assert sorted(event.details["test_code"] for event in events) == [
+        "COL",
+        "HEM",
+        "TRI",
+    ]
+    assert all(
+        event.order_test_id and event.actor_user_id == user.id for event in events
+    )
     tests = (await session.execute(select(OrderTest))).scalars().all()
-    assert {t.created_by for t in tests} == {"Recepcion Uno"}
-    assert {t.created_by_user_id for t in tests} == {user.id}
+    assert {test.created_by for test in tests} == {"Recepcion Uno"}
+    assert {test.created_by_user_id for test in tests} == {user.id}
     # preanaliticos respondidos en el cierre: evento de la orden (sin prueba)
     pre = await _events(session, "precondition.checked", number)
-    assert pre and all(e.order_test_id is None for e in pre)
+    assert pre and all(event.order_test_id is None for event in pre)
     assert pre[0].details["stage"] == "reception"
     assert pre[0].details["before"] is None and pre[0].details["after"]["met"] is True
     # codigo de activacion: quien lo emitio, sin el codigo
@@ -123,7 +132,9 @@ async def test_close_reception_one_event_per_test_and_created_by(
 
 async def test_no_patient_data_in_event_details(client, catalog, session):
     await order_in_laboratory(client, catalog, ("GLU",))
-    blob = " ".join(str(e.details) + e.summary for e in await _events(session))
+    blob = " ".join(
+        str(event.details) + event.summary for event in await _events(session)
+    )
     assert PATIENT["document_number"] not in blob
     assert PATIENT["first_name"] not in blob and "RUIZ" not in blob
 
@@ -145,9 +156,9 @@ async def test_precondition_save_records_before_and_after_per_stage(
     )
     assert res.status_code == 200, res.text
     ev = next(
-        e
-        for e in await _events(session, "precondition.checked", number)
-        if e.details["stage"] == "sampling"
+        event
+        for event in await _events(session, "precondition.checked", number)
+        if event.details["stage"] == "sampling"
     )
     assert ev.details["key"] == key
     assert ev.details["before"] == {"met": None, "note": None}
@@ -166,18 +177,18 @@ async def test_print_labels_fills_columns_and_events_and_downloads_are_logged(
     res = await client.post(f"{ORD}/by-entry/{entry_id}/print-labels", json=PRO)
     assert res.status_code == 200, res.text
     tubes = (await session.execute(select(OrderSample))).scalars().all()
-    assert {t.labels_printed_by_user_id for t in tubes} == {user.id}
-    assert {t.labels_printed_by for t in tubes} == {"Impresion Uno"}
+    assert {tube.labels_printed_by_user_id for tube in tubes} == {user.id}
+    assert {tube.labels_printed_by for tube in tubes} == {"Impresion Uno"}
     printed = await _events(session, "labels.printed", number)
     assert len(printed) == 3  # un evento por prueba contenida en los tubos
-    assert {e.details["test_code"] for e in printed} == {"COL", "TRI", "HEM"}
-    assert all(e.order_sample_id and e.order_test_id for e in printed)
+    assert {event.details["test_code"] for event in printed} == {"COL", "TRI", "HEM"}
+    assert all(event.order_sample_id and event.order_test_id for event in printed)
 
     pdf = await client.get(f"{ORD}/by-entry/{entry_id}/labels.pdf")
     zpl = await client.get(f"{ORD}/by-entry/{entry_id}/labels.zpl")
     assert pdf.status_code == zpl.status_code == 200
     down = await _events(session, "labels.downloaded", number)
-    assert sorted({e.details["format"] for e in down}) == ["pdf", "zpl"]
+    assert sorted({event.details["format"] for event in down}) == ["pdf", "zpl"]
     assert len(down) == 6
 
 
@@ -185,21 +196,23 @@ async def test_collect_uncollect_receive_unreceive_keep_who_did_each(
     client, catalog, session, leo: FakeLeo
 ):
     entry_id, number = await _printed(client, catalog)
-    a = _as(leo, "Toma A", ALL)
+    collector = _as(leo, "Toma A", ALL)
     await _claim(client, entry_id)
     tubes = (await client.get(f"{ORD}/by-entry/{entry_id}")).json()["samples"]
-    red = next(t for t in tubes if set(t["test_codes"]) == {"COL", "TRI"})
+    red = next(tube for tube in tubes if set(tube["test_codes"]) == {"COL", "TRI"})
     await client.post(f"{ORD}/samples/{red['id']}/collect")
-    b = _as(leo, "Toma B", ALL)
+    receiver = _as(leo, "Toma B", ALL)
     res = await client.post(f"{ORD}/samples/{red['id']}/uncollect")
     assert res.status_code == 200, res.text
     collected = await _events(session, "sample.collected", number)
     uncollected = await _events(session, "sample.uncollected", number)
     assert len(collected) == len(uncollected) == 2  # COL y TRI
-    assert {e.actor_user_id for e in collected} == {a.id}  # el previo se conserva
-    assert {e.actor_user_id for e in uncollected} == {b.id}
-    assert {e.details["sample_id"] for e in collected} == {red["id"]}
-    assert {e.details["test_code"] for e in collected} == {"COL", "TRI"}
+    assert {event.actor_user_id for event in collected} == {
+        collector.id
+    }  # el previo se conserva
+    assert {event.actor_user_id for event in uncollected} == {receiver.id}
+    assert {event.details["sample_id"] for event in collected} == {red["id"]}
+    assert {event.details["test_code"] for event in collected} == {"COL", "TRI"}
 
 
 async def test_lab_receive_and_unreceive_events(client, catalog, session, leo: FakeLeo):
@@ -207,29 +220,32 @@ async def test_lab_receive_and_unreceive_events(client, catalog, session, leo: F
     await _claim(client, entry_id)
     detail = (await client.get(f"{ORD}/by-entry/{entry_id}")).json()
     tubes = detail["samples"]
-    checks = [{"key": q["key"], "met": True} for q in detail["preconditions"]]
+    checks = [
+        {"key": precondition["key"], "met": True}
+        for precondition in detail["preconditions"]
+    ]
     await client.post(
         f"{ORD}/by-entry/{entry_id}/precondition-checks",
         json={"stage": "sampling", "checks": checks},
     )
-    for t in tubes:
-        await client.post(f"{ORD}/samples/{t['id']}/collect")
+    for tube in tubes:
+        await client.post(f"{ORD}/samples/{tube['id']}/collect")
     assert (
         await client.post(f"/api/v1/queue/{entry_id}/finish-sampling", json={})
     ).status_code == 200
-    a = _as(leo, "Lab A", ALL)
-    red = next(t for t in tubes if set(t["test_codes"]) == {"COL", "TRI"})
+    collector = _as(leo, "Lab A", ALL)
+    red = next(tube for tube in tubes if set(tube["test_codes"]) == {"COL", "TRI"})
     assert (await client.post(f"{ORD}/samples/{red['id']}/receive")).status_code == 200
-    b = _as(leo, "Lab B", ALL)
+    receiver = _as(leo, "Lab B", ALL)
     assert (
         await client.post(f"{ORD}/samples/{red['id']}/unreceive")
     ).status_code == 200
     received = await _events(session, "lab.received", number)
     unreceived = await _events(session, "lab.unreceived", number)
     assert len(received) == len(unreceived) == 2
-    assert {e.actor_user_id for e in received} == {a.id}
-    assert {e.actor_user_id for e in unreceived} == {b.id}
-    assert {e.details["sample_id"] for e in unreceived} == {red["id"]}
+    assert {event.actor_user_id for event in received} == {collector.id}
+    assert {event.actor_user_id for event in unreceived} == {receiver.id}
+    assert {event.details["sample_id"] for event in unreceived} == {red["id"]}
 
 
 # ------------------------------------------------------------- resultados
@@ -240,15 +256,15 @@ async def test_result_events_only_for_real_changes_incl_calculated(
 ):
     _, number = await order_in_laboratory(client, catalog, ("LIP",))
     tid = await _tid(client, "LIP")
-    a = _as(leo, "Analista A", ALL)
+    collector = _as(leo, "Analista A", ALL)
     await _put(client, tid, {"COL": "250", "HDL": "50", "TG": "100"})
     entered = await _events(session, "result.entered", number)
-    by_code = {e.details["analyte_code"]: e for e in entered}
+    by_code = {event.details["analyte_code"]: event for event in entered}
     assert set(by_code) == {"COL", "HDL", "TG", "LDL"}
     assert by_code["COL"].details["before"] is None
     assert by_code["COL"].details["after"] == 250
     assert by_code["COL"].details["flag"] == "high"
-    assert by_code["COL"].actor_user_id == a.id
+    assert by_code["COL"].actor_user_id == collector.id
     assert by_code["LDL"].details["calculated"] is True
     assert "calculado" in by_code["LDL"].summary
 
@@ -258,14 +274,14 @@ async def test_result_events_only_for_real_changes_incl_calculated(
 
     await _put(client, tid, {"COL": "180"})
     changed = await _events(session, "result.changed", number)
-    assert {e.details["analyte_code"] for e in changed} == {"COL", "LDL"}
-    col = next(e for e in changed if e.details["analyte_code"] == "COL")
+    assert {event.details["analyte_code"] for event in changed} == {"COL", "LDL"}
+    col = next(event for event in changed if event.details["analyte_code"] == "COL")
     assert (col.details["before"], col.details["after"]) == (250, 180)
 
     await _put(client, tid, {"HDL": None})
     cleared = await _events(session, "result.cleared", number)
-    assert {e.details["analyte_code"] for e in cleared} == {"HDL", "LDL"}
-    assert all(e.details["after"] is None for e in cleared)
+    assert {event.details["analyte_code"] for event in cleared} == {"HDL", "LDL"}
+    assert all(event.details["after"] is None for event in cleared)
 
 
 async def test_validate_records_flags_validator_and_finalizes_the_order(
@@ -274,11 +290,11 @@ async def test_validate_records_flags_validator_and_finalizes_the_order(
     _, number = await order_in_laboratory(client, catalog, ("GLU",))
     tid = await _tid(client, "GLU")
     _as(leo, "Analista A", ALL)
-    b = _as(leo, "Validador B", ALL)
+    receiver = _as(leo, "Validador B", ALL)
     res = await client.post(f"{RES}/tests/{tid}/validate", json=_body({"GLU": "500"}))
     assert res.status_code == 200, res.text
     ev = (await _events(session, "test.validated", number))[0]
-    assert ev.order_test_id == UUID(tid) and ev.actor_user_id == b.id
+    assert ev.order_test_id == UUID(tid) and ev.actor_user_id == receiver.id
     assert ev.details["abnormal_flags"] == [
         {"analyte_code": "GLU", "flag": "critical_high"}
     ]

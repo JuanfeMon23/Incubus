@@ -27,27 +27,27 @@ class InvalidTransitionError(Exception):
         super().__init__(f"Transicion no permitida: {origin} -> {target}.")
 
 
-S = QueueStatus
+Status = QueueStatus
 ACTIVE_STATUSES = (
-    S.PRE_RECEPCION,
-    S.EN_ATENCION_RECEPCION,
-    S.EN_ESPERA_IMPRESION,
-    S.EN_ESPERA_TOMA_MUESTRAS,
-    S.EN_ATENCION_TOMA_MUESTRAS,
+    Status.PRE_RECEPCION,
+    Status.EN_ATENCION_RECEPCION,
+    Status.EN_ESPERA_IMPRESION,
+    Status.EN_ESPERA_TOMA_MUESTRAS,
+    Status.EN_ATENCION_TOMA_MUESTRAS,
 )
 
 _ADVANCES = {
-    (S.PRE_RECEPCION, S.EN_ATENCION_RECEPCION),
-    (S.EN_ATENCION_RECEPCION, S.EN_ESPERA_IMPRESION),
-    (S.EN_ESPERA_IMPRESION, S.EN_ESPERA_TOMA_MUESTRAS),
-    (S.EN_ESPERA_TOMA_MUESTRAS, S.EN_ATENCION_TOMA_MUESTRAS),
-    (S.EN_ATENCION_TOMA_MUESTRAS, S.TOMA_FINALIZADA),
-    (S.TOMA_FINALIZADA, S.EN_LABORATORIO),
-    (S.EN_LABORATORIO, S.FINALIZADA),
+    (Status.PRE_RECEPCION, Status.EN_ATENCION_RECEPCION),
+    (Status.EN_ATENCION_RECEPCION, Status.EN_ESPERA_IMPRESION),
+    (Status.EN_ESPERA_IMPRESION, Status.EN_ESPERA_TOMA_MUESTRAS),
+    (Status.EN_ESPERA_TOMA_MUESTRAS, Status.EN_ATENCION_TOMA_MUESTRAS),
+    (Status.EN_ATENCION_TOMA_MUESTRAS, Status.TOMA_FINALIZADA),
+    (Status.TOMA_FINALIZADA, Status.EN_LABORATORIO),
+    (Status.EN_LABORATORIO, Status.FINALIZADA),
 }
 _RETURNS = {
-    (S.EN_ATENCION_RECEPCION, S.PRE_RECEPCION),
-    (S.EN_ATENCION_TOMA_MUESTRAS, S.EN_ESPERA_TOMA_MUESTRAS),
+    (Status.EN_ATENCION_RECEPCION, Status.PRE_RECEPCION),
+    (Status.EN_ATENCION_TOMA_MUESTRAS, Status.EN_ESPERA_TOMA_MUESTRAS),
 }
 
 # Derivados de los mapas de arriba (unica fuente de verdad):
@@ -56,7 +56,7 @@ _RETURNS = {
 CLAIM_TARGET: dict[QueueStatus, QueueStatus] = {
     origin: target
     for origin, target in _ADVANCES
-    if origin in (S.PRE_RECEPCION, S.EN_ESPERA_TOMA_MUESTRAS)
+    if origin in (Status.PRE_RECEPCION, Status.EN_ESPERA_TOMA_MUESTRAS)
 }
 RETURN_TARGET: dict[QueueStatus, QueueStatus] = dict(_RETURNS)
 
@@ -66,6 +66,6 @@ def resolve_transition(origin: QueueStatus, target: QueueStatus) -> TransitionKi
         return TransitionKind.ADVANCE
     if (origin, target) in _RETURNS:
         return TransitionKind.RETURN
-    if target is S.RETIRADO and origin in ACTIVE_STATUSES:
+    if target is Status.RETIRADO and origin in ACTIVE_STATUSES:
         return TransitionKind.REMOVE
     raise InvalidTransitionError(origin, target)

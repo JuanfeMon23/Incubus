@@ -51,16 +51,16 @@ async def test_busqueda_por_codigo_con_guion_bajo_tolera_espacios():
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        q = request.url.params.get("q", "")
-        seen.append(q)
+        response = request.url.params.get("q", "")
+        seen.append(response)
         items = (
             [{"id": "t9", "code": "ACIDO_URICO", "name": "Urico", "is_active": True}]
-            if q == "ACIDO_URICO"
+            if response == "ACIDO_URICO"
             else []
         )
         return httpx.Response(200, json={"items": items})
 
     client = CatalogClient("http://vladimir", transport=httpx.MockTransport(handler))
     found = await client.search_tests("ACIDO URICO")
-    assert [t["code"] for t in found] == ["ACIDO_URICO"]
+    assert [test["code"] for test in found] == ["ACIDO_URICO"]
     assert seen == ["ACIDO URICO", "ACIDO_URICO"]

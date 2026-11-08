@@ -94,22 +94,22 @@ def _item(
     }
 
 
-def _real(e: OrderTestEvent) -> dict:
-    if e.order_test_id:
+def _real(error: OrderTestEvent) -> dict:
+    if error.order_test_id:
         scope = "test"
-    elif e.order_sample_id:
+    elif error.order_sample_id:
         scope = "sample"
     else:
         scope = "order"
     return _item(
-        e.occurred_at,
-        e.step,
+        error.occurred_at,
+        error.step,
         scope,
-        _actor(e.actor_user_id, e.actor_name, e.staff_id),
-        e.summary,
-        e.details,
+        _actor(error.actor_user_id, error.actor_name, error.staff_id),
+        error.summary,
+        error.details,
         "event",
-        e.order_sample_id,
+        error.order_sample_id,
     )
 
 
@@ -117,13 +117,17 @@ def _covered(
     derived: dict, reals: list[dict], tolerance: timedelta = TOLERANCE
 ) -> bool:
     steps = EQUIVALENT.get(derived["step"], {derived["step"]})
-    for r in reals:
-        if r["step"] not in steps or abs(r["at"] - derived["at"]) > tolerance:
+    for real_event in reals:
+        if (
+            real_event["step"] not in steps
+            or abs(real_event["at"] - derived["at"]) > tolerance
+        ):
             continue
         if all(
-            str(derived["details"][k]) == str(r["details"].get(k))
-            for k in MATCH_KEYS
-            if k in derived["details"]
+            str(derived["details"][match_key])
+            == str(real_event["details"].get(match_key))
+            for match_key in MATCH_KEYS
+            if match_key in derived["details"]
         ):
             return True
     return False
@@ -138,19 +142,23 @@ async def _queue_items(session: AsyncSession, order: Order) -> list[dict]:
         )
     ).scalars()
     out = []
-    for h in history:
-        step = "queue.returned" if h.kind == "return" else _STATUS_STEP[h.to_status]
+    for history_entry in history:
+        step = (
+            "queue.returned"
+            if history_entry.kind == "return"
+            else _STATUS_STEP[history_entry.to_status]
+        )
         out.append(
             _item(
-                h.changed_at,
+                history_entry.changed_at,
                 step,
                 "order",
-                _actor(h.actor_user_id, h.actor),
+                _actor(history_entry.actor_user_id, history_entry.actor),
                 _STATUS_TEXT[step],
                 {
-                    "from_status": h.from_status,
-                    "to_status": h.to_status,
-                    "kind": h.kind,
+                    "from_status": history_entry.from_status,
+                    "to_status": history_entry.to_status,
+                    "kind": history_entry.kind,
                 },
                 "derived",
             )
@@ -160,29 +168,29 @@ async def _queue_items(session: AsyncSession, order: Order) -> list[dict]:
 
 def _sample_items(samples: list[OrderSample]) -> list[dict]:
     out = []
-    for s in samples:
-        base = {"sample_id": str(s.id), "sample_type": s.sample_type_code}
+    for sample in samples:
+        base = {"sample_id": str(sample.id), "sample_type": sample.sample_type_code}
         stamps = (
             (
                 "labels.printed",
-                s.labels_printed_at,
-                s.labels_printed_by,
-                s.labels_printed_by_user_id,
-                f"Etiquetas del tubo {s.name} impresas",
+                sample.labels_printed_at,
+                sample.labels_printed_by,
+                sample.labels_printed_by_user_id,
+                f"Etiquetas del tubo {sample.name} impresas",
             ),
             (
                 "sample.collected",
-                s.collected_at,
-                s.collected_by,
-                s.collected_by_user_id,
-                f"Tubo {s.name} marcado como tomado",
+                sample.collected_at,
+                sample.collected_by,
+                sample.collected_by_user_id,
+                f"Tubo {sample.name} marcado como tomado",
             ),
             (
                 "lab.received",
-                s.received_at,
-                s.received_by,
-                s.received_by_user_id,
-                f"Tubo {s.name} recibido en laboratorio",
+                sample.received_at,
+                sample.received_by,
+                sample.received_by_user_id,
+                f"Tubo {sample.name} recibido en laboratorio",
             ),
         )
         for step, at, by, by_id, text in stamps:
@@ -196,7 +204,7 @@ def _sample_items(samples: list[OrderSample]) -> list[dict]:
                         text,
                         dict(base),
                         "derived",
-                        s.id,
+                        sample.id,
                     )
                 )
     return out
@@ -212,17 +220,21 @@ async def _precondition_items(session: AsyncSession, order: Order) -> list[dict]
     out = []
     for stage in ("reception", "sampling"):
         groups: dict[tuple, list[OrderPrecondition]] = {}
-        for p in preconditions:
-            at = getattr(p, f"{stage}_checked_at")
+        for precondition in preconditions:
+            at = getattr(precondition, f"{stage}_checked_at")
             if at is not None:
                 key = (
                     at,
-                    getattr(p, f"{stage}_checked_by"),
-                    getattr(p, f"{stage}_checked_by_user_id"),
+                    getattr(precondition, f"{stage}_checked_by"),
+                    getattr(precondition, f"{stage}_checked_by_user_id"),
                 )
-                groups.setdefault(key, []).append(p)
+                groups.setdefault(key, []).append(precondition)
         for (at, by, by_id), group in groups.items():
-            unmet = sorted(p.key for p in group if getattr(p, f"{stage}_met") is False)
+            unmet = sorted(
+                precondition.key
+                for precondition in group
+                if getattr(precondition, f"{stage}_met") is False
+            )
             out.append(
                 _item(
                     at,
@@ -260,18 +272,18 @@ async def _test_items(session: AsyncSession, test: OrderTest) -> list[dict]:
             .order_by(OrderResult.sort_order)
         )
     ).scalars()
-    for r in results:
+    for result in results:
         out.append(
             _item(
-                r.entered_at,
+                result.entered_at,
                 "result.entered",
                 "test",
-                _actor(r.entered_by_user_id, r.entered_by),
-                f"{r.analyte_name} capturado (último valor)",
+                _actor(result.entered_by_user_id, result.entered_by),
+                f"{result.analyte_name} capturado (último valor)",
                 {
-                    "analyte_code": r.analyte_code,
-                    "after": (r.value or {}).get("v"),
-                    "flag": r.flag,
+                    "analyte_code": result.analyte_code,
+                    "after": (result.value or {}).get("v"),
+                    "flag": result.flag,
                 },
                 "derived",
             )
@@ -338,7 +350,11 @@ async def build_trace(
             select(OrderSample).where(OrderSample.order_id == order.id)
         )
     ).scalars()
-    samples = [s for s in all_samples if test.test_code in (s.test_codes or [])]
+    samples = [
+        all_sample
+        for all_sample in all_samples
+        if test.test_code in (all_sample.test_codes or [])
+    ]
     rows = (
         await session.execute(
             select(OrderTestEvent)
@@ -350,7 +366,9 @@ async def build_trace(
                         OrderTestEvent.order_test_id.is_(None),
                         or_(
                             OrderTestEvent.order_sample_id.is_(None),
-                            OrderTestEvent.order_sample_id.in_([s.id for s in samples]),
+                            OrderTestEvent.order_sample_id.in_(
+                                [sample.id for sample in samples]
+                            ),
                         ),
                     ),
                 ),
@@ -358,7 +376,7 @@ async def build_trace(
             .order_by(OrderTestEvent.occurred_at, OrderTestEvent.id)
         )
     ).scalars()
-    reals = [_real(e) for e in rows]
+    reals = [_real(row) for row in rows]
     candidates = [
         *await _queue_items(session, order),
         *await _test_items(session, test),
@@ -369,12 +387,20 @@ async def build_trace(
     tolerance = timedelta(
         seconds=await runtime_settings.get("trace.dedup_tolerance_seconds")
     )
-    derived = [d for d in candidates if not _covered(d, reals, tolerance)]
+    derived = [
+        candidate
+        for candidate in candidates
+        if not _covered(candidate, reals, tolerance)
+    ]
     merged = sorted(reals + derived, key=lambda i: i["at"])  # estable
     start = (page - 1) * page_size
     events = [
         {
-            **{k: v for k, v in i.items() if k not in ("_sample_id", "at")},
+            **{
+                key: value
+                for key, value in i.items()
+                if key not in ("_sample_id", "at")
+            },
             "at": i["at"].isoformat(),
         }
         for i in merged[start : start + page_size]

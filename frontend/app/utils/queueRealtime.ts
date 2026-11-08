@@ -114,7 +114,7 @@ export function createQueueRealtime(socket: SocketLike | null, opts: QueueRealti
     }
   }
 
-  const roomsInUse = () => new Set([...subs].flatMap((s) => s.rooms))
+  const roomsInUse = () => new Set([...subs].flatMap((subscription) => subscription.rooms))
 
   function ask(event: string, payload?: unknown): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -154,7 +154,7 @@ export function createQueueRealtime(socket: SocketLike | null, opts: QueueRealti
         return
       }
       error.value = ''
-      for (const s of targets) if (subs.has(s)) s.onSync(snap.entries ?? [])
+      for (const target of targets) if (subs.has(target)) target.onSync(snap.entries ?? [])
     } catch {
       error.value = SYNC_FAILED_MESSAGE
     }
@@ -187,11 +187,11 @@ export function createQueueRealtime(socket: SocketLike | null, opts: QueueRealti
     })
     for (const name of LIVE_EVENTS) {
       socket.on(name, (payload: LiveEvent) => {
-        for (const s of [...subs]) {
+        for (const subscription of [...subs]) {
           try {
-            s.onEvent(name, payload)
-          } catch (e) {
-            console.error('Error al procesar un evento en vivo', e)
+            subscription.onEvent(name, payload)
+          } catch (caughtError) {
+            console.error('Error al procesar un evento en vivo', caughtError)
           }
         }
       })
@@ -211,7 +211,7 @@ export function createQueueRealtime(socket: SocketLike | null, opts: QueueRealti
     return () => {
       if (!subs.delete(sub)) return
       const inUse = roomsInUse()
-      const leaving = sub.rooms.filter((r) => !inUse.has(r))
+      const leaving = sub.rooms.filter((room) => !inUse.has(room))
       if (socket?.connected && leaving.length) socket.emit('unsubscribe', { rooms: leaving }, () => {})
     }
   }

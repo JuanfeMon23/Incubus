@@ -13,7 +13,10 @@ ALL = set(catalog.tags)
 async def _tid(client, code):
     queue = (await client.get(f"{API}/queue", params={"professional_id": QC})).json()
     return next(
-        t["order_test_id"] for o in queue for t in o["tests"] if t["code"] == code
+        test["order_test_id"]
+        for queue_entry in queue
+        for test in queue_entry["tests"]
+        if test["code"] == code
     )
 
 
@@ -23,7 +26,7 @@ def _body(values):
 
 async def _rows(client, tid):
     res = await client.get(f"{API}/tests/{tid}", params={"professional_id": QC})
-    return {r["code"]: r for r in res.json()["results"]}
+    return {result["code"]: result for result in res.json()["results"]}
 
 
 async def _put(client, tid, values):
@@ -36,18 +39,18 @@ async def test_validar_con_el_mismo_valor_conserva_a_quien_capturo(
 ):
     await order_in_laboratory(client, catalog)
     tid = await _tid(client, "GLU")
-    a = _as(leo, "Analista A", ALL)
+    first_analyst = _as(leo, "Analista A", ALL)
     await _put(client, tid, {"GLU": "90"})
-    b = _as(leo, "Validador B", ALL)
+    second_analyst = _as(leo, "Validador B", ALL)
     done = await client.post(f"{API}/tests/{tid}/validate", json=_body({"GLU": "90"}))
     assert done.status_code == 200, done.text
     glu = (await _rows(client, tid))["GLU"]
-    assert glu["entered_by_user_id"] == str(a.id)
+    assert glu["entered_by_user_id"] == str(first_analyst.id)
     assert glu["entered_by"] == "Analista A"
     detail = (
         await client.get(f"{API}/tests/{tid}", params={"professional_id": QC})
     ).json()
-    assert detail["validated_by_user_id"] == str(b.id)
+    assert detail["validated_by_user_id"] == str(second_analyst.id)
 
 
 async def test_reenviar_igual_no_cambia_la_hora_y_cambiar_si_cambia_el_autor(
@@ -66,7 +69,7 @@ async def test_reenviar_igual_no_cambia_la_hora_y_cambiar_si_cambia_el_autor(
             select(OrderResult.entered_at).where(OrderResult.analyte_code == "GLU")
         )
     ).scalar_one()
-    b = _as(leo, "Analista B", ALL)
+    second_analyst = _as(leo, "Analista B", ALL)
     await _put(client, tid, {"GLU": "90,0"})  # mismo valor normalizado
     session.expire_all()
     same = (
@@ -77,7 +80,7 @@ async def test_reenviar_igual_no_cambia_la_hora_y_cambiar_si_cambia_el_autor(
     assert same == stamp
     await _put(client, tid, {"GLU": "95"})
     glu = (await _rows(client, tid))["GLU"]
-    assert glu["entered_by_user_id"] == str(b.id)
+    assert glu["entered_by_user_id"] == str(second_analyst.id)
     assert glu["entered_by"] == "Analista B"
 
 
@@ -98,16 +101,16 @@ async def test_calculado_conserva_su_sello_si_el_resultado_no_cambia(
 ):
     await order_in_laboratory(client, catalog)
     tid = await _tid(client, "LIP")
-    a = _as(leo, "Analista A", ALL)
+    first_analyst = _as(leo, "Analista A", ALL)
     await _put(client, tid, {"COL": "250", "HDL": "50", "TG": "100"})
-    b = _as(leo, "Analista B", ALL)
+    second_analyst = _as(leo, "Analista B", ALL)
     await _put(client, tid, {"COL": "250", "HDL": "50", "TG": "100"})
     rows = await _rows(client, tid)
-    assert rows["LDL"]["entered_by_user_id"] == str(a.id)
+    assert rows["LDL"]["entered_by_user_id"] == str(first_analyst.id)
     # cambia un insumo: el calculado cambia y pasa a B junto con el insumo
     await _put(client, tid, {"HDL": "40"})
     rows = await _rows(client, tid)
-    assert rows["HDL"]["entered_by_user_id"] == str(b.id)
-    assert rows["COL"]["entered_by_user_id"] == str(a.id)
+    assert rows["HDL"]["entered_by_user_id"] == str(second_analyst.id)
+    assert rows["COL"]["entered_by_user_id"] == str(first_analyst.id)
     assert rows["LDL"]["value"] == 190
-    assert rows["LDL"]["entered_by_user_id"] == str(b.id)
+    assert rows["LDL"]["entered_by_user_id"] == str(second_analyst.id)

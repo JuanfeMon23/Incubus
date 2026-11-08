@@ -20,16 +20,16 @@ async def test_no_se_desmarca_un_tubo_con_la_toma_finalizada(client, catalog):
     for tube in await _tubes(client, entry_id):
         await client.post(f"/api/v1/orders/samples/{tube['id']}/collect", json={})
     keys = [
-        p["key"]
-        for p in (await client.get(f"/api/v1/orders/by-entry/{entry_id}")).json()[
-            "preconditions"
-        ]
+        precondition["key"]
+        for precondition in (
+            await client.get(f"/api/v1/orders/by-entry/{entry_id}")
+        ).json()["preconditions"]
     ]
     await client.post(
         f"/api/v1/orders/by-entry/{entry_id}/precondition-checks",
         json={
             "stage": "sampling",
-            "checks": [{"key": k, "met": True} for k in keys],
+            "checks": [{"key": key, "met": True} for key in keys],
         },
     )
     done = await client.post(f"/api/v1/queue/{entry_id}/finish-sampling", json={})

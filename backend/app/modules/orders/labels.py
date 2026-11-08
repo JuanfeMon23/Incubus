@@ -36,8 +36,10 @@ def label_text_lines(label: LabelData) -> list[str]:
     return lines
 
 
-def _fit(c: canvas.Canvas, text: str, font: str, size: float, width: float) -> float:
-    while size > 5 and c.stringWidth(text, font, size) > width:
+def _fit(
+    pdf_canvas: canvas.Canvas, text: str, font: str, size: float, width: float
+) -> float:
+    while size > 5 and pdf_canvas.stringWidth(text, font, size) > width:
         size -= 0.5
     return size
 
@@ -46,30 +48,30 @@ def render_labels_pdf(labels: list[LabelData]) -> bytes:
     if not labels:
         raise ValueError("No hay etiquetas para imprimir.")
     buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    pdf_canvas = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
     margin = 3 * mm
     usable = LABEL_WIDTH - 2 * margin
     for label in labels:
-        name_size = _fit(c, label.patient_name, "Helvetica-Bold", 9, usable)
-        c.setFont("Helvetica-Bold", name_size)
-        c.drawString(margin, LABEL_HEIGHT - 6 * mm, label.patient_name)
+        name_size = _fit(pdf_canvas, label.patient_name, "Helvetica-Bold", 9, usable)
+        pdf_canvas.setFont("Helvetica-Bold", name_size)
+        pdf_canvas.drawString(margin, LABEL_HEIGHT - 6 * mm, label.patient_name)
 
-        c.setFont("Helvetica", 7)
+        pdf_canvas.setFont("Helvetica", 7)
         meta = f"{label.document + ' | ' if label.document else ''}Orden {label.order_number}"
-        c.drawString(margin, LABEL_HEIGHT - 10 * mm, meta)
+        pdf_canvas.drawString(margin, LABEL_HEIGHT - 10 * mm, meta)
 
         barcode = code128.Code128(
             label.order_number, barHeight=11 * mm, barWidth=0.32 * mm, quiet=False
         )
-        barcode.drawOn(c, margin, LABEL_HEIGHT - 23.5 * mm)
+        barcode.drawOn(pdf_canvas, margin, LABEL_HEIGHT - 23.5 * mm)
 
         route = " > ".join(label.area_route) if label.area_route else "-"
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(margin, 4 * mm, route)
-        c.setFont("Helvetica", 6)
-        c.drawRightString(LABEL_WIDTH - margin, 4 * mm, label.tube_name[:28])
-        c.showPage()
-    c.save()
+        pdf_canvas.setFont("Helvetica-Bold", 9)
+        pdf_canvas.drawString(margin, 4 * mm, route)
+        pdf_canvas.setFont("Helvetica", 6)
+        pdf_canvas.drawRightString(LABEL_WIDTH - margin, 4 * mm, label.tube_name[:28])
+        pdf_canvas.showPage()
+    pdf_canvas.save()
     return buffer.getvalue()
 
 

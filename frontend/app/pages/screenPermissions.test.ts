@@ -86,8 +86,8 @@ describe('pre-recepción', () => {
       ({ id, code, name: code, color_hex: '#999999', rank, is_default })
     fake.routes['GET /priorities'] = [priority('a', 'media', 2, false), priority('b', 'normal', 1, true)]
     const wrapper = await mountPage(PreReceptionPage, [TAGS.preReception.view, TAGS.preReception.enqueue])
-    const checked = [...wrapper.element.querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter((r) => r.checked)
-    expect(checked.map((r) => r.value)).toEqual(['b'])
+    const checked = [...wrapper.element.querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter((radio) => radio.checked)
+    expect(checked.map((radio) => radio.value)).toEqual(['b'])
   })
 
   it('"Retirar" solo con remove', async () => {

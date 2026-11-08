@@ -24,8 +24,8 @@ export function turnOwnerHint(entry: Pick<QueueEntry, 'claimed_by'>, action: str
 
 /** ¿Es el 403 `not_turn_owner` del backend? */
 export function isNotTurnOwnerError(err: unknown): boolean {
-  const e = err as { status?: number; code?: string } | null
-  return e?.status === 403 && e?.code === 'not_turn_owner'
+  const errorShape = err as { status?: number; code?: string } | null
+  return errorShape?.status === 403 && errorShape?.code === 'not_turn_owner'
 }
 
 const SUPERVISE_TAG_BY_STAGE: Record<string, string> = {

@@ -199,8 +199,8 @@ def test_migracion_0007_sube_y_baja_sin_perder_datos():
                 conn.execute("DELETE FROM queue_status_history")
             _migrate(db_url, "downgrade", "0006")
             present = {
-                (r[0], r[1])
-                for r in conn.execute(
+                (column_row[0], column_row[1])
+                for column_row in conn.execute(
                     "SELECT table_name, column_name FROM information_schema.columns"
                 ).fetchall()
             }

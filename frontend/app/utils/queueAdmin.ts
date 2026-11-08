@@ -117,11 +117,11 @@ export function colorInputValue(hex: string | null | undefined): string {
 
 /** Parámetros de `GET /queue-admin/{kind}`: omite `q` vacío y `is_active` indefinido. */
 export function listParams(opts: { page: number, search: string, isActive: boolean | undefined }) {
-  const q = normalizeSearchTerm(opts.search)
+  const term = normalizeSearchTerm(opts.search)
   return {
     page: opts.page,
     page_size: PAGE_SIZE,
-    ...(q ? { q } : {}),
+    ...(term ? { q: term } : {}),
     ...(opts.isActive !== undefined ? { is_active: opts.isActive } : {})
   }
 }
@@ -134,9 +134,9 @@ interface ErrorShape { status?: number, code?: string, details?: unknown }
  * Cualquier otro error pasa por `leoErrorMessage` (nunca el texto crudo).
  */
 export function queueAdminErrorMessage(err: unknown, kind: QueueAdminKind): string {
-  const e = (err ?? {}) as ErrorShape
-  const details = (e.details ?? null) as { field?: unknown, value?: unknown } | null
-  if (e.status === 409 && e.code === 'conflict' && details && typeof details.field === 'string') {
+  const errorShape = (err ?? {}) as ErrorShape
+  const details = (errorShape.details ?? null) as { field?: unknown, value?: unknown } | null
+  if (errorShape.status === 409 && errorShape.code === 'conflict' && details && typeof details.field === 'string') {
     const { noun, article } = KIND_INFO[kind]
     const value = details.value !== undefined && details.value !== null ? ` «${String(details.value)}»` : ''
     if (details.field === 'rank') {

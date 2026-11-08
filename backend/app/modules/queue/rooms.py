@@ -13,7 +13,7 @@ from app.modules.queue.transitions import QueueStatus
 
 STAGE, ENTRY, STAFF = "stage", "entry", "staff"
 _STAFF_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
-_STATUSES = {s.value for s in QueueStatus}
+_STATUSES = {queue_status.value for queue_status in QueueStatus}
 
 
 def stage_room(status: str) -> str:
@@ -47,4 +47,6 @@ def is_valid_room(room: object) -> bool:
 def stage_statuses(joined: list[str]) -> list[QueueStatus]:
     """Estados de los rooms `stage:*` de una lista de rooms."""
     prefix = f"{STAGE}:"
-    return [QueueStatus(r[len(prefix) :]) for r in joined if r.startswith(prefix)]
+    return [
+        QueueStatus(room[len(prefix) :]) for room in joined if room.startswith(prefix)
+    ]

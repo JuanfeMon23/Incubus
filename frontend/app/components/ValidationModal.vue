@@ -8,7 +8,7 @@
   >
     <div v-if="loading" class="space-y-4" aria-busy="true" aria-label="Cargando orden">
       <div class="h-14 animate-pulse rounded-lg bg-default-100" />
-      <div v-for="n in 2" :key="n" class="h-28 animate-pulse rounded-xl bg-default-100" />
+      <div v-for="placeholderIndex in 2" :key="placeholderIndex" class="h-28 animate-pulse rounded-xl bg-default-100" />
     </div>
 
     <div v-else-if="order" class="space-y-5">
@@ -30,10 +30,10 @@
       </UiAlert>
 
       <ul class="space-y-3">
-        <li v-for="t in order.tests" :key="t.order_test_id">
+        <li v-for="test in order.tests" :key="test.order_test_id">
           <!-- Examen ya validado: card verde, sin la información del examen -->
           <div
-            v-if="t.validation_status === 'validated'"
+            v-if="test.validation_status === 'validated'"
             class="flex items-center gap-4 rounded-xl border-2 border-success-300 bg-success-50 px-4 py-3"
           >
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success-500 text-white">
@@ -43,14 +43,14 @@
             </span>
             <div class="min-w-0 flex-1">
               <p class="truncate font-semibold text-success-800">
-                {{ t.name }}
-                <span class="ml-1 rounded bg-white/70 px-1.5 py-0.5 font-mono text-xs">{{ t.code }}</span>
+                {{ test.name }}
+                <span class="ml-1 rounded bg-white/70 px-1.5 py-0.5 font-mono text-xs">{{ test.code }}</span>
               </p>
               <p class="text-xs text-success-700">
-                {{ validationLabels(t, user?.id).professional || 'Validado' }}<template v-if="t.validated_at"> · {{ formatDateTime(t.validated_at) }}</template>
+                {{ validationLabels(test, user?.id).professional || 'Validado' }}<template v-if="test.validated_at"> · {{ formatDateTime(test.validated_at) }}</template>
               </p>
-              <p v-if="validationLabels(t, user?.id).executor" class="text-xs text-success-700">
-                {{ validationLabels(t, user?.id).executor }}
+              <p v-if="validationLabels(test, user?.id).executor" class="text-xs text-success-700">
+                {{ validationLabels(test, user?.id).executor }}
               </p>
             </div>
             <UiStatusBadge variant="success" label="Validado" dot />
@@ -60,34 +60,34 @@
           <div
             v-else
             class="overflow-hidden rounded-xl border-2 bg-surface transition-colors"
-            :class="isOpen(t.order_test_id) ? 'border-primary-300 shadow-md' : 'border-border'"
+            :class="isOpen(test.order_test_id) ? 'border-primary-300 shadow-md' : 'border-border'"
           >
             <button
               type="button"
               class="flex w-full items-center gap-3 px-4 py-3 text-left"
-              :aria-expanded="isOpen(t.order_test_id)"
-              @click="toggle(t.order_test_id)"
+              :aria-expanded="isOpen(test.order_test_id)"
+              @click="toggle(test.order_test_id)"
             >
-              <span class="rounded-md bg-default-100 px-2 py-0.5 font-mono text-xs font-semibold">{{ t.code }}</span>
-              <span class="min-w-0 flex-1 truncate font-semibold">{{ t.name }}</span>
+              <span class="rounded-md bg-default-100 px-2 py-0.5 font-mono text-xs font-semibold">{{ test.code }}</span>
+              <span class="min-w-0 flex-1 truncate font-semibold">{{ test.name }}</span>
               <UiStatusBadge
-                :variant="t.validation_status === 'draft' ? 'warning' : 'neutral'"
-                :label="t.validation_status === 'draft' ? 'Borrador' : 'Pendiente'"
+                :variant="test.validation_status === 'draft' ? 'warning' : 'neutral'"
+                :label="test.validation_status === 'draft' ? 'Borrador' : 'Pendiente'"
               />
               <svg
                 viewBox="0 0 24 24"
                 class="h-4 w-4 shrink-0 text-text-muted transition-transform"
-                :class="isOpen(t.order_test_id) ? 'rotate-180' : ''"
+                :class="isOpen(test.order_test_id) ? 'rotate-180' : ''"
                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"
               >
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
 
-            <div v-if="mounted.has(t.order_test_id)" v-show="isOpen(t.order_test_id)" class="border-t border-border p-4">
+            <div v-if="mounted.has(test.order_test_id)" v-show="isOpen(test.order_test_id)" class="border-t border-border p-4">
               <ExamValidationForm
-                :ref="(el) => setFormRef(t.order_test_id, el)"
-                :order-test-id="t.order_test_id"
+                :ref="(el) => setFormRef(test.order_test_id, el)"
+                :order-test-id="test.order_test_id"
                 :professional-id="professionalId"
                 :professional-name="professionalName"
                 @validated="onValidated"
@@ -138,7 +138,7 @@ const mounted = ref<Set<string>>(new Set())
 const formRefs = new Map<string, { flush: () => Promise<void> } | null>()
 
 const validatedCount = computed(
-  () => order.value?.tests.filter((t) => t.validation_status === 'validated').length ?? 0
+  () => order.value?.tests.filter((test) => test.validation_status === 'validated').length ?? 0
 )
 const allDone = computed(
   () => !!order.value && order.value.tests.length > 0 && validatedCount.value === order.value.tests.length
@@ -165,15 +165,15 @@ async function load() {
 onMounted(async () => {
   try {
     await load()
-    const pending = order.value?.tests.filter((t) => t.validation_status !== 'validated') ?? []
+    const pending = order.value?.tests.filter((test) => test.validation_status !== 'validated') ?? []
     const first =
-      pending.find((t) => t.order_test_id === props.focusTestId) ?? pending[0] ?? null
+      pending.find((pendingTest) => pendingTest.order_test_id === props.focusTestId) ?? pending[0] ?? null
     if (first) {
       open.value = new Set([first.order_test_id])
       mounted.value = new Set([first.order_test_id])
     }
-  } catch (e) {
-    error.value = leoErrorMessage(e)
+  } catch (caughtError) {
+    error.value = leoErrorMessage(caughtError)
     toast.error(error.value)
   } finally {
     loading.value = false
@@ -184,11 +184,11 @@ onMounted(async () => {
 async function onValidated(payload: { orderTestId: string }) {
   try {
     await load()
-  } catch (e) {
-    toast.error(leoErrorMessage(e))
+  } catch (caughtError) {
+    toast.error(leoErrorMessage(caughtError))
   }
   const next = order.value?.tests.find(
-    (t) => t.validation_status !== 'validated' && t.order_test_id !== payload.orderTestId
+    (test) => test.validation_status !== 'validated' && test.order_test_id !== payload.orderTestId
   )
   const opened = new Set(open.value)
   opened.delete(payload.orderTestId)
@@ -203,7 +203,7 @@ async function closeModal() {
   closing.value = true
   try {
     // los borradores de los exámenes abiertos se conservan al cerrar
-    await Promise.all([...formRefs.values()].map((f) => f?.flush()))
+    await Promise.all([...formRefs.values()].map((formRef) => formRef?.flush()))
   } finally {
     closing.value = false
   }

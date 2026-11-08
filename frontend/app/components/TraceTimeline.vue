@@ -15,32 +15,32 @@
     <section v-for="day in days" :key="day.key" :aria-label="day.label" class="space-y-3">
       <h3 class="text-sm font-semibold capitalize text-text-muted">{{ day.label }}</h3>
       <ol class="relative space-y-4 border-l-2 border-default-200 pl-6">
-        <li v-for="(e, i) in day.events" :key="`${e.at}-${e.step}-${i}`" class="relative" data-testid="trace-event">
+        <li v-for="(event, i) in day.events" :key="`${event.at}-${event.step}-${i}`" class="relative" data-testid="trace-event">
           <span
             class="absolute -left-[2.15rem] top-0 flex h-6 w-6 items-center justify-center rounded-full text-white ring-4 ring-surface"
-            :class="info(e).dot"
+            :class="info(event).dot"
             aria-hidden="true"
           >
             <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path :d="info(e).icon" />
+              <path :d="info(event).icon" />
             </svg>
           </span>
           <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <time :datetime="e.at" class="font-mono text-xs text-text-muted">{{ timeLabel(e.at) }}</time>
-            <span class="text-xs font-semibold uppercase tracking-wide text-text-muted">{{ info(e).label }}</span>
-            <span class="rounded-full bg-default-100 px-2 py-0.5 text-xs">{{ SCOPE_LABELS[e.scope] ?? e.scope }}</span>
+            <time :datetime="event.at" class="font-mono text-xs text-text-muted">{{ timeLabel(event.at) }}</time>
+            <span class="text-xs font-semibold uppercase tracking-wide text-text-muted">{{ info(event).label }}</span>
+            <span class="rounded-full bg-default-100 px-2 py-0.5 text-xs">{{ SCOPE_LABELS[event.scope] ?? event.scope }}</span>
             <span
-              v-if="e.source === 'derived'"
+              v-if="event.source === 'derived'"
               class="cursor-help rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium text-warning-700"
               title="Datos anteriores a la trazabilidad detallada"
             >Reconstruido</span>
           </div>
-          <p class="font-semibold">{{ e.summary || stepLabel(e.step) }}</p>
-          <p class="text-sm">Por: <span class="font-medium">{{ actorName(e.actor) }}</span></p>
-          <details v-if="lines(e).length" class="mt-1 text-sm">
+          <p class="font-semibold">{{ event.summary || stepLabel(event.step) }}</p>
+          <p class="text-sm">Por: <span class="font-medium">{{ actorName(event.actor) }}</span></p>
+          <details v-if="lines(event).length" class="mt-1 text-sm">
             <summary class="cursor-pointer text-primary-600 hover:underline focus-visible:outline focus-visible:outline-2">Ver detalles</summary>
             <ul class="mt-1 list-disc space-y-0.5 pl-5 text-text-muted">
-              <li v-for="(line, j) in lines(e)" :key="j">{{ line }}</li>
+              <li v-for="(line, j) in lines(event)" :key="j">{{ line }}</li>
             </ul>
           </details>
         </li>
@@ -69,6 +69,6 @@ const props = withDefaults(
 const emit = defineEmits<{ loadMore: [] }>()
 
 const days = computed(() => groupByDay(props.events))
-const info = (e: TraceEvent) => CATEGORY_INFO[stepCategory(e.step)]
-const lines = (e: TraceEvent) => detailLines(e)
+const info = (event: TraceEvent) => CATEGORY_INFO[stepCategory(event.step)]
+const lines = (event: TraceEvent) => detailLines(event)
 </script>

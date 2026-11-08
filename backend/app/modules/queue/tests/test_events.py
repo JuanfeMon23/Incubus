@@ -14,7 +14,10 @@ PATIENT = {"document_number": "4040", "first_name": "A", "first_last_name": "B"}
 
 
 async def _enter(client):
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     res = await client.post(
         "/api/v1/queue", json={"patient": PATIENT, "priority_id": pr["media"]}
     )
@@ -49,7 +52,7 @@ async def test_guardar_borrador_emite_entry_updated_con_version_mayor(
     )
     assert res.status_code == 200
     await events.drain()
-    assert [m["event"] for m in published] == ["entry_updated"]
+    assert [message["event"] for message in published] == ["entry_updated"]
     assert published[0]["entry"]["draft"] == {"test_codes": ["GLU"]}
     assert published[0]["entry"]["version"] == res.json()["version"]
     assert res.json()["version"] > claimed.json()["version"]
@@ -68,11 +71,14 @@ async def test_marcar_y_desmarcar_tubo_emiten_sample_updated_y_suben_version(
     await client.post(f"/api/v1/orders/samples/{tube['id']}/collect", json={})
     await client.post(f"/api/v1/orders/samples/{tube['id']}/uncollect", json={})
     await events.drain()
-    assert [m["event"] for m in published] == ["sample_updated", "sample_updated"]
-    assert all(m["sample_id"] == tube["id"] for m in published)
-    assert all(m["entry"]["id"] == entry_id for m in published)
-    v = [m["entry"]["version"] for m in published]
-    assert v[0] < v[1]
+    assert [message["event"] for message in published] == [
+        "sample_updated",
+        "sample_updated",
+    ]
+    assert all(message["sample_id"] == tube["id"] for message in published)
+    assert all(message["entry"]["id"] == entry_id for message in published)
+    value = [message["entry"]["version"] for message in published]
+    assert value[0] < value[1]
 
 
 async def test_verificaciones_de_precondiciones_emiten_entry_updated(
@@ -89,7 +95,7 @@ async def test_verificaciones_de_precondiciones_emiten_entry_updated(
     )
     assert res.status_code == 200, res.text
     await events.drain()
-    assert [m["event"] for m in published] == ["entry_updated"]
+    assert [message["event"] for message in published] == ["entry_updated"]
 
 
 async def test_publicar_no_retrasa_la_respuesta_ni_falla_si_el_envio_falla(

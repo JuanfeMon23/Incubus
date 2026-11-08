@@ -44,7 +44,9 @@ async def professional_area_ids(
     catalog: CatalogClient, professional_id: str
 ) -> set[str]:
     areas = await catalog.areas_with_managers()
-    return {a["id"] for a in areas if a.get("manager_staff_id") == professional_id}
+    return {
+        area["id"] for area in areas if area.get("manager_staff_id") == professional_id
+    }
 
 
 async def _load_test(
@@ -93,22 +95,22 @@ async def ensure_structure(
             {"test_code": test.test_code},
         )
     structure = await catalog.template_structure(str(version_id))
-    for a in structure["analytes"]:
+    for analyte in structure["analytes"]:
         session.add(
             OrderResult(
                 order_test_id=test.id,
-                analyte_code=a["code"],
-                analyte_name=a["name"],
-                section_name=a.get("section"),
-                sort_order=a["sort_order"],
-                result_type=a["result_type"],
-                unit=a.get("unit"),
-                decimals=a.get("decimals"),
-                options=a.get("options", []),
-                formula=a.get("formula"),
-                is_required=a.get("is_required", True),
-                is_reportable=a.get("is_reportable", True),
-                ranges=a.get("ranges", []),
+                analyte_code=analyte["code"],
+                analyte_name=analyte["name"],
+                section_name=analyte.get("section"),
+                sort_order=analyte["sort_order"],
+                result_type=analyte["result_type"],
+                unit=analyte.get("unit"),
+                decimals=analyte.get("decimals"),
+                options=analyte.get("options", []),
+                formula=analyte.get("formula"),
+                is_required=analyte.get("is_required", True),
+                is_reportable=analyte.get("is_reportable", True),
+                ranges=analyte.get("ranges", []),
             )
         )
     await session.flush()
@@ -152,7 +154,10 @@ def _row_dict(row: OrderResult, patient: Patient) -> dict:
         "is_reportable": row.is_reportable,
         "reference": reference_text(rng),
         "range": (
-            {k: rng.get(k) for k in ("low", "high", "critical_low", "critical_high")}
+            {
+                bound: rng.get(bound)
+                for bound in ("low", "high", "critical_low", "critical_high")
+            }
             if rng
             else None
         ),
@@ -183,7 +188,7 @@ async def test_detail(
         "validated_by": test.validated_by_name,
         "validated_by_user_id": uuid_str(test.validated_by_user_id),
         "patient": _patient_context(patient),
-        "results": [_row_dict(r, patient) for r in rows],
+        "results": [_row_dict(row, patient) for row in rows],
     }
 
 
@@ -217,9 +222,12 @@ def _apply_values(
 ) -> list[dict]:
     """Aplica los valores y devuelve los cambios reales (analito, antes, despues,
     bandera, si es calculado) para la traza; un valor igual no genera cambio."""
-    before = {r.analyte_code: (r.value or {}).get("v") for r in rows}
-    by_code = {r.analyte_code: r for r in rows}
-    unknown = [c for c in values if c not in by_code]
+    before = {
+        result_row.analyte_code: (result_row.value or {}).get("v")
+        for result_row in rows
+    }
+    by_code = {result_row.analyte_code: result_row for result_row in rows}
+    unknown = [analyte_code for analyte_code in values if analyte_code not in by_code]
     if unknown:
         raise InvalidResultError("Analito desconocido.", {"field": unknown[0]})
     now = datetime.now(UTC)
@@ -240,11 +248,11 @@ def _apply_values(
 
     # calculados a partir de los valores numericos actuales
     numeric = {
-        r.analyte_code: float((r.value or {})["v"])
-        for r in rows
-        if r.value is not None
-        and isinstance(r.value.get("v"), (int, float))
-        and not isinstance(r.value.get("v"), bool)
+        result_row.analyte_code: float((result_row.value or {})["v"])
+        for result_row in rows
+        if result_row.value is not None
+        and isinstance(result_row.value.get("v"), (int, float))
+        and not isinstance(result_row.value.get("v"), bool)
     }
     for row in rows:
         if row.result_type != "calculated" or not row.formula:
@@ -267,15 +275,15 @@ def _apply_values(
 
     return [
         {
-            "analyte_code": r.analyte_code,
-            "analyte_name": r.analyte_name,
-            "before": before[r.analyte_code],
-            "after": (r.value or {}).get("v"),
-            "flag": r.flag,
-            "calculated": r.result_type == "calculated",
+            "analyte_code": result_row.analyte_code,
+            "analyte_name": result_row.analyte_name,
+            "before": before[result_row.analyte_code],
+            "after": (result_row.value or {}).get("v"),
+            "flag": result_row.flag,
+            "calculated": result_row.result_type == "calculated",
         }
-        for r in rows
-        if before[r.analyte_code] != (r.value or {}).get("v")
+        for result_row in rows
+        if before[result_row.analyte_code] != (result_row.value or {}).get("v")
     ]
 
 
@@ -286,18 +294,18 @@ async def _record_changes(
     changes: list[dict],
     professional_id: str,
 ) -> None:
-    for c in changes:
-        if c["before"] is None:
+    for change in changes:
+        if change["before"] is None:
             step, verb = "result.entered", "capturado"
-        elif c["after"] is None:
+        elif change["after"] is None:
             step, verb = "result.cleared", "borrado"
         else:
             step, verb = "result.changed", "modificado"
-        auto = c["calculated"]
+        auto = change["calculated"]
         summary = (
-            f"{c['analyte_name']} {verb} (calculado automáticamente)"
+            f"{change['analyte_name']} {verb} (calculado automáticamente)"
             if auto
-            else f"{c['analyte_name']} {verb}"
+            else f"{change['analyte_name']} {verb}"
         )
         await record_test_event(
             session,
@@ -307,10 +315,10 @@ async def _record_changes(
             test.id,
             summary=summary,
             details={
-                "analyte_code": c["analyte_code"],
-                "before": c["before"],
-                "after": c["after"],
-                "flag": c["flag"],
+                "analyte_code": change["analyte_code"],
+                "before": change["before"],
+                "after": change["after"],
+                "flag": change["flag"],
                 "calculated": auto,
             },
             staff_id=professional_id,
@@ -339,7 +347,7 @@ async def save_values(
     changes = _apply_values(rows, values, patient, actor)
     await _record_changes(session, actor, test, changes, professional_id)
     test.validation_status = (
-        "draft" if any(r.value is not None for r in rows) else "pending"
+        "draft" if any(row.value is not None for row in rows) else "pending"
     )
     await session.flush()
     return await test_detail(session, catalog, order_test_id, professional_id)
@@ -375,9 +383,9 @@ async def validate_test(
     rows = await ensure_structure(session, catalog, test)
     # un calculado se obtiene de sus insumos: si faltan, se reportan ellos
     missing = [
-        r.analyte_code
-        for r in rows
-        if r.is_required and r.value is None and r.result_type != "calculated"
+        row.analyte_code
+        for row in rows
+        if row.is_required and row.value is None and row.result_type != "calculated"
     ]
     if missing:
         raise MissingResultsError(
@@ -390,9 +398,9 @@ async def validate_test(
     test.validated_by_user_id = actor.user_id  # quien ejecuto la validacion
     await session.flush()
     abnormal = [
-        {"analyte_code": r.analyte_code, "flag": r.flag}
-        for r in rows
-        if r.flag not in (None, "normal")
+        {"analyte_code": row.analyte_code, "flag": row.flag}
+        for row in rows
+        if row.flag not in (None, "normal")
     ]
     await record_test_event(
         session,
@@ -484,16 +492,18 @@ async def order_for_professional(
         "patient": _patient_context(patient),
         "tests": [
             {
-                "order_test_id": str(t.id),
-                "code": t.test_code,
-                "name": t.test_name,
-                "area_code": t.area_code,
-                "validation_status": t.validation_status,
-                "validated_by": t.validated_by_name,
-                "validated_by_user_id": uuid_str(t.validated_by_user_id),
-                "validated_at": t.validated_at.isoformat() if t.validated_at else None,
+                "order_test_id": str(test.id),
+                "code": test.test_code,
+                "name": test.test_name,
+                "area_code": test.area_code,
+                "validation_status": test.validation_status,
+                "validated_by": test.validated_by_name,
+                "validated_by_user_id": uuid_str(test.validated_by_user_id),
+                "validated_at": test.validated_at.isoformat()
+                if test.validated_at
+                else None,
             }
-            for t in tests
+            for test in tests
         ],
     }
 
@@ -501,16 +511,16 @@ async def order_for_professional(
 # ---------------------------------------------------------------- colas
 
 
-def _matches(q: str, *texts: str | None) -> bool:
-    needle = q.casefold()
-    return any(needle in (t or "").casefold() for t in texts)
+def _matches(query: str, *texts: str | None) -> bool:
+    needle = query.casefold()
+    return any(needle in (text_value or "").casefold() for text_value in texts)
 
 
 async def results_queue(
     session: AsyncSession,
     catalog: CatalogClient,
     professional_id: str,
-    q: str | None,
+    query: str | None,
 ) -> list[dict]:
     areas = await professional_area_ids(catalog, professional_id)
     if not areas:
@@ -538,14 +548,14 @@ async def results_queue(
         if not tests:
             continue
         ctx = _patient_context(patient)
-        if q and not (
+        if query and not (
             _matches(
-                q,
+                query,
                 order.order_number,
                 ctx["name"],
                 ctx["document_number"],
-                *[t.test_code for t in tests],
-                *[t.test_name for t in tests],
+                *[test.test_code for test in tests],
+                *[test.test_name for test in tests],
             )
         ):
             continue
@@ -557,20 +567,20 @@ async def results_queue(
                 "document": f"{ctx['document_type']} {ctx['document_number']}",
                 "tests": [
                     {
-                        "order_test_id": str(t.id),
-                        "code": t.test_code,
-                        "name": t.test_name,
-                        "area_code": t.area_code,
-                        "validation_status": t.validation_status,
+                        "order_test_id": str(test.id),
+                        "code": test.test_code,
+                        "name": test.test_name,
+                        "area_code": test.area_code,
+                        "validation_status": test.validation_status,
                     }
-                    for t in tests
+                    for test in tests
                 ],
             }
         )
     return out
 
 
-async def lab_reception_queue(session: AsyncSession, q: str | None) -> list[dict]:
+async def lab_reception_queue(session: AsyncSession, query: str | None) -> list[dict]:
     stmt = (
         select(QueueEntry, Order, Patient)
         .join(Order, Order.queue_entry_id == QueueEntry.id)
@@ -581,8 +591,8 @@ async def lab_reception_queue(session: AsyncSession, q: str | None) -> list[dict
     out = []
     for entry, order, patient in (await session.execute(stmt)).all():
         ctx = _patient_context(patient)
-        if q and not _matches(
-            q, order.order_number, ctx["name"], ctx["document_number"]
+        if query and not _matches(
+            query, order.order_number, ctx["name"], ctx["document_number"]
         ):
             continue
         samples = list(
@@ -600,21 +610,21 @@ async def lab_reception_queue(session: AsyncSession, q: str | None) -> list[dict
                 "order_number": order.order_number,
                 "patient_name": ctx["name"],
                 "document": f"{ctx['document_type']} {ctx['document_number']}",
-                "pending": sum(1 for s in samples if s.received_at is None),
+                "pending": sum(1 for sample in samples if sample.received_at is None),
                 "samples": [
                     {
-                        "id": str(s.id),
-                        "name": s.name,
-                        "cap_color_hex": s.cap_color_hex,
-                        "test_codes": s.test_codes,
-                        "area_route": s.area_route,
-                        "received_at": s.received_at.isoformat()
-                        if s.received_at
+                        "id": str(sample.id),
+                        "name": sample.name,
+                        "cap_color_hex": sample.cap_color_hex,
+                        "test_codes": sample.test_codes,
+                        "area_route": sample.area_route,
+                        "received_at": sample.received_at.isoformat()
+                        if sample.received_at
                         else None,
-                        "received_by": s.received_by,
-                        "received_by_user_id": uuid_str(s.received_by_user_id),
+                        "received_by": sample.received_by,
+                        "received_by_user_id": uuid_str(sample.received_by_user_id),
                     }
-                    for s in samples
+                    for sample in samples
                 ],
             }
         )

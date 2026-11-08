@@ -122,7 +122,7 @@ def _cookie(environ: dict[str, Any], name: str) -> str | None:
 
 def _is_incubus_user(user: LeoUser) -> bool:
     return not user.is_service and any(
-        p.startswith(f"{APP_SLUG}.") for p in user.permissions
+        permission.startswith(f"{APP_SLUG}.") for permission in user.permissions
     )
 
 
@@ -176,7 +176,7 @@ def authorize_room(principal: Principal, room: str) -> bool:
         tag = STAGE_VIEW.get(value)
         return tag is not None and principal.can(tag)
     if kind == ENTRY:
-        return any(principal.can(t) for t in ANY_STAGE_VIEW)
+        return any(principal.can(stage_view_tag) for stage_view_tag in ANY_STAGE_VIEW)
     if kind == STAFF:
         return principal.can(SAM_VIEW)
     return False

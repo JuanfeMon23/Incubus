@@ -148,15 +148,17 @@ async def list_items(
     session: AsyncSession,
     kind: Kind,
     *,
-    q: str | None,
+    query: str | None,
     is_active: bool | None,
     page: int,
     page_size: int,
 ) -> tuple[list[Any], int]:
     model = kind.model
     conds = []
-    if q and q.strip():
-        term = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    if query and query.strip():
+        term = (
+            query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
         like = f"%{term}%"
         conds.append(
             or_(
@@ -183,7 +185,12 @@ async def list_items(
 
 async def create(session: AsyncSession, kind: Kind, body: CatalogCreate):
     _reject_style(
-        kind, {f for f in ("color_hex", "rank") if getattr(body, f) is not None}
+        kind,
+        {
+            field_name
+            for field_name in ("color_hex", "rank")
+            if getattr(body, field_name) is not None
+        },
     )
     values: dict[str, Any] = {
         "code": _clean_code(body.code),
@@ -213,8 +220,12 @@ async def update(session: AsyncSession, kind: Kind, item_id: UUID, body: Catalog
     cleaned = {field: cleaners[field](value) for field, value in sent.items()}
     await _lock(session, kind)
     row = await get(session, kind, item_id, lock=True)
-    changes = {f: v for f, v in cleaned.items() if getattr(row, f) != v}
-    before = {f: getattr(row, f) for f in changes}
+    changes = {
+        field_name: new_value
+        for field_name, new_value in cleaned.items()
+        if getattr(row, field_name) != new_value
+    }
+    before = {field_name: getattr(row, field_name) for field_name in changes}
     for field in ("name", "rank"):
         if field in changes:
             await _ensure_unique(session, kind, field, changes[field], item_id)

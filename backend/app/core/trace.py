@@ -118,7 +118,7 @@ async def record_sample_events(
             )
         )
     ).all()
-    for test_id, code in sorted(tests, key=lambda t: t[1]):
+    for test_id, code in sorted(tests, key=lambda test_entry: test_entry[1]):
         await record_test_event(
             session,
             step,

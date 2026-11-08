@@ -4,7 +4,7 @@ motivo en el historial y autor de cada resultado."""
 from sqlalchemy import text
 
 from app.conftest import FakeLeo, make_leo_user
-from app.core import permissions as p
+from app.core import permissions
 from app.core.leo import auth, catalog
 from app.modules.orders.tests.test_sampling import (
     FULL_DEMOGRAPHICS,
@@ -17,8 +17,8 @@ from app.modules.results.tests.helpers import order_in_laboratory
 
 API = "/api/v1"
 ALL = set(catalog.tags)
-NO_SUPERVISE = ALL - {p.REC_SUPERVISE, p.SAM_SUPERVISE}
-REC_SUPERVISOR = NO_SUPERVISE | {p.REC_SUPERVISE}
+NO_SUPERVISE = ALL - {permissions.REC_SUPERVISE, permissions.SAM_SUPERVISE}
+REC_SUPERVISOR = NO_SUPERVISE | {permissions.REC_SUPERVISE}
 
 
 def _as(leo: FakeLeo, name: str, tags=NO_SUPERVISE):
@@ -27,7 +27,7 @@ def _as(leo: FakeLeo, name: str, tags=NO_SUPERVISE):
 
 
 def _denied(leo: FakeLeo) -> list[str]:
-    return [e["action_tag"] for e in leo.events if e["result"] == "denied"]
+    return [event["action_tag"] for event in leo.events if event["result"] == "denied"]
 
 
 def _assert_not_owner(response, owner_name: str) -> None:
@@ -66,12 +66,18 @@ async def _reasons(client):
 
 def test_the_reception_supervise_tag_is_in_the_catalog() -> None:
     auth.check_catalog()
-    assert p.REC_SUPERVISE == "incubus.reception.supervise"
-    assert p.REC_SUPERVISE in catalog.tags
+    assert permissions.REC_SUPERVISE == "incubus.reception.supervise"
+    assert permissions.REC_SUPERVISE in catalog.tags
     module = next(
-        m for m in catalog.to_payload()["modules"] if m["slug"] == "reception"
+        reception_module
+        for reception_module in catalog.to_payload()["modules"]
+        if reception_module["slug"] == "reception"
     )
-    action = next(a for a in module["actions"] if a["verb"] == "supervise")
+    action = next(
+        supervise_action
+        for supervise_action in module["actions"]
+        if supervise_action["verb"] == "supervise"
+    )
     assert action["name"] == "Gestionar turnos de otros recepcionistas"
 
 
@@ -124,10 +130,10 @@ async def test_another_receptionist_is_denied_and_nothing_changes(
     for attempt in attempts:
         _assert_not_owner(attempt, "Recepcion A")
     assert _denied(leo) == [
-        p.REC_EDIT_PATIENT,
-        p.REC_EDIT_PATIENT,
-        p.REC_RETURN,
-        p.REC_CLOSE,
+        permissions.REC_EDIT_PATIENT,
+        permissions.REC_EDIT_PATIENT,
+        permissions.REC_RETURN,
+        permissions.REC_CLOSE,
     ]
     after = (await client.get(f"{API}/queue/{eid}")).json()
     assert after["status"] == "en_atencion_recepcion"
@@ -161,7 +167,7 @@ async def test_sampling_supervise_does_not_grant_reception_supervision(
     client, catalog, leo: FakeLeo
 ) -> None:
     entry = await _called(client, leo)
-    _as(leo, "Jefa de toma", NO_SUPERVISE | {p.SAM_SUPERVISE})
+    _as(leo, "Jefa de toma", NO_SUPERVISE | {permissions.SAM_SUPERVISE})
     response = await client.put(
         f"{API}/queue/{entry['id']}/draft", json={"test_codes": []}
     )
@@ -228,14 +234,17 @@ async def test_reception_precondition_checks_require_the_reception_turn(
     detail = (await client.get(f"{API}/orders/by-entry/{entry_id}")).json()
     body = {
         "stage": "reception",
-        "checks": [{"key": c["key"], "met": True} for c in detail["preconditions"]],
+        "checks": [
+            {"key": precondition["key"], "met": True}
+            for precondition in detail["preconditions"]
+        ],
     }
     url = f"{API}/orders/by-entry/{entry_id}/precondition-checks"
     assert (await client.post(url, json=body)).status_code == 200
     _as(leo, "Recepcion B")
     leo.events.clear()
     _assert_not_owner(await client.post(url, json=body), "Recepcion A")
-    assert _denied(leo) == [p.REC_EDIT_PATIENT]
+    assert _denied(leo) == [permissions.REC_EDIT_PATIENT]
     _as(leo, "Jefa", REC_SUPERVISOR)
     assert (await client.post(url, json=body)).status_code == 200
 
@@ -252,15 +261,18 @@ async def test_sampling_precondition_checks_require_the_sampling_turn(
     detail = (await client.get(f"{API}/orders/by-entry/{entry_id}")).json()
     body = {
         "stage": "sampling",
-        "checks": [{"key": c["key"], "met": True} for c in detail["preconditions"]],
+        "checks": [
+            {"key": precondition["key"], "met": True}
+            for precondition in detail["preconditions"]
+        ],
     }
     url = f"{API}/orders/by-entry/{entry_id}/precondition-checks"
     assert (await client.post(url, json=body)).status_code == 200
     _as(leo, "Tecnica B")
     leo.events.clear()
     _assert_not_owner(await client.post(url, json=body), "Tecnica A")
-    assert _denied(leo) == [p.SAM_COLLECT]
-    _as(leo, "Supervisora", NO_SUPERVISE | {p.SAM_SUPERVISE})
+    assert _denied(leo) == [permissions.SAM_COLLECT]
+    _as(leo, "Supervisora", NO_SUPERVISE | {permissions.SAM_SUPERVISE})
     assert (await client.post(url, json=body)).status_code == 200
 
 
@@ -279,8 +291,12 @@ async def test_history_includes_the_reason_names(client, catalog, leo: FakeLeo) 
         f"{API}/queue/{entry['id']}/remove", json={"reason_id": removal["id"]}
     )
     history = (await client.get(f"{API}/queue/{entry['id']}/history")).json()
-    returned = next(h for h in history if h["kind"] == "return")
-    removed = next(h for h in history if h["kind"] == "remove")
+    returned = next(
+        history_entry for history_entry in history if history_entry["kind"] == "return"
+    )
+    removed = next(
+        history_entry for history_entry in history if history_entry["kind"] == "remove"
+    )
     assert returned["return_reason_id"] == reason["id"]
     assert returned["return_reason_name"] == reason["name"]
     assert returned["removal_reason_name"] is None
@@ -299,8 +315,14 @@ async def test_result_detail_exposes_who_entered_and_who_validated(
     queue = (
         await client.get(f"{API}/results/queue", params={"professional_id": "staff-qc"})
     ).json()
-    order = next(o for o in queue if any(t["code"] == "GLU" for t in o["tests"]))
-    test_id = next(t["order_test_id"] for t in order["tests"] if t["code"] == "GLU")
+    order = next(
+        queue_entry
+        for queue_entry in queue
+        if any(test["code"] == "GLU" for test in queue_entry["tests"])
+    )
+    test_id = next(
+        test["order_test_id"] for test in order["tests"] if test["code"] == "GLU"
+    )
     body = {
         "professional_id": "staff-qc",
         "professional_name": "Quimica Responsable",
@@ -313,14 +335,14 @@ async def test_result_detail_exposes_who_entered_and_who_validated(
     assert before["results"][0]["entered_by_user_id"] is None
     await client.put(f"{API}/results/tests/{test_id}/values", json=body)
     typed = (await client.get(f"{API}/results/tests/{test_id}", params=params)).json()
-    glu = next(r for r in typed["results"] if r["code"] == "GLU")
+    glu = next(result for result in typed["results"] if result["code"] == "GLU")
     assert glu["entered_by"] == "Quimico Uno"
     assert glu["entered_by_user_id"] == str(analyst.id)
     validator = _as(leo, "Quimico Dos", ALL)
     done = await client.post(f"{API}/results/tests/{test_id}/validate", json=body)
     assert done.status_code == 200, done.text
     detail = (await client.get(f"{API}/results/tests/{test_id}", params=params)).json()
-    glu = next(r for r in detail["results"] if r["code"] == "GLU")
+    glu = next(result for result in detail["results"] if result["code"] == "GLU")
     # validar reenvia los mismos valores: siguen a nombre de quien los capturo
     assert glu["entered_by_user_id"] == str(analyst.id)
     assert detail["validated_by"] == "Quimica Responsable"
@@ -328,5 +350,5 @@ async def test_result_detail_exposes_who_entered_and_who_validated(
     summary = (
         await client.get(f"{API}/results/orders/{order['entry_id']}", params=params)
     ).json()
-    item = next(t for t in summary["tests"] if t["order_test_id"] == test_id)
+    item = next(test for test in summary["tests"] if test["order_test_id"] == test_id)
     assert item["validated_by_user_id"] == str(validator.id)

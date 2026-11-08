@@ -2,7 +2,10 @@ PATIENT = {"first_name": "ANA", "first_last_name": "LOPEZ", "sex": "F"}
 
 
 async def _enter(client, doc, priority):
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority_entry["code"]: priority_entry["id"]
+        for priority_entry in (await client.get("/api/v1/priorities")).json()
+    }
     res = await client.post(
         "/api/v1/queue",
         json={

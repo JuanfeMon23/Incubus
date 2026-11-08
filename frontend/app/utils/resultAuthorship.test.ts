@@ -26,9 +26,9 @@ describe('validationLabels', () => {
     expect(validationLabels({ validated_by: 'Dra. Mora', validated_by_user_id: 'u1' }, 'u1').executor).toBe('Validación ejecutada por Tú')
   })
   it('solo id de otro usuario y sin nombre: se omite, nunca se muestra el id', () => {
-    const l = validationLabels({ validated_by: 'Dra. Mora', validated_by_user_id: 'u-xyz' }, 'u1')
-    expect(l.executor).toBeNull()
-    expect(JSON.stringify(l)).not.toContain('u-xyz')
+    const labels = validationLabels({ validated_by: 'Dra. Mora', validated_by_user_id: 'u-xyz' }, 'u1')
+    expect(labels.executor).toBeNull()
+    expect(JSON.stringify(labels)).not.toContain('u-xyz')
   })
   it('sin profesional no hay línea de profesional', () => {
     expect(validationLabels({ validated_by: null }, 'u1').professional).toBeNull()

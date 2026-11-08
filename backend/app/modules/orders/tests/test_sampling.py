@@ -34,7 +34,10 @@ async def _reception_closed(client, catalog):
     catalog.add_test(
         "HEM", "Hemograma", [], sample_types=[("lila", True, 2.0)], area_id="area-hem"
     )
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     entry = (
         await client.post(
             "/api/v1/queue", json={"patient": PATIENT, "priority_id": pr["media"]}
@@ -53,8 +56,8 @@ async def _reception_closed(client, catalog):
         "test_codes": ["COL", "TRI", "HEM"],
         "actor": "ana",
         "precondition_checks": [
-            {"key": p["key"], "met": True, "note": None}
-            for p in preview["preconditions"]
+            {"key": priority["key"], "met": True, "note": None}
+            for priority in preview["preconditions"]
         ],
     }
     res = await client.post(f"/api/v1/orders/close-reception/{entry['id']}", json=body)
@@ -89,7 +92,10 @@ async def test_cierre_deja_la_orden_en_espera_de_impresion_sin_tubos(client, cat
 
 
 async def test_cierre_exige_responder_cada_precondicion(client, catalog):
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     catalog.add_test(
         "COL",
         "Colesterol",
@@ -139,11 +145,11 @@ async def test_imprimir_crea_tubos_asigna_profesional_y_pasa_a_espera_de_toma(
     assert entry["status"] == "en_espera_toma_muestras"
     assert entry["assigned_professional_name"] == "Luis Perez"
     tubes = (await client.get(f"/api/v1/orders/by-entry/{entry_id}")).json()["samples"]
-    assert [t["name"] for t in tubes] == ["Tapa lila", "Tapa roja"]
+    assert [tube["name"] for tube in tubes] == ["Tapa lila", "Tapa roja"]
     assert tubes[1]["required_volume_ml"] == 5.0
     assert tubes[0]["area_route"] == ["HEM"]
     assert tubes[1]["area_route"] == ["QC"]
-    assert all(t["labels_printed_at"] for t in tubes)
+    assert all(tube["labels_printed_at"] for tube in tubes)
 
 
 async def test_imprimir_exige_profesional(client, catalog):
@@ -197,7 +203,7 @@ async def test_cola_del_profesional_filtra_por_asignacion(client, catalog):
     url = "/api/v1/queue?status=en_espera_toma_muestras&professional_id="
     mine = (await client.get(url + "staff-1")).json()
     other = (await client.get(url + "staff-2")).json()
-    assert [e["id"] for e in mine] == [entry_id]
+    assert [entry["id"] for entry in mine] == [entry_id]
     assert other == []
 
 
@@ -223,14 +229,14 @@ async def test_finalizar_exige_tubos_y_segunda_verificacion(client, catalog):
     assert sin_check.status_code == 422
     assert sin_check.json()["code"] == "unanswered_preconditions"
 
-    keys = [p["key"] for p in detail["preconditions"]]
+    keys = [priority["key"] for priority in detail["preconditions"]]
     checks = await client.post(
         f"/api/v1/orders/by-entry/{entry_id}/precondition-checks",
         json={
             "stage": "sampling",
             "actor": "luis",
             "checks": [
-                {"key": k, "met": False, "note": "refiere desayuno"} for k in keys
+                {"key": key, "met": False, "note": "refiere desayuno"} for key in keys
             ],
         },
     )
@@ -245,7 +251,7 @@ async def test_finalizar_exige_tubos_y_segunda_verificacion(client, catalog):
     assert done.status_code == 200
     assert done.json()["status"] == "toma_finalizada"
     hist = (await client.get(f"/api/v1/queue/{entry_id}/history")).json()
-    assert [h["to_status"] for h in hist][-4:] == [
+    assert [history_entry["to_status"] for history_entry in hist][-4:] == [
         "en_espera_impresion",
         "en_espera_toma_muestras",
         "en_atencion_toma_muestras",
@@ -296,7 +302,7 @@ async def test_solo_se_listan_profesionales_de_toma_de_muestras(client, catalog)
     catalog.add_staff("s2", "Ana", "Gil", "Bacterióloga")
     catalog.add_staff("s3", "Eva", "Rey", "Recepcionista")
     res = (await client.get("/api/v1/catalog/staff")).json()
-    assert [s["id"] for s in res] == ["s1"]
+    assert [result_entry["id"] for result_entry in res] == ["s1"]
 
 
 async def test_codigo_de_barras_svg_de_la_orden(client):

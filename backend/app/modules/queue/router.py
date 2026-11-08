@@ -224,14 +224,15 @@ async def list_queue(
     """Entradas de las etapas pedidas. Cada etapa exige el `view` de su pantalla;
     sin filtro se devuelven solo las etapas que la persona puede ver."""
     if status_filter:
-        statuses = [QueueStatus(s) for s in status_filter]
+        statuses = [QueueStatus(status_name) for status_name in status_filter]
         for stage in statuses:
             await authorize(request, user, STAGE_VIEW[stage.value])
     else:
         statuses = [
-            s
-            for s in QueueStatus
-            if s is not QueueStatus.RETIRADO and user.can(STAGE_VIEW[s.value])
+            queue_status
+            for queue_status in QueueStatus
+            if queue_status is not QueueStatus.RETIRADO
+            and user.can(STAGE_VIEW[queue_status.value])
         ]
     rows = await service.list_entries(session, statuses, professional_id)
     return [events.to_read(*row) for row in rows]

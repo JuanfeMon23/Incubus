@@ -41,12 +41,12 @@ async def set_default_priority(
     row, previous = await service.set_default(session, item_id)
     await session.commit()
     reason = ((body.reason if body else None) or "").strip() or None
-    k = service.kind_of("priorities")
+    key = service.kind_of("priorities")
     if previous is not None:
         await record_audit(
             QAD_UPDATE,
             user,
-            entity_type=k.entity_type,
+            entity_type=key.entity_type,
             entity_id=previous.id,
             before={"is_default": True},
             after={"is_default": False},
@@ -55,7 +55,7 @@ async def set_default_priority(
     await record_audit(
         QAD_UPDATE,
         user,
-        entity_type=k.entity_type,
+        entity_type=key.entity_type,
         entity_id=row.id,
         before={"is_default": False},
         after={"is_default": True},
@@ -69,7 +69,7 @@ async def list_items(
     kind: CatalogKind,
     session: Session,
     _user: CanViewQueueAdmin,
-    q: Annotated[str | None, Query(max_length=100)] = None,
+    query: Annotated[str | None, Query(alias="q", max_length=100)] = None,
     is_active: bool | None = None,
     page: Annotated[int, Query(ge=1, le=10_000)] = 1,
     page_size: Annotated[int, Query(ge=1)] = 20,
@@ -78,7 +78,7 @@ async def list_items(
     items, total = await service.list_items(
         session,
         service.kind_of(kind),
-        q=q,
+        query=query,
         is_active=is_active,
         page=page,
         page_size=page_size,
@@ -97,13 +97,13 @@ async def get_item(
 async def create_item(
     kind: CatalogKind, body: CatalogCreate, session: Session, user: CanCreateQueueAdmin
 ):
-    k = service.kind_of(kind)
-    row = await service.create(session, k, body)
+    key = service.kind_of(kind)
+    row = await service.create(session, key, body)
     await session.commit()
     await record_audit(
         QAD_CREATE,
         user,
-        entity_type=k.entity_type,
+        entity_type=key.entity_type,
         entity_id=row.id,
         after=service.snapshot(row),
     )
@@ -118,17 +118,17 @@ async def update_item(
     session: Session,
     user: CanUpdateQueueAdmin,
 ):
-    k = service.kind_of(kind)
-    row, before = await service.update(session, k, item_id, body)
+    key = service.kind_of(kind)
+    row, before = await service.update(session, key, item_id, body)
     await session.commit()
     if before:
         await record_audit(
             QAD_UPDATE,
             user,
-            entity_type=k.entity_type,
+            entity_type=key.entity_type,
             entity_id=row.id,
             before=before,
-            after={f: getattr(row, f) for f in before},
+            after={field: getattr(row, field) for field in before},
             reason=(body.reason or "").strip() or None,
         )
     return row
@@ -142,14 +142,14 @@ async def _toggle(
     user,
     active: bool,
 ):
-    k = service.kind_of(kind)
+    key = service.kind_of(kind)
     reason = body.reason if body else None
-    row = await service.set_active(session, k, item_id, active, reason)
+    row = await service.set_active(session, key, item_id, active, reason)
     await session.commit()
     await record_audit(
         QAD_TOGGLE,
         user,
-        entity_type=k.entity_type,
+        entity_type=key.entity_type,
         entity_id=row.id,
         before={"is_active": not active},
         after={"is_active": active},

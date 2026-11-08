@@ -3,7 +3,7 @@
 from sqlalchemy import select, text
 
 from app.conftest import FakeLeo
-from app.core import permissions as p
+from app.core import permissions
 from app.core.leo import catalog
 from app.modules.orders.models import OrderTest
 from app.modules.queue.tests.test_reception_owner import _as
@@ -31,7 +31,7 @@ def _url(number, tid):
 
 
 def _steps(body):
-    return [e["step"] for e in body["events"]]
+    return [event["step"] for event in body["events"]]
 
 
 async def test_trace_is_chronological_and_has_the_full_contract(
@@ -71,10 +71,10 @@ async def test_trace_is_chronological_and_has_the_full_contract(
     )
     assert data["page"] == 1 and data["page_size"] == 50
     assert data["total"] == len(data["events"])
-    ats = [e["at"] for e in data["events"]]
+    ats = [event["at"] for event in data["events"]]
     assert ats == sorted(ats)
-    for e in data["events"]:
-        assert set(e) == {
+    for event in data["events"]:
+        assert set(event) == {
             "at",
             "step",
             "scope",
@@ -83,8 +83,8 @@ async def test_trace_is_chronological_and_has_the_full_contract(
             "details",
             "source",
         }
-        assert set(e["actor"]) == {"id", "name", "staff_id"}
-        assert e["scope"] in {"test", "order", "sample"}
+        assert set(event["actor"]) == {"id", "name", "staff_id"}
+        assert event["scope"] in {"test", "order", "sample"}
     steps = _steps(data)
     for expected in (
         "queue.entered",
@@ -100,13 +100,15 @@ async def test_trace_is_chronological_and_has_the_full_contract(
     ):
         assert expected in steps, (expected, steps)
     # solo eventos reales para una orden creada despues de la 0011
-    added = [e for e in data["events"] if e["step"] == "order.test_added"]
-    assert [e["source"] for e in added] == ["event"]  # sin duplicado derivado
+    added = [event for event in data["events"] if event["step"] == "order.test_added"]
+    assert [event["source"] for event in added] == ["event"]  # sin duplicado derivado
     assert added[0]["details"]["test_code"] == "GLU"
     # encadenado de cola: derivado; finalizada: real (sin duplicado)
-    fin = [e for e in data["events"] if e["step"] == "order.finalized"]
-    assert [e["source"] for e in fin] == ["event"] and fin[0]["scope"] == "order"
-    queue = next(e for e in data["events"] if e["step"] == "queue.entered")
+    fin = [event for event in data["events"] if event["step"] == "order.finalized"]
+    assert [event["source"] for event in fin] == ["event"] and fin[0][
+        "scope"
+    ] == "order"
+    queue = next(event for event in data["events"] if event["step"] == "queue.entered")
     assert queue["source"] == "derived" and queue["scope"] == "order"
 
 
@@ -148,7 +150,7 @@ async def test_legacy_order_without_events_is_rebuilt_from_columns(
     await session.execute(text("ALTER TABLE order_test_events ENABLE TRIGGER USER"))
 
     data = (await client.get(_url(number, tid))).json()
-    assert {e["source"] for e in data["events"]} == {"derived"}
+    assert {event["source"] for event in data["events"]} == {"derived"}
     steps = _steps(data)
     for expected in (
         "queue.entered",
@@ -164,7 +166,9 @@ async def test_legacy_order_without_events_is_rebuilt_from_columns(
         "activation.issued",
     ):
         assert expected in steps, (expected, steps)
-    entered = next(e for e in data["events"] if e["step"] == "result.entered")
+    entered = next(
+        event for event in data["events"] if event["step"] == "result.entered"
+    )
     assert entered["details"]["after"] == 90 and entered["actor"]["id"]
     assert steps.count("sample.collected") == 1
 
@@ -179,7 +183,7 @@ async def test_derived_events_are_not_duplicated_by_real_ones(client, catalog, s
         "labels.printed",
         "order.test_added",
     ):
-        sources = [e["source"] for e in data["events"] if e["step"] == step]
+        sources = [event["source"] for event in data["events"] if event["step"] == step]
         assert sources == ["event"], (step, sources)
 
 
@@ -189,7 +193,7 @@ async def test_viewing_the_trace_is_audited(client, catalog, session, leo: FakeL
     leo.events.clear()
     assert (await client.get(_url(number, tid))).status_code == 200
     await _flush_audit()
-    ev = [e for e in leo.events if e["action_tag"] == p.RES_TRACE]
+    ev = [event for event in leo.events if event["action_tag"] == permissions.RES_TRACE]
     assert len(ev) == 1
     assert ev[0]["entity_type"] == "order_test" and ev[0]["entity_id"] == str(tid)
 
@@ -207,7 +211,9 @@ async def test_trace_excludes_other_tests_of_the_same_tube(client, catalog, sess
     tid = await _test_id(session, number, "GLU")
     data = (await client.get(_url(number, tid))).json()
     coded = [
-        e["details"]["test_code"] for e in data["events"] if "test_code" in e["details"]
+        event["details"]["test_code"]
+        for event in data["events"]
+        if "test_code" in event["details"]
     ]
     assert coded and set(coded) == {"GLU"}
 
@@ -223,7 +229,7 @@ async def test_order_tests_list_contract_without_patient_data(
     data = res.json()
     assert set(data) == {"order_number", "order_id", "tests"}
     assert data["order_number"] == number
-    assert [set(t) for t in data["tests"]] == [
+    assert [set(test) for test in data["tests"]] == [
         {"id", "code", "name", "area_code", "validation_status"}
     ]
     assert data["tests"][0]["id"] == str(tid) and data["tests"][0]["code"] == "GLU"
@@ -234,5 +240,5 @@ async def test_order_tests_list_404_and_403(client, catalog, leo: FakeLeo):
     _, number = await order_in_laboratory(client, catalog, ("GLU",))
     _as(leo, "Analista A", ALL)
     assert (await client.get("/api/v1/orders/00000000/tests")).status_code == 404
-    _as(leo, "Sin traza", ALL - {p.RES_TRACE})
+    _as(leo, "Sin traza", ALL - {permissions.RES_TRACE})
     assert (await client.get(f"/api/v1/orders/{number}/tests")).status_code == 403

@@ -31,7 +31,7 @@ describe('alineación de tags con el contrato del backend (generated/permissions
   })
 
   it('todo tag de TAGS y de SCREENS existe en el contrato', () => {
-    const used = [...Object.values(TAGS).flatMap((module) => Object.values(module)), ...SCREENS.map((s) => s.tag)]
+    const used = [...Object.values(TAGS).flatMap((module) => Object.values(module)), ...SCREENS.map((screen) => screen.tag)]
     expect(used.filter((tag) => !jsonTags.has(tag))).toEqual([])
   })
 

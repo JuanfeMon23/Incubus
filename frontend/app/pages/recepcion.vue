@@ -28,8 +28,8 @@
           <UiSpinner color="primary" label="Cargando cola" />
         </div>
         <ul v-else-if="canSeeWaiting && waiting.length" class="space-y-2">
-          <li v-for="(e, i) in waiting.slice(0, 3)" :key="e.id" :class="i === 0 ? '' : 'opacity-80'">
-            <QueueEntryCard :entry="e" compact>
+          <li v-for="(entry, i) in waiting.slice(0, 3)" :key="entry.id" :class="i === 0 ? '' : 'opacity-80'">
+            <QueueEntryCard :entry="entry" compact>
               <template v-if="i === 0" #chips>
                 <span class="rounded-full bg-primary-600 px-2 py-0.5 font-semibold text-white">Siguiente</span>
               </template>
@@ -44,8 +44,8 @@
       <section>
         <h2 class="mb-2 font-semibold">En atención ({{ attending.length }})</h2>
         <ul class="space-y-2">
-          <li v-for="e in attending" :key="e.id">
-            <QueueEntryCard :entry="e" compact selectable show-claimed-by :selected="current?.id === e.id" @select="select(e)" />
+          <li v-for="entry in attending" :key="entry.id">
+            <QueueEntryCard :entry="entry" compact selectable show-claimed-by :selected="current?.id === entry.id" @select="select(entry)" />
           </li>
           <li v-if="!attending.length" class="text-sm text-text-muted">Nadie en atención.</li>
         </ul>
@@ -114,19 +114,19 @@
             v-if="results.length"
             class="mt-2 max-h-64 divide-y divide-border overflow-auto rounded-lg border border-border bg-surface shadow-sm"
           >
-            <li v-for="t in results" :key="t.code">
+            <li v-for="result in results" :key="result.code">
               <button
                 type="button"
                 class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-primary-50 disabled:opacity-50"
-                :disabled="isChosen(t.code)"
-                @click="addTest(t)"
+                :disabled="isChosen(result.code)"
+                @click="addTest(result)"
               >
                 <span class="shrink-0 rounded-md bg-default-100 px-2 py-0.5 font-mono text-xs font-semibold text-default-700">
-                  {{ t.code }}
+                  {{ result.code }}
                 </span>
-                <span class="min-w-0 flex-1 truncate">{{ t.name }}</span>
-                <span v-if="t.abbreviation" class="shrink-0 text-xs text-text-muted">{{ t.abbreviation }}</span>
-                <span v-if="isChosen(t.code)" class="shrink-0 text-xs font-medium text-success-700">Agregado</span>
+                <span class="min-w-0 flex-1 truncate">{{ result.name }}</span>
+                <span v-if="result.abbreviation" class="shrink-0 text-xs text-text-muted">{{ result.abbreviation }}</span>
+                <span v-if="isChosen(result.code)" class="shrink-0 text-xs font-medium text-success-700">Agregado</span>
                 <span v-else class="shrink-0 text-lg leading-none text-primary-600" aria-hidden="true">+</span>
               </button>
             </li>
@@ -145,20 +145,20 @@
             </p>
             <ul v-if="chosen.length" class="grid gap-2 sm:grid-cols-2">
               <li
-                v-for="t in chosen"
-                :key="t.code"
+                v-for="chosenTest in chosen"
+                :key="chosenTest.code"
                 class="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2"
               >
                 <span class="shrink-0 rounded-md bg-white px-2 py-0.5 font-mono text-xs font-semibold text-primary-700">
-                  {{ t.code }}
+                  {{ chosenTest.code }}
                 </span>
-                <span class="min-w-0 flex-1 truncate text-sm">{{ t.name }}</span>
+                <span class="min-w-0 flex-1 truncate text-sm">{{ chosenTest.name }}</span>
                 <button
                   v-if="canEdit"
                   type="button"
                   class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-primary-700 transition-colors hover:bg-primary-100"
-                  :aria-label="`Quitar ${t.name}`"
-                  @click="removeTest(t.code)"
+                  :aria-label="`Quitar ${chosenTest.name}`"
+                  @click="removeTest(chosenTest.code)"
                 >
                   <span aria-hidden="true">×</span>
                 </button>
@@ -244,21 +244,21 @@ const canSeeWaiting = useCan(TAGS.preReception.view)
 const editPatientName = permissionName(TAGS.reception.editPatient)
 
 const today = todayISO()
-const bloodOptions = BLOOD_TYPES.map((v) => ({ value: v, label: v }))
+const bloodOptions = BLOOD_TYPES.map((bloodType) => ({ value: bloodType, label: bloodType }))
 const documentTypes = ref<Reason[]>([])
 const documentTypeOptions = computed(() =>
-  documentTypes.value.map((d) => ({ value: d.code, label: `${d.code} · ${d.name}` }))
+  documentTypes.value.map((documentType) => ({ value: documentType.code, label: `${documentType.code} · ${documentType.name}` }))
 )
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useLeoAppApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
 const calling = ref(false)
-const waiting = computed(() => entries.value.filter((e) => e.status === 'pre_recepcion'))
-const attending = computed(() => entries.value.filter((e) => e.status === 'en_atencion_recepcion'))
+const waiting = computed(() => entries.value.filter((entry) => entry.status === 'pre_recepcion'))
+const attending = computed(() => entries.value.filter((entry) => entry.status === 'en_atencion_recepcion'))
 
 const currentId = ref<string | null>(null)
-const current = computed(() => attending.value.find((e) => e.id === currentId.value) ?? null)
+const current = computed(() => attending.value.find((entry) => entry.id === currentId.value) ?? null)
 // Solo quien llamó al paciente (o un supervisor) edita, verifica, devuelve o cierra; retirar no exige ser dueño.
 const { ownsTurn, hint } = useTurnOwnership(current)
 const age = computed(() => ageFrom(current.value?.patient.birth_date ?? null))
@@ -269,8 +269,8 @@ const DEMOGRAPHIC_FIELDS = [
 ] as const
 
 function demographicsOf(patient: Record<string, unknown> | null): ReceptionPatientInput {
-  const get = (k: string) => String((patient?.[k] as string | null | undefined) ?? '')
-  return Object.fromEntries(DEMOGRAPHIC_FIELDS.map((k) => [k, get(k)])) as ReceptionPatientInput
+  const get = (fieldName: string) => String((patient?.[fieldName] as string | null | undefined) ?? '')
+  return Object.fromEntries(DEMOGRAPHIC_FIELDS.map((field) => [field, get(field)])) as ReceptionPatientInput
 }
 
 // Todos obligatorios salvo segundo nombre/apellido: errores en rojo bajo cada campo.
@@ -279,13 +279,13 @@ const { isSubmitting, formError } = form
 const chosen = ref<CatalogTest[]>([])
 const preconditions = ref<OrderPrecondition[]>([])
 const checks = ref<CheckMap>({})
-const keys = computed(() => preconditions.value.map((p) => p.key))
+const keys = computed(() => preconditions.value.map((precondition) => precondition.key))
 const checksOk = computed(() => checksComplete(keys.value, checks.value))
 
 const search = ref('')
 const results = ref<CatalogTest[]>([])
 const searching = ref(false)
-const isChosen = (code: string) => chosen.value.some((c) => c.code === code)
+const isChosen = (code: string) => chosen.value.some((chosenTest) => chosenTest.code === code)
 const error = ref('')
 const orderNumber = ref('')
 const receipt = ref<{ orderNumber: string; activationCode: string } | null>(null)
@@ -299,24 +299,24 @@ onMounted(async () => {
   ])
 })
 
-function select(e: QueueEntry) {
-  currentId.value = e.id
+function select(entry: QueueEntry) {
+  currentId.value = entry.id
   orderNumber.value = ''
   error.value = ''
-  form.reset(demographicsOf(e.patient as unknown as Record<string, unknown>))
+  form.reset(demographicsOf(entry.patient as unknown as Record<string, unknown>))
   chosen.value = []
   preconditions.value = []
   // restaura el borrador (sobrevive a una devolución a pre-recepción)
-  const codes = e.draft?.test_codes ?? []
+  const codes = entry.draft?.test_codes ?? []
   if (codes.length) void restore(codes)
 }
 
 async function restore(codes: string[]) {
   const found = await Promise.all(
-    codes.map(async (c) => (await api.get<CatalogTest[]>('/catalog/tests', { query: { q: c } })).find((t) => t.code === c))
+    codes.map(async (testCode) => (await api.get<CatalogTest[]>('/catalog/tests', { query: { q: testCode } })).find((test) => test.code === testCode))
   )
-  chosen.value = found.filter((t): t is CatalogTest => !!t)
-  await loadPreconditions(chosen.value.map((t) => t.code)).catch(() => {})
+  chosen.value = found.filter((foundTest): foundTest is CatalogTest => !!foundTest)
+  await loadPreconditions(chosen.value.map((chosenTest) => chosenTest.code)).catch(() => {})
 }
 
 /** Llama al siguiente paciente según prioridad y orden de llegada. */
@@ -326,7 +326,7 @@ async function callNext() {
   try {
     const entry = await api.post<QueueEntry>('/queue/call-next')
     await refresh()
-    const fresh = entries.value.find((x) => x.id === entry.id)
+    const fresh = entries.value.find((queuedEntry) => queuedEntry.id === entry.id)
     select(fresh ?? entry)
     toast.info(`Llamando a ${fullName(entry.patient)}.`)
   } catch (err) {
@@ -339,44 +339,44 @@ async function callNext() {
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
-watch(search, (q) => {
+watch(search, (searchTerm) => {
   clearTimeout(searchTimer)
-  if (q.trim().length < 2) {
+  if (searchTerm.trim().length < 2) {
     results.value = []
     return
   }
   searchTimer = setTimeout(async () => {
     searching.value = true
     try {
-      results.value = await api.get<CatalogTest[]>('/catalog/tests', { query: { q: q.trim() } })
-    } catch (e) {
-      toast.error(leoErrorMessage(e))
+      results.value = await api.get<CatalogTest[]>('/catalog/tests', { query: { q: searchTerm.trim() } })
+    } catch (caughtError) {
+      toast.error(leoErrorMessage(caughtError))
     } finally {
       searching.value = false
     }
   }, 250)
 })
 
-function addTest(t: CatalogTest) {
-  if (!chosen.value.some((c) => c.code === t.code)) chosen.value.push(t)
+function addTest(test: CatalogTest) {
+  if (!chosen.value.some((chosenTest) => chosenTest.code === test.code)) chosen.value.push(test)
   search.value = ''
   results.value = []
   void sync()
 }
 function removeTest(code: string) {
-  chosen.value = chosen.value.filter((t) => t.code !== code)
+  chosen.value = chosen.value.filter((chosenTest) => chosenTest.code !== code)
   void sync()
 }
 
 // Preanalíticos unificados + guardado de borrador en cada cambio de exámenes.
 async function sync() {
   if (!currentId.value || !ownsTurn.value) return
-  const codes = chosen.value.map((t) => t.code)
+  const codes = chosen.value.map((chosenTest) => chosenTest.code)
   try {
     await api.put(`/queue/${currentId.value}/draft`, { test_codes: codes })
     await loadPreconditions(codes)
-  } catch (e) {
-    await failWith(e)
+  } catch (error) {
+    await failWith(error)
   }
 }
 
@@ -386,14 +386,14 @@ async function loadPreconditions(codes: string[]) {
     : []
   // conserva respuestas de condiciones que siguen presentes; las nuevas quedan sin responder
   const fresh = emptyChecks(keys.value)
-  for (const k of keys.value) if (checks.value[k]) fresh[k] = checks.value[k]
+  for (const key of keys.value) if (checks.value[key]) fresh[key] = checks.value[key]
   checks.value = fresh
 }
 
 async function saveDemographics() {
   if (!current.value || !canEdit.value || !ownsTurn.value) return
   const body = Object.fromEntries(
-    Object.entries(form.values as Record<string, unknown>).map(([k, v]) => [k, v === '' ? null : v])
+    Object.entries(form.values as Record<string, unknown>).map(([fieldName, fieldValue]) => [fieldName, fieldValue === '' ? null : fieldValue])
   )
   await api.patch(`/patients/${current.value.patient.id}`, body)
 }
@@ -401,9 +401,9 @@ async function saveDemographics() {
 // Teléfono: solo números (se descartan letras y símbolos al escribir o pegar).
 watch(
   () => form.values.phone,
-  (v) => {
-    const clean = digitsOnly(String(v ?? ''))
-    if (clean !== (v ?? '')) form.setFieldValue('phone', clean)
+  (phone) => {
+    const clean = digitsOnly(String(phone ?? ''))
+    if (clean !== (phone ?? '')) form.setFieldValue('phone', clean)
   }
 )
 
@@ -438,7 +438,7 @@ const onClose = form.submit(async () => {
   try {
     await saveDemographics()
     const res = await api.post<{ order_number: string; activation_code?: string | null }>(`/orders/close-reception/${current.value.id}`, {
-        test_codes: chosen.value.map((t) => t.code),
+        test_codes: chosen.value.map((chosenTest) => chosenTest.code),
         precondition_checks: toCheckPayload(keys.value, checks.value)
       })
     orderNumber.value = res.order_number
@@ -447,15 +447,15 @@ const onClose = form.submit(async () => {
     toast.success(`Orden ${res.order_number} generada. Pasa a impresión de etiquetas.`)
     currentId.value = null
     await refresh()
-  } catch (e) {
-    toast.error(leoErrorMessage(e))
-    if (isNotTurnOwnerError(e)) {
+  } catch (caughtError) {
+    toast.error(leoErrorMessage(caughtError))
+    if (isNotTurnOwnerError(caughtError)) {
       // Mensaje del backend tal cual (el mapeo genérico del formulario lo reemplazaría) y re-sincroniza.
-      error.value = leoErrorMessage(e)
+      error.value = leoErrorMessage(caughtError)
       await refresh()
       return
     }
-    throw e
+    throw caughtError
   }
 })
 
@@ -468,15 +468,15 @@ async function giveBack(payload: { reason_id: string; note: string | null }) {
     toast.info('Paciente devuelto a pre-recepción.')
     currentId.value = null
     await refresh()
-  } catch (e) {
-    await failWith(e)
+  } catch (error) {
+    await failWith(error)
   }
 }
 
 /** Muestra el error legible; si el turno es de otra persona (403 `not_turn_owner`), re-sincroniza la lista. */
-async function failWith(e: unknown) {
-  error.value = leoErrorMessage(e)
+async function failWith(caughtError: unknown) {
+  error.value = leoErrorMessage(caughtError)
   toast.error(error.value)
-  if (isNotTurnOwnerError(e)) await refresh()
+  if (isNotTurnOwnerError(caughtError)) await refresh()
 }
 </script>

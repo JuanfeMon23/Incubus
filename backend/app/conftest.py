@@ -169,26 +169,26 @@ class FakeCatalog:
 
     def add_template(self, version_id: str, analytes: list[dict]) -> None:
         rows = []
-        for i, a in enumerate(analytes):
+        for i, analyte in enumerate(analytes):
             rows.append(
                 {
-                    "code": a["code"],
-                    "name": a["name"],
-                    "section": a.get("section"),
+                    "code": analyte["code"],
+                    "name": analyte["name"],
+                    "section": analyte.get("section"),
                     "sort_order": i + 1,
-                    "result_type": a["result_type"],
-                    "unit": a.get("unit"),
-                    "decimals": a.get("decimals"),
-                    "options": a.get("options", []),
-                    "formula": a.get("formula"),
-                    "is_required": a.get("is_required", True),
+                    "result_type": analyte["result_type"],
+                    "unit": analyte.get("unit"),
+                    "decimals": analyte.get("decimals"),
+                    "options": analyte.get("options", []),
+                    "formula": analyte.get("formula"),
+                    "is_required": analyte.get("is_required", True),
                     "is_reportable": True,
                     "ranges": [
                         {
                             "is_active": True,
                             **{
-                                k: None
-                                for k in (
+                                range_field: None
+                                for range_field in (
                                     "age_min",
                                     "age_max",
                                     "age_unit",
@@ -201,9 +201,9 @@ class FakeCatalog:
                                     "display_text",
                                 )
                             },
-                            **r,
+                            **range_item,
                         }
-                        for r in a.get("ranges", [])
+                        for range_item in analyte.get("ranges", [])
                     ],
                 }
             )
@@ -237,18 +237,18 @@ class FakeCatalog:
         template: str | None = None,
     ) -> None:
         pres = []
-        for i, p in enumerate(preconditions):
+        for i, precondition in enumerate(preconditions):
             pid = f"pre-{code}-{i}"
-            self.categories[pid] = p["category"]
+            self.categories[pid] = precondition["category"]
             pres.append(
                 {
                     "id": f"row-{pid}",
                     "precondition_id": pid,
                     "is_active": True,
-                    "name": p.get("name", p["category"]),
-                    "duration_value": p.get("value"),
-                    "duration_unit": p.get("unit"),
-                    "patient_instructions": p.get("text"),
+                    "name": precondition.get("name", precondition["category"]),
+                    "duration_value": precondition.get("value"),
+                    "duration_unit": precondition.get("unit"),
+                    "patient_instructions": precondition.get("text"),
                 }
             )
         self.tests[code] = {
@@ -270,11 +270,13 @@ class FakeCatalog:
             ],
         }
 
-    async def search_tests(self, q: str | None, limit: int = 20) -> list[dict]:
+    async def search_tests(self, query: str | None, limit: int = 20) -> list[dict]:
         return [
-            t
-            for t in self.tests.values()
-            if not q or q.lower() in t["code"].lower() or q.lower() in t["name"].lower()
+            test
+            for test in self.tests.values()
+            if not query
+            or query.lower() in test["code"].lower()
+            or query.lower() in test["name"].lower()
         ]
 
     async def get_test_by_code(self, code: str) -> dict | None:
@@ -293,7 +295,9 @@ class FakeCatalog:
         return self.staff
 
     async def areas_with_managers(self) -> list[dict]:
-        names = {s["id"]: s["name"] for s in self.staff}
+        names = {
+            staff_member["id"]: staff_member["name"] for staff_member in self.staff
+        }
         return [
             {
                 "id": area_id,

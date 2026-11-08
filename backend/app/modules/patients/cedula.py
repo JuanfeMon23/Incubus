@@ -42,17 +42,17 @@ def parse_cedula_barcode(raw: str) -> CedulaData:
         raise CedulaParseError("No se encontro sexo y fecha de nacimiento.")
     head = text[: sb.start()]
     doc_match = None
-    for m in _DOC.finditer(head):
-        doc_match = m
+    for match in _DOC.finditer(head):
+        doc_match = match
     if doc_match is None:
         raise CedulaParseError("No se encontro el numero de documento.")
     document = doc_match.group(1).lstrip("0")
     if not document:
         raise CedulaParseError("Numero de documento invalido.")
     names = [
-        t.strip()
-        for t in _NAME_TOKEN.findall(head[doc_match.end() :])
-        if t.strip() and not t.strip().startswith(_IGNORED_PREFIXES)
+        token.strip()
+        for token in _NAME_TOKEN.findall(head[doc_match.end() :])
+        if token.strip() and not token.strip().startswith(_IGNORED_PREFIXES)
     ]
     if len(names) < 2:
         raise CedulaParseError("No se encontraron apellidos y nombres.")

@@ -39,7 +39,10 @@ async def _reception(client, catalog):
             {"category": "tabaco", "value": 2, "unit": "horas", "text": "No fumar"},
         ],
     )
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     entry = (
         await client.post(
             "/api/v1/queue", json={"patient": PATIENT, "priority_id": pr["alta"]}
@@ -54,7 +57,7 @@ async def test_preview_unifica_preanaliticos(client, catalog):
     res = await client.post(
         "/api/v1/orders/preview", json={"test_codes": ["COL", "TRI"]}
     )
-    pres = {p["category"]: p for p in res.json()["preconditions"]}
+    pres = {priority["category"]: priority for priority in res.json()["preconditions"]}
     assert pres["ayuno"]["duration_value"] == 12
     assert pres["ayuno"]["source_test_codes"] == ["COL", "TRI"]
     assert "tabaco" in pres and len(res.json()["preconditions"]) == 2
@@ -86,14 +89,15 @@ async def test_cierre_genera_orden_y_pasa_a_espera_de_impresion(client, catalog)
     preview = (
         await client.post("/api/v1/orders/preview", json={"test_codes": ["COL", "TRI"]})
     ).json()
-    assert all(p["key"] for p in preview["preconditions"])
+    assert all(priority["key"] for priority in preview["preconditions"])
     res = await client.post(
         f"/api/v1/orders/close-reception/{entry['id']}",
         json={
             "test_codes": ["COL", "TRI"],
             "actor": "ana",
             "precondition_checks": [
-                {"key": p["key"], "met": True} for p in preview["preconditions"]
+                {"key": priority["key"], "met": True}
+                for priority in preview["preconditions"]
             ],
         },
     )
@@ -106,7 +110,7 @@ async def test_cierre_genera_orden_y_pasa_a_espera_de_impresion(client, catalog)
     assert after["order_number"] == number
 
     order = (await client.get(f"/api/v1/orders/{number}")).json()
-    assert {t["code"] for t in order["tests"]} == {"COL", "TRI"}
+    assert {test["code"] for test in order["tests"]} == {"COL", "TRI"}
 
 
 async def test_consecutivo_secuencial_y_reinicia_por_mes(session):
@@ -122,15 +126,17 @@ async def test_consecutivo_bajo_concurrencia_sin_duplicados_ni_huecos():
     moment = datetime(2099, 1, 15, 12, tzinfo=UTC)
 
     async def one() -> str:
-        async with AsyncSessionLocal() as s:
-            number = await next_order_number(s, moment)
-            await s.commit()
+        async with AsyncSessionLocal() as session:
+            number = await next_order_number(session, moment)
+            await session.commit()
             return number
 
     try:
         numbers = await asyncio.gather(*(one() for _ in range(25)))
         assert sorted(numbers) == [f"9901{i:04d}" for i in range(1, 26)]
     finally:
-        async with AsyncSessionLocal() as s:
-            await s.execute(text("DELETE FROM order_counters WHERE year_month='9901'"))
-            await s.commit()
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("DELETE FROM order_counters WHERE year_month='9901'")
+            )
+            await session.commit()

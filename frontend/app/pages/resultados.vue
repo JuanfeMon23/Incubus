@@ -20,10 +20,10 @@
       <p v-if="professional" class="mt-3 flex flex-wrap items-center gap-2 text-sm text-text-muted">
         Áreas asignadas:
         <span
-          v-for="a in professional.areas"
-          :key="a.id"
+          v-for="area in professional.areas"
+          :key="area.id"
           class="rounded-full bg-secondary-50 px-2 py-0.5 text-xs font-semibold text-secondary-700"
-        >{{ a.code }} · {{ a.name }}</span>
+        >{{ area.code }} · {{ area.name }}</span>
       </p>
     </UiCard>
 
@@ -34,32 +34,32 @@
       <UiSpinner size="lg" color="primary" label="Cargando órdenes" />
     </div>
     <ul v-else class="grid gap-3 md:grid-cols-2">
-      <li v-for="o in orders" :key="o.entry_id">
+      <li v-for="order in orders" :key="order.entry_id">
         <UiCard>
           <div class="space-y-3">
             <div class="flex items-start justify-between gap-2">
               <div>
-                <p class="font-semibold">{{ o.patient_name }}</p>
+                <p class="font-semibold">{{ order.patient_name }}</p>
                 <p class="text-xs text-text-muted">
-                  {{ o.document }} · Orden <span class="font-mono">{{ o.order_number }}</span>
+                  {{ order.document }} · Orden <span class="font-mono">{{ order.order_number }}</span>
                 </p>
               </div>
-              <QueueHistoryButton :entry-id="o.entry_id" />
+              <QueueHistoryButton :entry-id="order.entry_id" />
             </div>
             <ul class="space-y-2">
               <li
-                v-for="t in o.tests"
-                :key="t.order_test_id"
+                v-for="test in order.tests"
+                :key="test.order_test_id"
                 class="flex items-center gap-3 rounded-lg bg-default-50 px-3 py-2"
               >
-                <span class="rounded-md bg-white px-2 py-0.5 font-mono text-xs font-semibold">{{ t.code }}</span>
-                <span class="min-w-0 flex-1 truncate text-sm">{{ t.name }}</span>
+                <span class="rounded-md bg-white px-2 py-0.5 font-mono text-xs font-semibold">{{ test.code }}</span>
+                <span class="min-w-0 flex-1 truncate text-sm">{{ test.name }}</span>
                 <UiStatusBadge
-                  :variant="t.validation_status === 'draft' ? 'warning' : 'neutral'"
-                  :label="t.validation_status === 'draft' ? 'Borrador' : 'Pendiente'"
+                  :variant="test.validation_status === 'draft' ? 'warning' : 'neutral'"
+                  :label="test.validation_status === 'draft' ? 'Borrador' : 'Pendiente'"
                 />
-                <TraceButton :order-number="o.order_number" :test-id="t.order_test_id" />
-                <UiButton size="sm" @click="openOrder(o.entry_id, t.order_test_id)">{{ canWork ? 'Validar' : 'Ver' }}</UiButton>
+                <TraceButton :order-number="order.order_number" :test-id="test.order_test_id" />
+                <UiButton size="sm" @click="openOrder(order.entry_id, test.order_test_id)">{{ canWork ? 'Validar' : 'Ver' }}</UiButton>
               </li>
             </ul>
           </div>
@@ -91,9 +91,9 @@ const api = useLeoAppApi()
 const toast = useToast()
 
 const validators = ref<ValidatorStaff[]>([])
-const validatorOptions = computed(() => validators.value.map((v) => ({ value: v.id, label: v.name })))
+const validatorOptions = computed(() => validators.value.map((validator) => ({ value: validator.id, label: validator.name })))
 const professionalId = ref('')
-const professional = computed(() => validators.value.find((v) => v.id === professionalId.value) ?? null)
+const professional = computed(() => validators.value.find((validator) => validator.id === professionalId.value) ?? null)
 
 const orders = ref<ResultsQueueOrder[]>([])
 const loading = ref(false)
@@ -105,9 +105,9 @@ onMounted(async () => {
   try {
     validators.value = await api.get<ValidatorStaff[]>('/catalog/validators')
     const saved = localStorage.getItem('incubus.validator') ?? ''
-    if (validators.value.some((v) => v.id === saved)) professionalId.value = saved
-  } catch (e) {
-    toast.error(leoErrorMessage(e))
+    if (validators.value.some((validator) => validator.id === saved)) professionalId.value = saved
+  } catch (caughtError) {
+    toast.error(leoErrorMessage(caughtError))
   }
 })
 
@@ -119,8 +119,8 @@ async function load() {
   loading.value = true
   try {
     orders.value = await api.get<ResultsQueueOrder[]>('/results/queue', { query: { professional_id: professionalId.value, ...(search.value.trim() ? { q: search.value.trim() } : {}) } })
-  } catch (e) {
-    toast.error(leoErrorMessage(e))
+  } catch (caughtError) {
+    toast.error(leoErrorMessage(caughtError))
   } finally {
     loading.value = false
   }

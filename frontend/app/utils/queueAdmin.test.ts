@@ -25,8 +25,8 @@ describe('schema de creación', () => {
   const reason = catalogFormSchema({ priority: false, create: true })
 
   it('acepta una prioridad válida y convierte el orden a número', () => {
-    const r = prio.safeParse({ code: 'sin-datos', name: ' Sin datos ', color_hex: '#a1B2c3', rank: '5' })
-    expect(r.success && r.data).toMatchObject({ code: 'sin-datos', name: 'Sin datos', rank: 5 })
+    const parsed = prio.safeParse({ code: 'sin-datos', name: ' Sin datos ', color_hex: '#a1B2c3', rank: '5' })
+    expect(parsed.success && parsed.data).toMatchObject({ code: 'sin-datos', name: 'Sin datos', rank: 5 })
   })
 
   it.each(['Urgente', 'a b', '-a', 'a--b', 'a_', 'ñandú', ''])('rechaza el code %j', (code) => {
@@ -90,15 +90,15 @@ describe('hacer predeterminada', () => {
 
 describe('payloads', () => {
   it('creación de prioridad lleva color (mayúsculas) y orden; la de motivo solo code y name', () => {
-    const v = { code: 'a', name: 'A', color_hex: '#abcdef', rank: 3 }
-    expect(buildCreatePayload('priorities', v)).toEqual({ code: 'a', name: 'A', color_hex: '#ABCDEF', rank: 3 })
-    expect(buildCreatePayload('return-reasons', v)).toEqual({ code: 'a', name: 'A' })
+    const formValues = { code: 'a', name: 'A', color_hex: '#abcdef', rank: 3 }
+    expect(buildCreatePayload('priorities', formValues)).toEqual({ code: 'a', name: 'A', color_hex: '#ABCDEF', rank: 3 })
+    expect(buildCreatePayload('return-reasons', formValues)).toEqual({ code: 'a', name: 'A' })
   })
 
   it('el PATCH envía solo lo cambiado y nunca el code', () => {
-    const v = { code: 'urgente', name: 'Urgente 2', color_hex: '#ff0000', rank: 2 }
-    expect(buildUpdatePayload('priorities', v, item())).toEqual({ name: 'Urgente 2' })
-    expect(buildUpdatePayload('priorities', { ...v, name: 'Urgente', rank: 7 }, item())).toEqual({ rank: 7 })
+    const formValues = { code: 'urgente', name: 'Urgente 2', color_hex: '#ff0000', rank: 2 }
+    expect(buildUpdatePayload('priorities', formValues, item())).toEqual({ name: 'Urgente 2' })
+    expect(buildUpdatePayload('priorities', { ...formValues, name: 'Urgente', rank: 7 }, item())).toEqual({ rank: 7 })
   })
 
   it('sin cambios no hay PATCH (el backend respondería 422)', () => {
@@ -123,9 +123,9 @@ describe('mensajes de error', () => {
   const conflict = (field: string, value?: unknown) => ({ status: 409, code: 'conflict', message: 'crudo', details: { field, value } })
 
   it('orden repetido explica el intercambio', () => {
-    const m = queueAdminErrorMessage(conflict('rank', 3), 'priorities')
-    expect(m).toContain('orden «3»')
-    expect(m).toContain('orden libre')
+    const message = queueAdminErrorMessage(conflict('rank', 3), 'priorities')
+    expect(message).toContain('orden «3»')
+    expect(message).toContain('orden libre')
   })
 
   it('nombre y code repetidos, con el valor', () => {
@@ -134,8 +134,8 @@ describe('mensajes de error', () => {
   })
 
   it('otros 409 usan el mensaje del backend; la red, un texto legible', () => {
-    const e = { status: 409, code: 'conflict', message: 'No se puede desactivar la última prioridad activa.', data: { code: 'conflict', message: 'No se puede desactivar la última prioridad activa.' } }
-    expect(queueAdminErrorMessage(e, 'priorities')).toBe('No se puede desactivar la última prioridad activa.')
+    const error = { status: 409, code: 'conflict', message: 'No se puede desactivar la última prioridad activa.', data: { code: 'conflict', message: 'No se puede desactivar la última prioridad activa.' } }
+    expect(queueAdminErrorMessage(error, 'priorities')).toBe('No se puede desactivar la última prioridad activa.')
     expect(queueAdminErrorMessage(new TypeError('Failed to fetch'), 'priorities')).not.toMatch(/fetch/i)
   })
 })

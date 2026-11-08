@@ -46,7 +46,7 @@ def display_code(code: str) -> str:
 def normalize_code(raw: str) -> str | None:
     """Mayusculas sin guiones/espacios; `None` si no puede ser un codigo valido."""
     code = _NON_CODE.sub("", raw).upper()
-    if len(code) != CODE_LENGTH or any(c not in ALPHABET for c in code):
+    if len(code) != CODE_LENGTH or any(character not in ALPHABET for character in code):
         return None
     return code
 
@@ -91,16 +91,16 @@ async def issue_code(
 
 async def check_rate_limit(ip: str, document_type: str, document_number: str) -> None:
     """Limites y ventana vigentes de Ajustes, leidos en cada intento."""
-    s = await runtime_settings.get_many(
+    limits = await runtime_settings.get_many(
         "activation.verify_max_per_ip_doc",
         "activation.verify_max_per_doc",
         "activation.verify_window_seconds",
     )
-    window = s["activation.verify_window_seconds"]
+    window = limits["activation.verify_window_seconds"]
     doc = f"{document_type}:{document_number}"
     for key, limit in (
-        (f"ip-doc:{ip}:{doc}", s["activation.verify_max_per_ip_doc"]),
-        (f"doc:{doc}", s["activation.verify_max_per_doc"]),
+        (f"ip-doc:{ip}:{doc}", limits["activation.verify_max_per_ip_doc"]),
+        (f"doc:{doc}", limits["activation.verify_max_per_doc"]),
     ):
         wait = limiter.hit(key, limit, window)
         if wait is not None:

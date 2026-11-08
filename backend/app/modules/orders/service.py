@@ -77,16 +77,16 @@ def _effective_preconditions(
     test: dict, categories: dict[str, str]
 ) -> list[EffectivePrecondition]:
     out = []
-    for p in test.get("preconditions", []):
-        if not p.get("is_active", True):
+    for precondition in test.get("preconditions", []):
+        if not precondition.get("is_active", True):
             continue
         out.append(
             EffectivePrecondition(
-                category=categories.get(p["precondition_id"], "otro"),
-                name=p["name"],
-                duration_value=p.get("duration_value"),
-                duration_unit=p.get("duration_unit"),
-                patient_instructions=p.get("patient_instructions"),
+                category=categories.get(precondition["precondition_id"], "otro"),
+                name=precondition["name"],
+                duration_value=precondition.get("duration_value"),
+                duration_unit=precondition.get("duration_unit"),
+                patient_instructions=precondition.get("patient_instructions"),
             )
         )
     return out
@@ -110,7 +110,7 @@ async def resolve_tests(
     for test in tests:
         for pre in _effective_preconditions(test, categories):
             pairs.append((pre, test["code"]))
-    merged = dedupe_preconditions([p for p, _ in pairs])
+    merged = dedupe_preconditions([precondition for precondition, _ in pairs])
     preconditions = [
         {
             "key": precondition_key(item),
@@ -133,28 +133,30 @@ def validate_checks(keys: list[str], checks: list[dict]) -> dict[str, dict]:
 
     No bloquea por incumplimiento: lo registra para decision clinica.
     """
-    by_key = {c["key"]: c for c in checks}
-    missing = [k for k in keys if k not in by_key or by_key[k].get("met") is None]
+    by_key = {check["key"]: check for check in checks}
+    missing = [
+        key for key in keys if key not in by_key or by_key[key].get("met") is None
+    ]
     if missing:
         raise UnansweredPreconditionsError(
             "Cada precondicion debe marcarse como cumple o no cumple.",
             {"keys": missing},
         )
     needs_note = [
-        k
-        for k in keys
-        if by_key[k]["met"] is False and not (by_key[k].get("note") or "").strip()
+        key
+        for key in keys
+        if by_key[key]["met"] is False and not (by_key[key].get("note") or "").strip()
     ]
     if needs_note:
         raise NoteRequiredError(
             "Una precondicion que no se cumple requiere una nota.", {"keys": needs_note}
         )
     return {
-        k: {
-            "met": bool(by_key[k]["met"]),
-            "note": (by_key[k].get("note") or "").strip() or None,
+        key: {
+            "met": bool(by_key[key]["met"]),
+            "note": (by_key[key].get("note") or "").strip() or None,
         }
-        for k in keys
+        for key in keys
     }
 
 
@@ -180,14 +182,20 @@ async def close_reception(
             "La orden necesita al menos un examen.", {"test_codes": []}
         )
     patient = await session.get(Patient, entry.patient_id)
-    missing = [f for f in REQUIRED_PATIENT_FIELDS if not getattr(patient, f)]
+    missing = [
+        required_patient_field
+        for required_patient_field in REQUIRED_PATIENT_FIELDS
+        if not getattr(patient, required_patient_field)
+    ]
     if missing:
         raise ValidationAppError(
             "Faltan datos del paciente para cerrar la recepcion.",
             {"missing_fields": missing},
         )
     tests, preconditions = await resolve_tests(catalog, test_codes)
-    answers = validate_checks([p["key"] for p in preconditions], checks or [])
+    answers = validate_checks(
+        [precondition["key"] for precondition in preconditions], checks or []
+    )
     order = Order(
         order_number=await next_order_number(session, datetime.now(UTC)),
         queue_entry_id=entry.id,
@@ -283,7 +291,7 @@ async def ensure_samples(
     )
     sample_types = await catalog.sample_types_by_id() if tests else {}
     areas = await catalog.areas_by_id() if tests else {}
-    area_of_test = {t["code"]: areas.get(str(t.get("area_id"))) for t in tests}
+    area_of_test = {test["code"]: areas.get(str(test.get("area_id"))) for test in tests}
     for tube in group_samples(tests, sample_types):
         route: list[str] = []
         for code in tube.test_codes:
@@ -369,7 +377,7 @@ async def _record_check(
     after: dict,
 ) -> None:
     """Evento `precondition.checked` (de la orden) con la respuesta anterior y la nueva."""
-    get = pre.get if isinstance(pre, dict) else lambda k: getattr(pre, k)
+    get = pre.get if isinstance(pre, dict) else lambda key: getattr(pre, key)
     met = "cumple" if after["met"] else "no cumple"
     await record_test_event(
         session,
@@ -420,7 +428,7 @@ async def save_checks(
             )
         ).scalars()
     )
-    answers = validate_checks([r.key for r in rows], checks)
+    answers = validate_checks([check_row.key for check_row in rows], checks)
     now = datetime.now(UTC)
     for row in rows:
         answer = answers[row.key]

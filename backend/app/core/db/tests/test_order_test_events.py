@@ -273,8 +273,8 @@ def test_migracion_sube_baja_y_sube_con_datos_existentes():
     scratch_url = url.set(database=scratch)
     with psycopg.connect(
         admin.render_as_string(hide_password=False), autocommit=True
-    ) as c:
-        c.execute(f'CREATE DATABASE "{scratch}"')
+    ) as connection:
+        connection.execute(f'CREATE DATABASE "{scratch}"')
     try:
         db_url = scratch_url.render_as_string(hide_password=False)
         _migrate(db_url, "upgrade", "0010")
@@ -317,8 +317,8 @@ def test_migracion_sube_baja_y_sube_con_datos_existentes():
                     "SELECT 1 FROM pg_proc WHERE proname = 'fn_forbid_update_delete'"
                 ).fetchone()
                 cols = {
-                    r[0]
-                    for r in conn.execute(
+                    column_row[0]
+                    for column_row in conn.execute(
                         "SELECT column_name FROM information_schema.columns "
                         "WHERE table_name = 'order_tests'"
                     )
@@ -331,5 +331,5 @@ def test_migracion_sube_baja_y_sube_con_datos_existentes():
     finally:
         with psycopg.connect(
             admin.render_as_string(hide_password=False), autocommit=True
-        ) as c:
-            c.execute(f'DROP DATABASE IF EXISTS "{scratch}" WITH (FORCE)')
+        ) as connection:
+            connection.execute(f'DROP DATABASE IF EXISTS "{scratch}" WITH (FORCE)')

@@ -64,23 +64,23 @@ class _Parser:
 
     def expr(self):
         node = self.term()
-        while (t := self.peek()) and t[0] == "op" and t[1] in "+-":
+        while (token := self.peek()) and token[0] == "op" and token[1] in "+-":
             self.take()
-            node = ("bin", t[1], node, self.term())
+            node = ("bin", token[1], node, self.term())
         return node
 
     def term(self):
         node = self.unary()
-        while (t := self.peek()) and t[0] == "op" and t[1] in "*/":
+        while (token := self.peek()) and token[0] == "op" and token[1] in "*/":
             self.take()
-            node = ("bin", t[1], node, self.unary())
+            node = ("bin", token[1], node, self.unary())
         return node
 
     def unary(self):
-        t = self.peek()
-        if t and t[0] == "op" and t[1] in "+-":
+        token = self.peek()
+        if token and token[0] == "op" and token[1] in "+-":
             self.take()
-            return ("neg", self.unary()) if t[1] == "-" else self.unary()
+            return ("neg", self.unary()) if token[1] == "-" else self.unary()
         return self.primary()
 
     def primary(self):

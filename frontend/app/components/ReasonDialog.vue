@@ -27,7 +27,7 @@ const emit = defineEmits<{
 }>()
 const reasonId = ref('')
 const note = ref('')
-const options = computed(() => props.reasons.map((r) => ({ value: r.id, label: r.name })))
+const options = computed(() => props.reasons.map((reason) => ({ value: reason.id, label: reason.name })))
 
 function submit() {
   if (!reasonId.value) return

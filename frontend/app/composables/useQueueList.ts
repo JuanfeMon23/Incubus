@@ -20,7 +20,7 @@ export function useQueueList(statuses: QueueStatus[], opts: Pick<QueueListDeps, 
   const { subscribe } = useQueueSocket()
   const list = createQueueList(visible, {
     subscribe,
-    fetchList: (s) => api.get<QueueEntry[]>(`/queue?${s.map((x) => `status=${x}`).join('&')}`),
+    fetchList: (statuses) => api.get<QueueEntry[]>(`/queue?${statuses.map((status) => `status=${status}`).join('&')}`),
     fetchOne: (id) => api.get<QueueEntry>(`/queue/${id}`),
     toMessage: leoErrorMessage,
     onEvent: opts.onEvent

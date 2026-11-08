@@ -25,8 +25,8 @@ from app.core.db.base import Base
 from app.core.db.mixins import CatalogMixin, Timestamps, UUIDv7PK
 from app.modules.queue.transitions import QueueStatus
 
-STATUS_VALUES = tuple(s.value for s in QueueStatus)
-_STATUS_IN = ", ".join(f"'{v}'" for v in STATUS_VALUES)
+STATUS_VALUES = tuple(queue_status.value for queue_status in QueueStatus)
+_STATUS_IN = ", ".join(f"'{status_value}'" for status_value in STATUS_VALUES)
 KIND_VALUES = ("enter", "advance", "return", "remove")
 
 

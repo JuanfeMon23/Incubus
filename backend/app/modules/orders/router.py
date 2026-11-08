@@ -94,16 +94,16 @@ class StageChecksInput(BaseModel):
 async def search_tests(
     catalog: Catalog,
     _user: CatalogReader,
-    q: Annotated[str | None, Query(max_length=100)] = None,
+    query: Annotated[str | None, Query(alias="q", max_length=100)] = None,
 ) -> list[dict]:
     """Busqueda de examenes activos en el catalogo de Vladimir."""
     return [
         {
-            "code": t["code"],
-            "name": t["name"],
-            "abbreviation": t.get("abbreviation"),
+            "code": test["code"],
+            "name": test["name"],
+            "abbreviation": test.get("abbreviation"),
         }
-        for t in await catalog.search_tests(q)
+        for test in await catalog.search_tests(query)
     ]
 
 
@@ -116,7 +116,9 @@ async def list_staff(catalog: Catalog, _user: CatalogReader) -> list[dict]:
     """Profesionales de toma de muestras (personal activo con ese cargo)."""
     staff = await catalog.list_staff()
     return [
-        s for s in staff if SAMPLING_JOB_TITLE in (s.get("job_title") or "").casefold()
+        sample
+        for sample in staff
+        if SAMPLING_JOB_TITLE in (sample.get("job_title") or "").casefold()
     ]
 
 
@@ -125,7 +127,7 @@ async def preview(body: PreviewInput, catalog: Catalog, _user: CatalogReader) ->
     """Preanaliticos ya unificados para los examenes elegidos (panel en vivo)."""
     tests, preconditions = await service.resolve_tests(catalog, body.test_codes)
     return {
-        "tests": [{"code": t["code"], "name": t["name"]} for t in tests],
+        "tests": [{"code": test["code"], "name": test["name"]} for test in tests],
         "preconditions": preconditions,
     }
 
@@ -146,7 +148,10 @@ async def close_reception(
             entry_id,
             body.test_codes,
             Actor.of(user),
-            [c.model_dump() for c in body.precondition_checks],
+            [
+                precondition_check.model_dump()
+                for precondition_check in body.precondition_checks
+            ],
             supervisor=can_supervise(user, QueueStatus.EN_ATENCION_RECEPCION.value),
         )
     activation_code = await activation_service.issue_code(
@@ -174,26 +179,28 @@ async def close_reception(
     }
 
 
-def sample_dict(s: OrderSample) -> dict:
+def sample_dict(sample: OrderSample) -> dict:
     return {
-        "id": str(s.id),
-        "sample_type_code": s.sample_type_code,
-        "name": s.name,
-        "cap_color_hex": s.cap_color_hex,
-        "draw_order": s.draw_order,
-        "collection_instructions": s.collection_instructions,
-        "required_volume_ml": s.required_volume_ml,
-        "test_codes": s.test_codes,
-        "area_route": s.area_route,
-        "labels_printed_at": s.labels_printed_at.isoformat()
-        if s.labels_printed_at
+        "id": str(sample.id),
+        "sample_type_code": sample.sample_type_code,
+        "name": sample.name,
+        "cap_color_hex": sample.cap_color_hex,
+        "draw_order": sample.draw_order,
+        "collection_instructions": sample.collection_instructions,
+        "required_volume_ml": sample.required_volume_ml,
+        "test_codes": sample.test_codes,
+        "area_route": sample.area_route,
+        "labels_printed_at": sample.labels_printed_at.isoformat()
+        if sample.labels_printed_at
         else None,
-        "collected_at": s.collected_at.isoformat() if s.collected_at else None,
-        "collected_by": s.collected_by,
-        "collected_by_user_id": uuid_str(s.collected_by_user_id),
-        "received_at": s.received_at.isoformat() if s.received_at else None,
-        "received_by": s.received_by,
-        "received_by_user_id": uuid_str(s.received_by_user_id),
+        "collected_at": sample.collected_at.isoformat()
+        if sample.collected_at
+        else None,
+        "collected_by": sample.collected_by,
+        "collected_by_user_id": uuid_str(sample.collected_by_user_id),
+        "received_at": sample.received_at.isoformat() if sample.received_at else None,
+        "received_by": sample.received_by,
+        "received_by_user_id": uuid_str(sample.received_by_user_id),
     }
 
 
@@ -216,24 +223,24 @@ async def _order_detail(session: AsyncSession, order: Order) -> dict:
     return {
         "order_number": order.order_number,
         "queue_entry_id": str(order.queue_entry_id),
-        "tests": [{"code": t.test_code, "name": t.test_name} for t in tests],
+        "tests": [{"code": test.test_code, "name": test.test_name} for test in tests],
         "preconditions": [
             {
-                "key": p.key,
-                "category": p.category,
-                "name": p.name,
-                "duration_value": p.duration_value,
-                "duration_unit": p.duration_unit,
-                "patient_instructions": p.patient_instructions,
-                "source_test_codes": p.source_test_codes,
-                "reception_met": p.reception_met,
-                "reception_note": p.reception_note,
-                "sampling_met": p.sampling_met,
-                "sampling_note": p.sampling_note,
+                "key": precondition.key,
+                "category": precondition.category,
+                "name": precondition.name,
+                "duration_value": precondition.duration_value,
+                "duration_unit": precondition.duration_unit,
+                "patient_instructions": precondition.patient_instructions,
+                "source_test_codes": precondition.source_test_codes,
+                "reception_met": precondition.reception_met,
+                "reception_note": precondition.reception_note,
+                "sampling_met": precondition.sampling_met,
+                "sampling_note": precondition.sampling_note,
             }
-            for p in pres
+            for precondition in pres
         ],
-        "samples": [sample_dict(s) for s in samples],
+        "samples": [sample_dict(sample) for sample in samples],
     }
 
 
@@ -325,9 +332,9 @@ async def receive_sample(
             )
         ).scalars()
         versions = [
-            str(t.snapshot.get("result_template_version_id"))
-            for t in tests
-            if t.snapshot and t.snapshot.get("result_template_version_id")
+            str(test.snapshot.get("result_template_version_id"))
+            for test in tests
+            if test.snapshot and test.snapshot.get("result_template_version_id")
         ]
         task = asyncio.create_task(catalog.warm_templates(versions))
         _BACKGROUND.add(task)
@@ -454,12 +461,12 @@ async def _labels(
             LabelData(
                 patient_name=name,
                 order_number=order.order_number,
-                tube_name=t.name,
-                area_route=list(t.area_route),
-                cap_color_hex=t.cap_color_hex,
+                tube_name=test.name,
+                area_route=list(test.area_route),
+                cap_color_hex=test.cap_color_hex,
                 document=f"{patient.document_type} {patient.document_number}",
             )
-            for t in tubes
+            for test in tubes
         ],
         tubes,
     )
@@ -552,7 +559,7 @@ async def precondition_checks(
             session,
             entry_id,
             body.stage,
-            [c.model_dump() for c in body.checks],
+            [check.model_dump() for check in body.checks],
             Actor.of(user),
             supervisor=can_supervise(user, TURN_STATUS_BY_STAGE[body.stage]),
         )
@@ -566,7 +573,9 @@ async def precondition_checks(
             tag,
             after={
                 "stage": body.stage,
-                "unmet_keys": sorted(c.key for c in body.checks if c.met is False),
+                "unmet_keys": sorted(
+                    check.key for check in body.checks if check.met is False
+                ),
             },
         ),
     )
@@ -609,13 +618,13 @@ async def order_tests(order_number: str, session: Session, user: CanViewTrace) -
         "order_id": str(order.id),
         "tests": [
             {
-                "id": str(t.id),
-                "code": t.test_code,
-                "name": t.test_name,
-                "area_code": t.area_code,
-                "validation_status": t.validation_status,
+                "id": str(test.id),
+                "code": test.test_code,
+                "name": test.test_name,
+                "area_code": test.area_code,
+                "validation_status": test.validation_status,
             }
-            for t in rows
+            for test in rows
         ],
     }
 

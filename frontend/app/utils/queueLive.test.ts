@@ -57,13 +57,13 @@ describe('decideEvent', () => {
 
 describe('utilidades de la cola', () => {
   it('patchEntry conserva los datos que el evento no trae', () => {
-    const p = patchEntry(entry(), ev({ status: 'en_atencion_recepcion', version: 9, order_number: 'X1' }))
-    expect(p).toMatchObject({ status: 'en_atencion_recepcion', version: 9, order_number: 'X1', draft: {} })
+    const patched = patchEntry(entry(), ev({ status: 'en_atencion_recepcion', version: 9, order_number: 'X1' }))
+    expect(patched).toMatchObject({ status: 'en_atencion_recepcion', version: 9, order_number: 'X1', draft: {} })
   })
   it('sortQueue ordena por prioridad y luego por llegada', () => {
     const hi = entry({ id: 'h', priority: { ...entry().priority, rank: 1 }, arrived_at: '2026-10-20T11:00:00Z' })
     const old = entry({ id: 'o', arrived_at: '2026-10-20T09:00:00Z' })
-    expect(sortQueue([entry(), hi, old]).map((e) => e.id)).toEqual(['h', 'o', 'a'])
+    expect(sortQueue([entry(), hi, old]).map((entry) => entry.id)).toEqual(['h', 'o', 'a'])
   })
   it('snapshotDiffers detecta ids o versiones distintas', () => {
     expect(snapshotDiffers([entry()], [{ id: 'a', version: 3 }])).toBe(false)

@@ -41,8 +41,8 @@ export function createFakeSocket(responders: Record<string, Responder> = {}) {
     fire(event: string, ...args: any[]) {
       if (event === 'connect') socket.connected = true
       if (event === 'disconnect' || event === 'connect_error') socket.connected = false
-      for (const h of handlers.get(event) ?? []) h(...args)
+      for (const handler of handlers.get(event) ?? []) handler(...args)
     },
-    emittedEvents: (name: string) => emitted.filter((e) => e.event === name).map((e) => e.payload)
+    emittedEvents: (name: string) => emitted.filter((emission) => emission.event === name).map((emission) => emission.payload)
   }
 }

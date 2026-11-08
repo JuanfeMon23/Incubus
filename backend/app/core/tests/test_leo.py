@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.conftest import FakeLeo, make_leo_user
-from app.core import permissions as p
+from app.core import permissions
 from app.core.config import get_settings
 from app.core.leo import actor_name, auth, record_audit, settings
 from app.main import app
@@ -78,7 +78,7 @@ def test_actor_name_is_the_leo_name_or_username() -> None:
 
 async def test_record_audit_sends_the_diff_with_the_actor(leo: FakeLeo) -> None:
     await record_audit(
-        p.REC_CLOSE,
+        permissions.REC_CLOSE,
         leo.user,
         entity_type="queue_entry",
         entity_id="abc",
@@ -86,7 +86,7 @@ async def test_record_audit_sends_the_diff_with_the_actor(leo: FakeLeo) -> None:
         after={"status": "b"},
     )
     (event,) = leo.events
-    assert event["action_tag"] == p.REC_CLOSE
+    assert event["action_tag"] == permissions.REC_CLOSE
     assert event["entity_type"] == "queue_entry"
     assert event["entity_id"] == "abc"
     assert event["changes"] == {"status": {"before": "a", "after": "b"}}
@@ -101,7 +101,9 @@ async def test_record_audit_never_propagates_leo_failures(
 
     monkeypatch.setattr(auth.audit, "record", boom)
     with caplog.at_level(logging.ERROR, logger="app.leo"):
-        await record_audit(p.REC_CLOSE, leo.user, entity_type="x", entity_id=1)
+        await record_audit(
+            permissions.REC_CLOSE, leo.user, entity_type="x", entity_id=1
+        )
     assert "No se pudo registrar" in caplog.text
 
 
@@ -124,7 +126,7 @@ async def test_leo_down_does_not_break_the_operation(
     assert response.status_code == 201
     assert leo.events == []
     # y un acceso denegado sigue siendo 403 aunque Leo no registre el evento
-    leo.grant(p.PRE_VIEW)
+    leo.grant(permissions.PRE_VIEW)
     assert (await client.post(f"{API}/queue/call-next")).status_code == 403
 
 

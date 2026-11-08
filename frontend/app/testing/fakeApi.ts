@@ -49,7 +49,7 @@ export function createFakeApi() {
 
   /** Bodies enviados con ese método a esa ruta, en orden. */
   function bodies(method: string, path: string) {
-    return requests.mock.calls.filter(([m, p]) => m === method && p === path).map(([, , o]) => o?.body)
+    return requests.mock.calls.filter(([requestMethod, requestPath]) => requestMethod === method && requestPath === path).map(([, , requestOptions]) => requestOptions?.body)
   }
 
   function reset() {

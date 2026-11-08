@@ -6,10 +6,10 @@ export const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as
 
 /** Fecha de hoy (YYYY-MM-DD) en hora local: tope de la fecha de nacimiento. */
 export function todayISO(now = new Date()): string {
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 /** Deja solo dígitos (teléfono, documento numérico). */
@@ -64,12 +64,12 @@ export const intakePatientSchema = z.object({
   second_name: zOptionalText(80),
   first_last_name: zRequiredText('El primer apellido es obligatorio.', 80),
   second_last_name: zOptionalText(80),
-  sex: z.union([z.enum(SEX), z.literal('')]).transform((v) => (v === '' ? null : v)),
+  sex: z.union([z.enum(SEX), z.literal('')]).transform((value) => (value === '' ? null : value)),
   birth_date: z
     .string()
-    .transform((v) => (v.trim() ? v.trim() : null))
-    .refine((v) => v === null || v <= todayISO(), 'La fecha de nacimiento no puede ser posterior a hoy.'),
-  blood_type: z.union([z.enum(BLOOD_TYPES), z.literal('')]).transform((v) => (v === '' ? null : v)),
+    .transform((value) => (value.trim() ? value.trim() : null))
+    .refine((value) => value === null || value <= todayISO(), 'La fecha de nacimiento no puede ser posterior a hoy.'),
+  blood_type: z.union([z.enum(BLOOD_TYPES), z.literal('')]).transform((value) => (value === '' ? null : value)),
   priority_id: z.string({ required_error: 'Selecciona una prioridad.' }).min(1, 'Selecciona una prioridad.')
 })
 

@@ -53,8 +53,8 @@ async def roles_db() -> AsyncGenerator[asyncpg.Connection]:
     roles_db_name = f"incubus_roles_test_{uuid.uuid4().hex[:8]}"
     admin = await asyncpg.connect(_dsn("postgres", "postgresql"))
     existing = {
-        r["rolname"]
-        for r in await admin.fetch(
+        role_row["rolname"]
+        for role_row in await admin.fetch(
             "SELECT rolname FROM pg_roles WHERE rolname = ANY($1)", list(ROLES)
         )
     }
@@ -120,8 +120,8 @@ def test_el_script_no_define_contrasenas_ni_default_privileges() -> None:
 
 async def test_migrator_es_duenio_de_esquema_tablas_y_funciones(roles_db) -> None:
     owners = {
-        r["tableowner"]
-        for r in await roles_db.fetch(
+        role_row["tableowner"]
+        for role_row in await roles_db.fetch(
             "SELECT tableowner FROM pg_tables WHERE schemaname = 'public'"
         )
     }
@@ -131,8 +131,8 @@ async def test_migrator_es_duenio_de_esquema_tablas_y_funciones(roles_db) -> Non
     )
     assert schema_owner == "incubus_migrator"
     fn_owners = {
-        r["owner"]
-        for r in await roles_db.fetch(
+        role_row["owner"]
+        for role_row in await roles_db.fetch(
             "SELECT pg_get_userbyid(proowner) AS owner FROM pg_proc p "
             "JOIN pg_namespace n ON n.oid = p.pronamespace "
             "WHERE n.nspname = 'public' AND p.prokind = 'f'"
@@ -144,8 +144,8 @@ async def test_migrator_es_duenio_de_esquema_tablas_y_funciones(roles_db) -> Non
 async def test_las_tablas_append_only_estan_descubiertas(roles_db) -> None:
     """Toda tabla cuyo trigger prohibe UPDATE y DELETE solo tiene SELECT/INSERT."""
     discovered = {
-        r["relname"]
-        for r in await roles_db.fetch(
+        role_row["relname"]
+        for role_row in await roles_db.fetch(
             "SELECT DISTINCT c.relname FROM pg_trigger t "
             "JOIN pg_class c ON c.oid = t.tgrelid WHERE NOT t.tgisinternal "
             "AND (t.tgtype & 8) <> 0 AND (t.tgtype & 16) <> 0"
@@ -154,10 +154,10 @@ async def test_las_tablas_append_only_estan_descubiertas(roles_db) -> None:
     assert discovered == set(APPEND_ONLY)
     for table in discovered:
         privs = {
-            p
-            for p in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+            privilege
+            for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
             if await roles_db.fetchval(
-                "SELECT has_table_privilege('incubus_app', $1, $2)", table, p
+                "SELECT has_table_privilege('incubus_app', $1, $2)", table, privilege
             )
         }
         assert privs == {"SELECT", "INSERT"}, table
@@ -191,7 +191,9 @@ async def test_secuencias_usage_y_select_sin_update(roles_db) -> None:
         "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
         "WHERE c.relkind = 'S' AND n.nspname = 'public'"
     )
-    assert all(r["u"] and r["s"] and not r["w"] for r in rows)
+    assert all(
+        role_row["u"] and role_row["s"] and not role_row["w"] for role_row in rows
+    )
 
 
 async def test_secuencia_usable_al_insertar(roles_db) -> None:

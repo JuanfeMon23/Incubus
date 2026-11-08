@@ -23,7 +23,10 @@ API = "/api/v1"
 async def put(key, value):
     grouped = await runtime_settings.store.list()
     version = next(
-        v.version for views in grouped.values() for v in views if v.key == key
+        setting_view.version
+        for views in grouped.values()
+        for setting_view in views
+        if setting_view.key == key
     )
     await runtime_settings.store.update(key, value, "Prueba", SYSTEM_ACTOR, version)
 

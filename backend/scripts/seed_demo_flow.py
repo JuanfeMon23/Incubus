@@ -116,8 +116,8 @@ def describe_error(method: str, path: str, response: httpx.Response) -> str:
         message = body.get("message")
         if message is None and isinstance(body.get("detail"), list):
             message = "; ".join(
-                f"{'.'.join(str(p) for p in d.get('loc', [])[1:])}: {d.get('msg')}"
-                for d in body["detail"]
+                f"{'.'.join(str(path_part) for path_part in error_detail.get('loc', [])[1:])}: {error_detail.get('msg')}"
+                for error_detail in body["detail"]
             )
         elif message is None and isinstance(body.get("detail"), str):
             message = body["detail"]
@@ -165,10 +165,12 @@ class Session:
                 separators=(",", ":"),
             ).encode()
         )
-        r, s = decode_dss_signature(
+        signature_r, signature_s = decode_dss_signature(
             self.key.sign(f"{header}.{payload}".encode(), ec.ECDSA(hashes.SHA256()))
         )
-        signature = _b64(r.to_bytes(32, "big") + s.to_bytes(32, "big"))
+        signature = _b64(
+            signature_r.to_bytes(32, "big") + signature_s.to_bytes(32, "big")
+        )
         return f"{header}.{payload}.{signature}"
 
     def _send(
@@ -187,20 +189,22 @@ class Session:
     def login(self) -> None:
         self.http.cookies.clear()
         self.leo.cookies.clear()
-        r = self._send(self.http, "GET", f"{self.api}/auth/login")
-        if r.status_code != 200:
-            raise SeedError(f"Incubus no inicio el login (HTTP {r.status_code}).")
-        query = parse_qs(urlsplit(r.json()["authorize_url"]).query)
-        r = self._send(
+        response = self._send(self.http, "GET", f"{self.api}/auth/login")
+        if response.status_code != 200:
+            raise SeedError(
+                f"Incubus no inicio el login (HTTP {response.status_code})."
+            )
+        query = parse_qs(urlsplit(response.json()["authorize_url"]).query)
+        response = self._send(
             self.leo,
             "POST",
             f"{self.leo_api}/auth/login",
             json={"login": self._login, "password": self._password},
         )
-        if r.status_code != 200:
+        if response.status_code != 200:
             raise SeedError(
                 "Leo rechazo las credenciales del administrador de desarrollo "
-                f"(HTTP {r.status_code})."
+                f"(HTTP {response.status_code})."
             )
         keys = (
             "client_id",
@@ -210,23 +214,25 @@ class Session:
             "code_challenge_method",
             "dpop_jkt",
         )
-        r = self._send(
+        response = self._send(
             self.leo,
             "POST",
             f"{self.leo_api}/auth/authorize",
-            json={k: query[k][0] for k in keys},
+            json={key: query[key][0] for key in keys},
         )
-        if r.status_code != 200:
-            raise SeedError(f"Leo no autorizo a Incubus (HTTP {r.status_code}).")
-        callback = parse_qs(urlsplit(r.json()["redirect_to"]).query)
-        r = self._send(
+        if response.status_code != 200:
+            raise SeedError(f"Leo no autorizo a Incubus (HTTP {response.status_code}).")
+        callback = parse_qs(urlsplit(response.json()["redirect_to"]).query)
+        response = self._send(
             self.http,
             "GET",
             f"{self.api}/auth/callback",
             params={"code": callback["code"][0], "state": callback["state"][0]},
         )
-        if r.status_code != 200:
-            raise SeedError(f"Incubus no completo el login (HTTP {r.status_code}).")
+        if response.status_code != 200:
+            raise SeedError(
+                f"Incubus no completo el login (HTTP {response.status_code})."
+            )
 
     def call(
         self, method: str, path: str, *, ok: tuple[int, ...] = (200, 201), **kw
@@ -263,7 +269,7 @@ async def load_catalog() -> tuple[list[CatalogTest], list[dict], list[dict]]:
 
     catalog = get_catalog_client()
     areas = await catalog.areas_with_managers()
-    managed = {a["id"] for a in areas if a.get("manager_staff_id")}
+    managed = {area["id"] for area in areas if area.get("manager_staff_id")}
     gate = asyncio.Semaphore(8)
 
     async def check(item: dict) -> CatalogTest | None:
@@ -277,12 +283,14 @@ async def load_catalog() -> tuple[list[CatalogTest], list[dict], list[dict]]:
             if not full or not full.get("sample_types"):
                 return None
             structure = await catalog.template_structure(str(version))
-        if not any(a["result_type"] != "calculated" for a in structure["analytes"]):
+        if not any(
+            analyte["result_type"] != "calculated" for analyte in structure["analytes"]
+        ):
             return None
         return CatalogTest(item["code"], item["name"], str(item["area_id"]))
 
     items = await catalog.search_tests(None, limit=200)
-    eligible = [t for t in await asyncio.gather(*map(check, items)) if t]
+    eligible = [test for test in await asyncio.gather(*map(check, items)) if test]
     return eligible, areas, await catalog.list_staff()
 
 
@@ -305,7 +313,7 @@ def pick_test_codes(
 ) -> list[str]:
     """1 a `max_tests` examenes distintos al azar."""
     count = rand.randint(1, min(max_tests, len(eligible)))
-    return [t.code for t in rand.sample(eligible, count)]
+    return [test.code for test in rand.sample(eligible, count)]
 
 
 def precondition_checks(
@@ -327,7 +335,7 @@ def precondition_checks(
 
 
 def ensure_patient(session: Session, args: argparse.Namespace) -> dict:
-    r = session.call(
+    response = session.call(
         "GET",
         "/api/v1/patients/lookup",
         params={
@@ -336,8 +344,8 @@ def ensure_patient(session: Session, args: argparse.Namespace) -> dict:
         },
         ok=(200, 404),
     )
-    if r.status_code == 200:
-        return r.json()
+    if response.status_code == 200:
+        return response.json()
     if not args.create_patient:
         raise SeedError(
             f"El paciente {args.document_type} {args.document_number} no existe en "
@@ -355,14 +363,16 @@ def ensure_patient(session: Session, args: argparse.Namespace) -> dict:
 def pending_entry(session: Session, patient: dict) -> dict | None:
     """Turno sin terminar del paciente (p. ej. una corrida interrumpida)."""
     rows = session.json(
-        "GET", "/api/v1/queue", params=[("status", s) for s in ACTIVE_STATUSES]
+        "GET",
+        "/api/v1/queue",
+        params=[("status", status_name) for status_name in ACTIVE_STATUSES],
     )
     return next(
         (
-            e
-            for e in rows
-            if e["patient"]["document_type"] == patient["document_type"]
-            and e["patient"]["document_number"] == patient["document_number"]
+            row
+            for row in rows
+            if row["patient"]["document_type"] == patient["document_type"]
+            and row["patient"]["document_number"] == patient["document_number"]
         ),
         None,
     )
@@ -371,21 +381,27 @@ def pending_entry(session: Session, patient: dict) -> dict | None:
 def enter_queue(session: Session, patient: dict, rand: random.Random) -> dict:
     priority = rand.choice(session.json("GET", "/api/v1/priorities"))
     body = {
-        "patient": {k: patient[k] for k in PATIENT_IN_FIELDS if patient.get(k)},
+        "patient": {
+            field_name: patient[field_name]
+            for field_name in PATIENT_IN_FIELDS
+            if patient.get(field_name)
+        },
         "priority_id": priority["id"],
     }
-    r = session.call("POST", "/api/v1/queue", json=body, ok=(201, 409))
-    if r.status_code == 409:
+    response = session.call("POST", "/api/v1/queue", json=body, ok=(201, 409))
+    if response.status_code == 409:
         raise SeedError(
             "El paciente ya tiene un turno activo en la cola; terminalo o retiralo "
             "antes de generar datos."
         )
-    return r.json()
+    return response.json()
 
 
 def complete_demographics(session: Session, entry: dict) -> None:
     patient = entry["patient"]
-    missing = {k: v for k, v in DEMO_DEMOGRAPHICS.items() if not patient.get(k)}
+    missing = {
+        key: value for key, value in DEMO_DEMOGRAPHICS.items() if not patient.get(key)
+    }
     if missing:
         session.json("PATCH", f"/api/v1/patients/{patient['id']}", json=missing)
 
@@ -463,15 +479,15 @@ def finish_in_lab(
 
     flagged = 0
     for validator in validators.values():
-        r = session.call(
+        response = session.call(
             "GET",
             f"/api/v1/results/orders/{entry_id}",
             params={"professional_id": validator["id"]},
             ok=(200, 403),  # 403: la orden no tiene examenes de esa area
         )
-        if r.status_code != 200:
+        if response.status_code != 200:
             continue
-        for item in r.json()["tests"]:
+        for item in response.json()["tests"]:
             if item["validation_status"] == "validated":
                 continue  # corrida retomada: ya validado
             path = f"/api/v1/results/tests/{item['order_test_id']}"
@@ -488,7 +504,9 @@ def finish_in_lab(
             session.json("PUT", f"{path}/values", json=body)
             done = session.json("POST", f"{path}/validate", json=body)
             flagged += sum(
-                1 for x in done["results"] if x.get("flag") not in (None, "normal")
+                1
+                for result_entry in done["results"]
+                if result_entry.get("flag") not in (None, "normal")
             )
     status = session.json("GET", f"/api/v1/queue/{entry_id}")["status"]
     if status != "finalizada":
@@ -512,22 +530,22 @@ def finish_in_lab(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         prog="python -m scripts.seed_demo_flow",
         description="Genera ordenes FINALIZADAS de prueba recorriendo el flujo "
         "completo de Incubus por su API (solo desarrollo).",
     )
-    p.add_argument("--document-type", default="CC")
-    p.add_argument("--document-number", default="792083643")
-    p.add_argument("--count", type=int, default=10)
-    p.add_argument("--seed", type=int, help="semilla del azar (reproducible)")
-    p.add_argument("--api-url", default="http://localhost:8001")
-    p.add_argument("--leo-api-url", help="por defecto LEO_API_URL de backend/.env")
-    p.add_argument("--leo-env", type=Path, default=DEFAULT_LEO_ENV)
-    p.add_argument("--create-patient", action="store_true")
-    args = p.parse_args(argv)
+    parser.add_argument("--document-type", default="CC")
+    parser.add_argument("--document-number", default="792083643")
+    parser.add_argument("--count", type=int, default=10)
+    parser.add_argument("--seed", type=int, help="semilla del azar (reproducible)")
+    parser.add_argument("--api-url", default="http://localhost:8001")
+    parser.add_argument("--leo-api-url", help="por defecto LEO_API_URL de backend/.env")
+    parser.add_argument("--leo-env", type=Path, default=DEFAULT_LEO_ENV)
+    parser.add_argument("--create-patient", action="store_true")
+    args = parser.parse_args(argv)
     if not 1 <= args.count <= 200:
-        p.error("--count debe estar entre 1 y 200.")
+        parser.error("--count debe estar entre 1 y 200.")
     return args
 
 
@@ -547,14 +565,16 @@ def main(argv: list[str] | None = None) -> int:
         if not eligible:
             raise SeedError("El catalogo no tiene examenes con plantilla activa.")
         samplers = [
-            s for s in staff if "toma de muestras" in (s["job_title"] or "").casefold()
+            signature_s
+            for signature_s in staff
+            if "toma de muestras" in (signature_s["job_title"] or "").casefold()
         ]
         if not samplers:
             raise SeedError("No hay personal de toma de muestras en el catalogo.")
         validators = {
-            a["id"]: {"id": a["manager_staff_id"], "name": a["manager_name"]}
-            for a in areas
-            if a.get("manager_staff_id")
+            area["id"]: {"id": area["manager_staff_id"], "name": area["manager_name"]}
+            for area in areas
+            if area.get("manager_staff_id")
         }
         print(
             f"[catalogo] {len(eligible)} examenes elegibles, {len(validators)} areas."
@@ -564,7 +584,7 @@ def main(argv: list[str] | None = None) -> int:
         session.login()
         patient = ensure_patient(session, args)
         print(f"[paciente] {args.document_type} {args.document_number} listo.")
-        for n in range(1, args.count + 1):
+        for order_index in range(1, args.count + 1):
             stuck = pending_entry(session, patient)
             if stuck and stuck["status"] == "en_laboratorio":
                 # Corrida interrumpida: se retoma la captura y validacion.
@@ -573,7 +593,7 @@ def main(argv: list[str] | None = None) -> int:
                     session,
                     stuck["id"],
                     order["order_number"],
-                    [t["code"] for t in order["tests"]],
+                    [test["code"] for test in order["tests"]],
                     validators,
                     rand,
                 )
@@ -589,7 +609,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             results.append(result)
             print(
-                f"[{n}/{args.count}] orden {result['order_number']} "
+                f"[{order_index}/{args.count}] orden {result['order_number']} "
                 f"{result['status']} | pruebas: {', '.join(result['tests'])} | "
                 f"banderas: {result['flags']} | PDF {result['pdf_bytes']} B"
             )

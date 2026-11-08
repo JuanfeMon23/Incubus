@@ -51,10 +51,10 @@ const hasBounds = computed(() => props.range && (props.range.low !== null || pro
 
 // Escala visible: del mínimo al máximo con margen, incluyendo el valor.
 const bounds = computed(() => {
-  const r = props.range
-  if (!r) return { min: 0, max: 1 }
-  const points = [r.critical_low, r.low, r.high, r.critical_high, props.value].filter(
-    (n): n is number => typeof n === 'number'
+  const range = props.range
+  if (!range) return { min: 0, max: 1 }
+  const points = [range.critical_low, range.low, range.high, range.critical_high, props.value].filter(
+    (rawValue): rawValue is number => typeof rawValue === 'number'
   )
   const lo = Math.min(...points)
   const hi = Math.max(...points)
@@ -62,10 +62,10 @@ const bounds = computed(() => {
   return { min: lo - pad, max: hi + pad }
 })
 
-function pos(n: number | null): number | null {
-  if (n === null || n === undefined) return null
+function pos(rawValue: number | null): number | null {
+  if (rawValue === null || rawValue === undefined) return null
   const { min, max } = bounds.value
-  return Math.min(100, Math.max(0, ((n - min) / (max - min)) * 100))
+  return Math.min(100, Math.max(0, ((rawValue - min) / (max - min)) * 100))
 }
 
 const normalFrom = computed(() => pos(props.range?.low ?? null) ?? 0)
@@ -81,7 +81,7 @@ const markerClass = computed(() => {
 })
 
 const ariaLabel = computed(() => {
-  const r = props.range
-  return r ? `Rango normal ${r.low ?? ''} a ${r.high ?? ''}` : 'Sin rango de referencia'
+  const range = props.range
+  return range ? `Rango normal ${range.low ?? ''} a ${range.high ?? ''}` : 'Sin rango de referencia'
 })
 </script>

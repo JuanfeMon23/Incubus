@@ -63,7 +63,7 @@ async def list_validators(catalog: Catalog, _user: CatalogReader) -> list[dict]:
         item["areas"].append(
             {"id": area["id"], "code": area["code"], "name": area["name"]}
         )
-    return sorted(by_staff.values(), key=lambda v: v["name"])
+    return sorted(by_staff.values(), key=lambda value: value["name"])
 
 
 # ------------------------------------------------------ recepcion laboratorio
@@ -73,10 +73,10 @@ async def list_validators(catalog: Catalog, _user: CatalogReader) -> list[dict]:
 async def lab_reception(
     session: Session,
     _user: CanViewLab,
-    q: Annotated[str | None, Query(max_length=100)] = None,
+    query: Annotated[str | None, Query(alias="q", max_length=100)] = None,
 ) -> list[dict]:
     """Cola de ordenes con tubos que esperan el check de entrada al laboratorio."""
-    return await service.lab_reception_queue(session, q)
+    return await service.lab_reception_queue(session, query)
 
 
 # ---------------------------------------------------------------- resultados
@@ -88,10 +88,10 @@ async def results_queue(
     catalog: Catalog,
     _user: CanViewResults,
     professional_id: Annotated[str, Query(max_length=64)],
-    q: Annotated[str | None, Query(max_length=100)] = None,
+    query: Annotated[str | None, Query(alias="q", max_length=100)] = None,
 ) -> list[dict]:
     """Ordenes con examenes pendientes de validar en las areas del profesional."""
-    return await service.results_queue(session, catalog, professional_id, q)
+    return await service.results_queue(session, catalog, professional_id, query)
 
 
 @results_router.get("/orders/{entry_id}")
@@ -150,7 +150,7 @@ async def save_values(
         after={
             "validation_status": detail["validation_status"],
             "analytes_with_value": sum(
-                1 for r in detail["results"] if r.get("value") is not None
+                1 for result in detail["results"] if result.get("value") is not None
             ),
         },
     )
@@ -245,38 +245,40 @@ async def _delivery_payload(
     )
     age = age_in_years(patient.birth_date)
     out_tests = []
-    for t in tests:
+    for test in tests:
         rows = list(
             (
                 await session.execute(
                     select(OrderResult)
-                    .where(OrderResult.order_test_id == t.id)
+                    .where(OrderResult.order_test_id == test.id)
                     .order_by(OrderResult.sort_order)
                 )
             ).scalars()
         )
         out_tests.append(
             {
-                "code": t.test_code,
-                "name": t.test_name,
-                "area": t.area_code,
-                "validated_by": t.validated_by_name,
-                "validated_at": t.validated_at.isoformat() if t.validated_at else None,
+                "code": test.test_code,
+                "name": test.test_name,
+                "area": test.area_code,
+                "validated_by": test.validated_by_name,
+                "validated_at": test.validated_at.isoformat()
+                if test.validated_at
+                else None,
                 "results": [
                     {
-                        "code": r.analyte_code,
-                        "name": r.analyte_name,
-                        "section": r.section_name,
-                        "value": (r.value or {}).get("v"),
-                        "unit": r.unit,
-                        "options": r.options,
+                        "code": row.analyte_code,
+                        "name": row.analyte_name,
+                        "section": row.section_name,
+                        "value": (row.value or {}).get("v"),
+                        "unit": row.unit,
+                        "options": row.options,
                         "reference": reference_text(
-                            pick_range(r.ranges, patient.sex, age)
+                            pick_range(row.ranges, patient.sex, age)
                         ),
-                        "flag": r.flag,
-                        "is_reportable": r.is_reportable,
+                        "flag": row.flag,
+                        "is_reportable": row.is_reportable,
                     }
-                    for r in rows
+                    for row in rows
                 ],
             }
         )
@@ -378,7 +380,7 @@ async def delivery_patient_orders(
     if rows:
         for oid, name in await session.execute(
             select(OrderTest.order_id, OrderTest.test_name)
-            .where(OrderTest.order_id.in_([r[0] for r in rows]))
+            .where(OrderTest.order_id.in_([row[0] for row in rows]))
             .order_by(OrderTest.test_code)
         ):
             names.setdefault(oid, []).append(name)

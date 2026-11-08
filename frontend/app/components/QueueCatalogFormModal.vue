@@ -81,13 +81,13 @@ const preview = computed(() => ({
   rank: 0
 }))
 
-const onSubmit = submit(async (v) => {
+const onSubmit = submit(async (formValues) => {
   try {
     if (props.item) {
-      const body = buildUpdatePayload(props.kind, v, props.item)
+      const body = buildUpdatePayload(props.kind, formValues, props.item)
       if (body) await api.update(props.item.id, body)
     } else {
-      await api.create(buildCreatePayload(props.kind, v))
+      await api.create(buildCreatePayload(props.kind, formValues))
     }
   } catch (err) {
     // 409 (nombre/código/orden repetido): mensaje legible con la explicación, no el crudo.

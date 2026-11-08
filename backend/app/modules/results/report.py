@@ -25,7 +25,9 @@ def _display(row: dict) -> str:
     if isinstance(value, bool):
         return "Si" if value else "No"
     if row.get("options"):
-        match = next((o for o in row["options"] if o["id"] == value), None)
+        match = next(
+            (option for option in row["options"] if option["id"] == value), None
+        )
         if match:
             return match["label"]
     return f"{value:g}" if isinstance(value, float) else str(value)
@@ -51,16 +53,16 @@ def render_report_pdf(data: dict) -> bytes:
     for test in data["tests"]:
         story.append(Paragraph(f"{test['name']} ({test['code']})", styles["Heading3"]))
         rows = [["Analito", "Resultado", "Unidad", "Referencia", ""]]
-        for r in test["results"]:
-            if not r.get("is_reportable", True):
+        for result in test["results"]:
+            if not result.get("is_reportable", True):
                 continue
             rows.append(
                 [
-                    r["name"],
-                    _display(r),
-                    r.get("unit") or "",
-                    r.get("reference") or "",
-                    FLAG_LABEL.get(r.get("flag") or "", ""),
+                    result["name"],
+                    _display(result),
+                    result.get("unit") or "",
+                    result.get("reference") or "",
+                    FLAG_LABEL.get(result.get("flag") or "", ""),
                 ]
             )
         table = Table(rows, colWidths=[62 * mm, 32 * mm, 22 * mm, 34 * mm, 24 * mm])

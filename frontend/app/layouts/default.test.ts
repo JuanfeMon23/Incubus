@@ -25,7 +25,7 @@ beforeEach(() => navigateToMock.mockClear())
 async function menuLabels(tags: string[]) {
   signInWith(tags)
   const wrapper = await mountSuspended(DefaultLayout)
-  return wrapper.findAll('nav a').map((a) => a.text())
+  return wrapper.findAll('nav a').map((link) => link.text())
 }
 
 describe('menú lateral por permiso', () => {

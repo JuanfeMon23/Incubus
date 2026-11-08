@@ -21,10 +21,10 @@ def test_la_llave_es_estable_y_unica_por_precondicion_unificada():
 
 
 def test_sin_duracion_la_llave_depende_del_texto():
-    a = precondition_key(pre("recoleccion_muestra", text="Primera orina"))
-    b = precondition_key(pre("recoleccion_muestra", text="primera  orina "))
-    c = precondition_key(pre("recoleccion_muestra", text="Aseo previo"))
-    assert a == b and a != c
+    first_key = precondition_key(pre("recoleccion_muestra", text="Primera orina"))
+    same_text_key = precondition_key(pre("recoleccion_muestra", text="primera  orina "))
+    other_text_key = precondition_key(pre("recoleccion_muestra", text="Aseo previo"))
+    assert first_key == same_text_key and first_key != other_text_key
 
 
 def test_la_llave_es_texto_corto():

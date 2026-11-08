@@ -238,12 +238,12 @@ async def list_entries(
 ) -> list[tuple[QueueEntry, Patient, Priority, str | None]]:
     stmt = (
         _read_query()
-        .where(QueueEntry.status.in_([s.value for s in statuses]))
+        .where(QueueEntry.status.in_([status.value for status in statuses]))
         .order_by(Priority.rank, QueueEntry.arrived_at)
     )
     if professional_id is not None:
         stmt = stmt.where(QueueEntry.assigned_professional_id == professional_id)
-    return [tuple(r) for r in (await session.execute(stmt)).all()]
+    return [tuple(row) for row in (await session.execute(stmt)).all()]
 
 
 async def get_entry_full(
@@ -393,7 +393,7 @@ async def history(
         .where(QueueStatusHistory.queue_entry_id == entry_id)
         .order_by(QueueStatusHistory.changed_at)
     )
-    return [tuple(r) for r in (await session.execute(stmt)).all()]
+    return [tuple(row) for row in (await session.execute(stmt)).all()]
 
 
 async def previous_status(

@@ -82,18 +82,18 @@ class CatalogClient:
                 "No se pudo consultar el catalogo de Vladimir.", {"path": path}
             ) from exc
 
-    async def search_tests(self, q: str | None, limit: int = 20) -> list[dict]:
+    async def search_tests(self, query: str | None, limit: int = 20) -> list[dict]:
         """Busca examenes activos por nombre o codigo.
 
         Los codigos usan guion bajo (`ACIDO_URICO`); si quien busca escribe con
         espacios y no hay resultados, se reintenta con guion bajo.
         """
         params: dict[str, Any] = {"active": "true", "page_size": limit}
-        if q:
-            params["q"] = q
+        if query:
+            params["q"] = query
         items = (await self._get("/lab-tests", params))["items"]
-        if not items and q and " " in q.strip():
-            params["q"] = "_".join(q.split())
+        if not items and query and " " in query.strip():
+            params["q"] = "_".join(query.split())
             items = (await self._get("/lab-tests", params))["items"]
         return items
 
@@ -105,7 +105,13 @@ class CatalogClient:
         """
         items = await self.search_tests(code, limit=50)
         test = next(
-            (t for t in items if t["code"] == code and t.get("is_active", True)), None
+            (
+                candidate_test
+                for candidate_test in items
+                if candidate_test["code"] == code
+                and candidate_test.get("is_active", True)
+            ),
+            None,
         )
         if test is None:
             return None
@@ -141,18 +147,18 @@ class CatalogClient:
     async def areas_by_id(self) -> dict[str, str]:
         """`id` del area -> acronimo (`code`) con el que se rotula el tubo."""
         page = await self._get("/lab-areas", {"page_size": _PAGE_SIZE})
-        return {a["id"]: a["code"] for a in page["items"]}
+        return {analyte["id"]: analyte["code"] for analyte in page["items"]}
 
     async def list_staff(self) -> list[dict]:
         """Personal activo (para elegir al profesional de toma de muestras)."""
         page = await self._get("/staff", {"page_size": _PAGE_SIZE, "active": "true"})
         return [
             {
-                "id": s["id"],
-                "name": f"{s['first_name']} {s['last_name']}",
-                "job_title": s.get("job_title"),
+                "id": staff_member["id"],
+                "name": f"{staff_member['first_name']} {staff_member['last_name']}",
+                "job_title": staff_member.get("job_title"),
             }
-            for s in page["items"]
+            for staff_member in page["items"]
         ]
 
     async def areas_with_managers(self) -> list[dict]:
@@ -175,7 +181,10 @@ class CatalogClient:
     async def warm_templates(self, version_ids: list[str]) -> None:
         """Precarga plantillas en cache (en segundo plano, sin propagar errores)."""
         results = await asyncio.gather(
-            *[self.template_structure(v) for v in dict.fromkeys(version_ids)],
+            *[
+                self.template_structure(version_id)
+                for version_id in dict.fromkeys(version_ids)
+            ],
             return_exceptions=True,
         )
         del results
@@ -198,11 +207,16 @@ class CatalogClient:
             self._get(f"{base}/analytes"),
             self._get("/analytes", {"page_size": _PAGE_SIZE}),
         )
-        sections = {s["id"]: s for s in sections_raw}
-        analytes = {a["id"]: a for a in analytes_page["items"]}
+        sections = {staff_member["id"]: staff_member for staff_member in sections_raw}
+        analytes = {
+            analyte_row["id"]: analyte_row for analyte_row in analytes_page["items"]
+        }
         active = [
             ta
-            for ta in sorted(template_analytes, key=lambda x: x["sort_order"])
+            for ta in sorted(
+                template_analytes,
+                key=lambda template_analyte: template_analyte["sort_order"],
+            )
             if ta.get("is_active", True)
         ]
         set_ids = sorted(
@@ -227,12 +241,14 @@ class CatalogClient:
         options_by_set = {
             sid: [
                 {
-                    "id": o["id"],
-                    "label": o["label"],
-                    "is_abnormal": o.get("is_abnormal", False),
+                    "id": option["id"],
+                    "label": option["label"],
+                    "is_abnormal": option.get("is_abnormal", False),
                 }
-                for o in sorted(page["items"], key=lambda o: o["sort_order"])
-                if o.get("is_active", True)
+                for option in sorted(
+                    page["items"], key=lambda option: option["sort_order"]
+                )
+                if option.get("is_active", True)
             ]
             for sid, page in zip(set_ids, options_pages, strict=True)
         }
@@ -253,7 +269,11 @@ class CatalogClient:
                     "formula": ta.get("formula"),
                     "is_required": ta.get("is_required", True),
                     "is_reportable": ta.get("is_reportable", True),
-                    "ranges": [r for r in ranges if r.get("is_active", True)],
+                    "ranges": [
+                        range_item
+                        for range_item in ranges
+                        if range_item.get("is_active", True)
+                    ],
                 }
             )
         structure = {"version_id": version_id, "analytes": out}

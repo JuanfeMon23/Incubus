@@ -33,14 +33,14 @@
           <legend class="mb-1 text-sm font-medium">Prioridad</legend>
           <div class="grid grid-cols-2 gap-2">
             <label
-              v-for="p in priorities"
-              :key="p.id"
+              v-for="priority in priorities"
+              :key="priority.id"
               class="flex cursor-pointer items-center gap-2 rounded-md border-2 p-2 text-sm transition-colors"
-              :class="priorityId === p.id ? 'border-primary-500 bg-primary-50' : 'border-border'"
+              :class="priorityId === priority.id ? 'border-primary-500 bg-primary-50' : 'border-border'"
             >
-              <input v-model="priorityId" type="radio" :value="p.id" class="sr-only">
-              <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: p.color_hex }" />
-              {{ p.name }}
+              <input v-model="priorityId" type="radio" :value="priority.id" class="sr-only">
+              <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: priority.color_hex }" />
+              {{ priority.name }}
             </label>
           </div>
           <p v-if="errors.priority_id" class="mt-1 text-xs text-danger-600">{{ errors.priority_id }}</p>
@@ -58,10 +58,10 @@
       <UiAlert v-if="listError" variant="danger" :message="listError" class="mb-3" />
       <div v-if="listLoading" class="flex justify-center py-6"><UiSpinner size="lg" color="primary" label="Cargando cola" /></div>
       <ul class="space-y-3">
-        <li v-for="e in entries" :key="e.id">
-          <QueueEntryCard :entry="e">
+        <li v-for="entry in entries" :key="entry.id">
+          <QueueEntryCard :entry="entry">
             <template v-if="canRemove" #actions>
-              <UiButton size="sm" variant="danger-ghost" @click="removing = e">Retirar</UiButton>
+              <UiButton size="sm" variant="danger-ghost" @click="removing = entry">Retirar</UiButton>
             </template>
           </QueueEntryCard>
         </li>
@@ -92,10 +92,10 @@ const canEnqueue = useCan(TAGS.preReception.enqueue)
 const canRemove = useCan(TAGS.preReception.remove)
 
 const today = todayISO()
-const bloodOptions = BLOOD_TYPES.map((v) => ({ value: v, label: v }))
+const bloodOptions = BLOOD_TYPES.map((bloodType) => ({ value: bloodType, label: bloodType }))
 const documentTypes = ref<Reason[]>([])
 const documentTypeOptions = computed(() =>
-  documentTypes.value.map((d) => ({ value: d.code, label: `${d.code} · ${d.name}` }))
+  documentTypes.value.map((documentType) => ({ value: documentType.code, label: `${documentType.code} · ${documentType.name}` }))
 )
 const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
 const api = useLeoAppApi()
@@ -104,7 +104,7 @@ const { entries, error: listError, loading: listLoading, refresh } = useQueueLis
 
 const priorities = ref<Priority[]>([])
 const removalReasons = ref<Reason[]>([])
-const defaultPriorityId = () => priorities.value.find((p) => p.is_default === true)?.id ?? ''
+const defaultPriorityId = () => priorities.value.find((priority) => priority.is_default === true)?.id ?? ''
 onMounted(async () => {
   ;[priorities.value, removalReasons.value, documentTypes.value] = await Promise.all([
     api.get<Priority[]>('/priorities'),
@@ -151,8 +151,8 @@ async function parseScan() {
       blood_type: data.blood_type ?? ''
     })
     scan.value = ''
-  } catch (e) {
-    scanError.value = leoErrorMessage(e)
+  } catch (caughtError) {
+    scanError.value = leoErrorMessage(caughtError)
     toast.error(scanError.value)
   }
 }
@@ -167,7 +167,7 @@ watch(
     lookupTimer = setTimeout(async () => {
       try {
         const found = await api.get<Record<string, string | null>>('/patients/lookup', { query: { document_type: type, document_number: String(number).trim() } })
-        const text = (k: string) => found[k] ?? ''
+        const text = (fieldName: string) => found[fieldName] ?? ''
         form.setValues({
           first_name: text('first_name'),
           second_name: text('second_name'),
@@ -189,9 +189,9 @@ const onSubmit = form.submit(async (values) => {
   const { priority_id: priorityValue, ...patient } = values
   try {
     await api.post('/queue', { patient, priority_id: priorityValue })
-  } catch (e) {
-    toast.error(leoErrorMessage(e))
-    throw e
+  } catch (caughtError) {
+    toast.error(leoErrorMessage(caughtError))
+    throw caughtError
   }
   form.reset()
   priorityId.value = defaultPriorityId()
@@ -206,8 +206,8 @@ async function remove(payload: { reason_id: string; note: string | null }) {
     removing.value = null
     toast.success('Paciente retirado de la cola.')
     await refresh()
-  } catch (e) {
-    listError.value = leoErrorMessage(e)
+  } catch (caughtError) {
+    listError.value = leoErrorMessage(caughtError)
     toast.error(listError.value)
     removing.value = null
   }

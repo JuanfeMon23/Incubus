@@ -63,7 +63,7 @@ export function patchEntry(entry: QueueEntry, ev: LiveEvent): QueueEntry {
 /** Mismo orden que el servidor: prioridad (rank) y luego llegada. */
 export function sortQueue(list: QueueEntry[]): QueueEntry[] {
   return [...list].sort(
-    (a, b) => a.priority.rank - b.priority.rank || a.arrived_at.localeCompare(b.arrived_at)
+    (leftItem, rightItem) => leftItem.priority.rank - rightItem.priority.rank || leftItem.arrived_at.localeCompare(rightItem.arrived_at)
   )
 }
 
@@ -73,16 +73,16 @@ export function snapshotDiffers(
   snapshot: readonly Pick<LiveEntry, 'id' | 'version'>[]
 ): boolean {
   if (local.length !== snapshot.length) return true
-  const versions = new Map(local.map((e) => [e.id, e.version]))
-  return snapshot.some((s) => versions.get(s.id) !== s.version)
+  const versions = new Map(local.map((localEntry) => [localEntry.id, localEntry.version]))
+  return snapshot.some((snapshotEntry) => versions.get(snapshotEntry.id) !== snapshotEntry.version)
 }
 
 /** Mensaje legible cuando marcar/desmarcar un tubo falla (409: el paciente ya no está en toma). */
 export const SAMPLING_CONFLICT_MESSAGE =
   'Este paciente ya no está en atención de toma de muestras, por eso no se pueden marcar sus tubos. La lista se actualizó.'
 
-export function sampleToggleError(err: unknown, fallback: (e: unknown) => string): string {
-  const e = err as { status?: number; statusCode?: number; response?: { status?: number } } | null
-  const status = e?.status ?? e?.statusCode ?? e?.response?.status
+export function sampleToggleError(err: unknown, fallback: (error: unknown) => string): string {
+  const errorShape = err as { status?: number; statusCode?: number; response?: { status?: number } } | null
+  const status = errorShape?.status ?? errorShape?.statusCode ?? errorShape?.response?.status
   return status === 409 ? SAMPLING_CONFLICT_MESSAGE : fallback(err)
 }

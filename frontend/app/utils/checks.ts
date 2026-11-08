@@ -7,12 +7,12 @@ export type CheckMap = Record<string, CheckState>
 
 /** Llaves sin respuesta (cumple / no cumple). */
 export function unansweredKeys(keys: string[], checks: CheckMap): string[] {
-  return keys.filter((k) => checks[k]?.met === null || checks[k]?.met === undefined)
+  return keys.filter((key) => checks[key]?.met === null || checks[key]?.met === undefined)
 }
 
 /** Llaves marcadas "no cumple" sin nota. */
 export function missingNoteKeys(keys: string[], checks: CheckMap): string[] {
-  return keys.filter((k) => checks[k]?.met === false && !checks[k]?.note.trim())
+  return keys.filter((key) => checks[key]?.met === false && !checks[key]?.note.trim())
 }
 
 /** Se puede continuar cuando todas están respondidas y las que no cumplen traen nota. */
@@ -31,5 +31,5 @@ export function toCheckPayload(keys: string[], checks: CheckMap) {
 
 /** Estado inicial: reutiliza lo ya guardado (p. ej. la verificación de recepción como sugerencia vacía). */
 export function emptyChecks(keys: string[]): CheckMap {
-  return Object.fromEntries(keys.map((k) => [k, { met: null, note: '' }]))
+  return Object.fromEntries(keys.map((key) => [key, { met: null, note: '' }]))
 }

@@ -51,13 +51,13 @@ export interface HistoryItem {
 
 /** Líneas de la línea de tiempo, en el orden recibido. */
 export function historyItems(rows: QueueHistoryRow[], currentUserId: string | null | undefined): HistoryItem[] {
-  return rows.map((r, i) => ({
-    key: `${r.changed_at}-${i}`,
-    when: formatDateTime(r.changed_at),
-    action: actionLabel(r.kind),
-    transition: [stageName(r.from_status), stageName(r.to_status)].filter(Boolean).join(' → '),
-    reason: r.removal_reason_name?.trim() || r.return_reason_name?.trim() || null,
-    note: r.note?.trim() || null,
-    who: actorLabel(r, currentUserId)
+  return rows.map((row, i) => ({
+    key: `${row.changed_at}-${i}`,
+    when: formatDateTime(row.changed_at),
+    action: actionLabel(row.kind),
+    transition: [stageName(row.from_status), stageName(row.to_status)].filter(Boolean).join(' → '),
+    reason: row.removal_reason_name?.trim() || row.return_reason_name?.trim() || null,
+    note: row.note?.trim() || null,
+    who: actorLabel(row, currentUserId)
   }))
 }

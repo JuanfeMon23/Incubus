@@ -11,10 +11,10 @@
       <section>
         <h2 class="mb-2 font-semibold">Mi cola de espera ({{ waiting.length }})</h2>
         <ul class="space-y-3">
-          <li v-for="e in waiting" :key="e.id">
-            <QueueEntryCard :entry="e">
+          <li v-for="entry in waiting" :key="entry.id">
+            <QueueEntryCard :entry="entry">
               <template #actions>
-                <UiButton v-if="canClaim" size="sm" :disabled="!professionalId" :loading="claimingId === e.id" @click="claim(e)">
+                <UiButton v-if="canClaim" size="sm" :disabled="!professionalId" :loading="claimingId === entry.id" @click="claim(entry)">
                   Tomar paciente
                 </UiButton>
               </template>
@@ -32,9 +32,9 @@
       <section>
         <h2 class="mb-2 font-semibold">En atención ({{ attending.length }})</h2>
         <ul class="space-y-3">
-          <li v-for="e in attending" :key="e.id">
-            <QueueEntryCard :entry="e" selectable show-claimed-by :selected="current?.id === e.id" @select="select(e)">
-              <div v-if="current?.id === e.id && order" class="mt-1">
+          <li v-for="entry in attending" :key="entry.id">
+            <QueueEntryCard :entry="entry" selectable show-claimed-by :selected="current?.id === entry.id" @select="select(entry)">
+              <div v-if="current?.id === entry.id && order" class="mt-1">
                 <div class="mb-1 flex justify-between text-xs text-text-muted">
                   <span>Tubos tomados</span>
                   <span>{{ collectedCount }} / {{ order.samples.length }}</span>
@@ -89,19 +89,19 @@
 
         <UiSection title="Tubos a tomar" description="En orden de extracción; marque cada tubo al tomarlo.">
           <ul class="space-y-4">
-            <li v-for="(s, i) in order.samples" :key="s.id">
-              <SampleTubeCard :sample="s" variant="collect" :index="i" :total="order.samples.length">
+            <li v-for="(sample, i) in order.samples" :key="sample.id">
+              <SampleTubeCard :sample="sample" variant="collect" :index="i" :total="order.samples.length">
                 <template v-if="canCollect" #actions>
                   <UiButton
                     class="w-full"
                     size="lg"
-                    :variant="s.collected_at ? 'secondary' : 'primary'"
-                    :loading="togglingId === s.id"
+                    :variant="sample.collected_at ? 'secondary' : 'primary'"
+                    :loading="togglingId === sample.id"
                     :disabled="!ownsTurn"
                     :title="ownsTurn ? undefined : turnHint('marcar los tubos')"
-                    @click="toggle(s, !s.collected_at)"
+                    @click="toggle(sample, !sample.collected_at)"
                   >
-                    {{ s.collected_at ? 'Deshacer toma' : 'Marcar como tomado' }}
+                    {{ sample.collected_at ? 'Deshacer toma' : 'Marcar como tomado' }}
                   </UiButton>
                 </template>
               </SampleTubeCard>
@@ -176,26 +176,26 @@ const togglingId = ref<string | null>(null)
 
 // Profesional que atiende (se recuerda en este navegador).
 const staff = ref<StaffMember[]>([])
-const staffOptions = computed(() => staff.value.map((s) => ({ value: s.id, label: s.name })))
+const staffOptions = computed(() => staff.value.map((staffMember) => ({ value: staffMember.id, label: staffMember.name })))
 const professionalId = ref('')
-const professional = computed(() => staff.value.find((s) => s.id === professionalId.value) ?? null)
+const professional = computed(() => staff.value.find((staffMember) => staffMember.id === professionalId.value) ?? null)
 const mine = computed(() =>
-  entries.value.filter((e) => e.assigned_professional_id === professionalId.value)
+  entries.value.filter((entry) => entry.assigned_professional_id === professionalId.value)
 )
-const waiting = computed(() => mine.value.filter((e) => e.status === 'en_espera_toma_muestras'))
-const attending = computed(() => mine.value.filter((e) => e.status === 'en_atencion_toma_muestras'))
+const waiting = computed(() => mine.value.filter((entry) => entry.status === 'en_espera_toma_muestras'))
+const attending = computed(() => mine.value.filter((entry) => entry.status === 'en_atencion_toma_muestras'))
 
 const checks = ref<CheckMap>({})
-const collectedCount = computed(() => order.value?.samples.filter((s) => s.collected_at).length ?? 0)
-const checkKeys = computed(() => order.value?.preconditions.map((p) => p.key) ?? [])
+const collectedCount = computed(() => order.value?.samples.filter((sample) => sample.collected_at).length ?? 0)
+const checkKeys = computed(() => order.value?.preconditions.map((precondition) => precondition.key) ?? [])
 // La verificación se guarda con `collect`: sin él no se exige para finalizar.
 const checksOk = computed(() => !canCollect.value || checksComplete(checkKeys.value, checks.value))
 const receptionResults = computed(() =>
-  Object.fromEntries((order.value?.preconditions ?? []).map((p) => [p.key, p.reception_met ?? null]))
+  Object.fromEntries((order.value?.preconditions ?? []).map((precondition) => [precondition.key, precondition.reception_met ?? null]))
 )
 
 const currentId = ref<string | null>(null)
-const current = computed(() => attending.value.find((e) => e.id === currentId.value) ?? null)
+const current = computed(() => attending.value.find((entry) => entry.id === currentId.value) ?? null)
 const order = ref<OrderDetail | null>(null)
 // Solo quien tomó el turno (o un supervisor) puede devolverlo, finalizarlo o marcar sus tubos.
 const { ownsTurn, hint: turnHint } = useTurnOwnership(current)
@@ -237,16 +237,16 @@ function onLiveEvent(name: LiveEventName, ev: LiveEvent) {
     })
 }
 
-async function select(e: QueueEntry) {
-  currentId.value = e.id
+async function select(entry: QueueEntry) {
+  currentId.value = entry.id
   error.value = ''
   order.value = null
   try {
-    order.value = await api.get<OrderDetail>(`/orders/by-entry/${e.id}`)
-    const initial = emptyChecks(order.value.preconditions.map((p) => p.key))
-    for (const p of order.value.preconditions) {
-      if (p.sampling_met !== null && p.sampling_met !== undefined) {
-        initial[p.key] = { met: p.sampling_met, note: p.sampling_note ?? '' }
+    order.value = await api.get<OrderDetail>(`/orders/by-entry/${entry.id}`)
+    const initial = emptyChecks(order.value.preconditions.map((precondition) => precondition.key))
+    for (const precondition of order.value.preconditions) {
+      if (precondition.sampling_met !== null && precondition.sampling_met !== undefined) {
+        initial[precondition.key] = { met: precondition.sampling_met, note: precondition.sampling_note ?? '' }
       }
     }
     checks.value = initial
@@ -256,13 +256,13 @@ async function select(e: QueueEntry) {
   }
 }
 
-async function claim(e: QueueEntry) {
+async function claim(entry: QueueEntry) {
   error.value = ''
-  claimingId.value = e.id
+  claimingId.value = entry.id
   try {
-    await api.post(`/queue/${e.id}/claim`, { professional_id: professionalId.value })
+    await api.post(`/queue/${entry.id}/claim`, { professional_id: professionalId.value })
     await refresh()
-    const fresh = entries.value.find((x) => x.id === e.id)
+    const fresh = entries.value.find((entry) => entry.id === entry.id)
     if (fresh) await select(fresh)
   } catch (err) {
     error.value = leoErrorMessage(err)
@@ -280,7 +280,7 @@ async function toggle(sample: OrderSample, collected: boolean) {
     const updated = await api.post<OrderSample>(`/orders/samples/${sample.id}/${collected ? 'collect' : 'uncollect'}`)
     order.value = {
       ...order.value,
-      samples: order.value.samples.map((s) => (s.id === updated.id ? updated : s))
+      samples: order.value.samples.map((sample) => (sample.id === updated.id ? updated : sample))
     }
     if (collected) toast.success(`Tubo «${sample.name}» marcado como tomado.`)
   } catch (err) {

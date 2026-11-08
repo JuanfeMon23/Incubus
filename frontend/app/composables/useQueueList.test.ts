@@ -28,7 +28,7 @@ beforeEach(() => {
 const Harness = defineComponent({
   setup() {
     const { entries } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
-    return () => h('p', entries.value.map((e) => e.id).join(','))
+    return () => h('p', entries.value.map((entry) => entry.id).join(','))
   }
 })
 

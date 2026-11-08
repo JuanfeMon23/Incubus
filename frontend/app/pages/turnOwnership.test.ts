@@ -53,7 +53,7 @@ async function openSampling(tags: string[], claimedBy: string | null, claimedUse
   await flushAll()
   return wrapper
 }
-const btn = (w: { element: Element }, text: string) => findButton(w.element, text)
+const btn = (wrapper: { element: Element }, text: string) => findButton(wrapper.element, text)
 
 describe('toma de muestras: propiedad del turno', () => {
   it('las verificaciones de precondiciones se deshabilitan para quien no es dueño ni supervisor', async () => {
@@ -72,53 +72,53 @@ describe('toma de muestras: propiedad del turno', () => {
 
 
   it('muestra "Tomado por" con el nombre', async () => {
-    const w = await openSampling(ALL, 'Ana Pérez', ME)
-    expect(w.text()).toContain('Tomado por Ana Pérez')
+    const wrapper = await openSampling(ALL, 'Ana Pérez', ME)
+    expect(wrapper.text()).toContain('Tomado por Ana Pérez')
   })
 
   it('el dueño puede devolver, finalizar y marcar tubos', async () => {
-    const w = await openSampling(allExcept(TAGS.sampling.supervise), 'Ana Pérez', ME)
-    expect(btn(w, 'Devolver a espera')!.disabled).toBe(false)
-    expect(btn(w, 'Finalizar toma')!.disabled).toBe(false)
-    expect(btn(w, 'Deshacer toma')!.disabled).toBe(false)
+    const wrapper = await openSampling(allExcept(TAGS.sampling.supervise), 'Ana Pérez', ME)
+    expect(btn(wrapper, 'Devolver a espera')!.disabled).toBe(false)
+    expect(btn(wrapper, 'Finalizar toma')!.disabled).toBe(false)
+    expect(btn(wrapper, 'Deshacer toma')!.disabled).toBe(false)
   })
 
   it('otra persona ve las acciones deshabilitadas, con aviso legible', async () => {
-    const w = await openSampling(allExcept(TAGS.sampling.supervise), 'Luis Gómez', OTHER)
+    const wrapper = await openSampling(allExcept(TAGS.sampling.supervise), 'Luis Gómez', OTHER)
     const aviso = 'Este turno lo tomó Luis Gómez. Solo esa persona (o un supervisor) puede'
-    expect(w.text()).toContain(aviso)
+    expect(wrapper.text()).toContain(aviso)
     for (const text of ['Devolver a espera', 'Finalizar toma', 'Deshacer toma']) {
-      const b = btn(w, text)!
-      expect(b.disabled).toBe(true)
-      expect(b.getAttribute('title')).toContain('Luis Gómez')
+      const button = btn(wrapper, text)!
+      expect(button.disabled).toBe(true)
+      expect(button.getAttribute('title')).toContain('Luis Gómez')
     }
   })
 
   it('un supervisor puede actuar en turnos ajenos', async () => {
-    const w = await openSampling(ALL, 'Luis Gómez', OTHER)
-    expect(btn(w, 'Devolver a espera')!.disabled).toBe(false)
-    expect(btn(w, 'Finalizar toma')!.disabled).toBe(false)
-    expect(btn(w, 'Deshacer toma')!.disabled).toBe(false)
+    const wrapper = await openSampling(ALL, 'Luis Gómez', OTHER)
+    expect(btn(wrapper, 'Devolver a espera')!.disabled).toBe(false)
+    expect(btn(wrapper, 'Finalizar toma')!.disabled).toBe(false)
+    expect(btn(wrapper, 'Deshacer toma')!.disabled).toBe(false)
   })
 
   it('turno legado (sin id de dueño) no se restringe', async () => {
-    const w = await openSampling(allExcept(TAGS.sampling.supervise), 'Luis Gómez', null)
-    expect(btn(w, 'Devolver a espera')!.disabled).toBe(false)
-    expect(btn(w, 'Finalizar toma')!.disabled).toBe(false)
+    const wrapper = await openSampling(allExcept(TAGS.sampling.supervise), 'Luis Gómez', null)
+    expect(btn(wrapper, 'Devolver a espera')!.disabled).toBe(false)
+    expect(btn(wrapper, 'Finalizar toma')!.disabled).toBe(false)
   })
 
   it('un 403 not_turn_owner muestra el mensaje del backend y refresca la lista', async () => {
     const message = 'Este turno lo tomó Luis Gómez. Solo esa persona (o un supervisor) puede finalizarlo.'
     // El front cree que es suyo (turno legado), pero el servidor sabe quién es el dueño.
-    const w = await openSampling(allExcept(TAGS.sampling.supervise), 'Luis Gómez', null)
+    const wrapper = await openSampling(allExcept(TAGS.sampling.supervise), 'Luis Gómez', null)
     fake.routes['POST /queue/e1/finish-sampling'] = () => {
       throw new LeoApiError(403, 'not_turn_owner', message, { claimed_by: 'Luis Gómez' })
     }
-    const before = fake.requests.mock.calls.filter(([m, p]) => m === 'GET' && p.startsWith('/queue')).length
-    btn(w, 'Finalizar toma')!.click()
+    const before = fake.requests.mock.calls.filter(([method, path]) => method === 'GET' && path.startsWith('/queue')).length
+    btn(wrapper, 'Finalizar toma')!.click()
     await flushAll()
-    expect(w.text()).toContain(message)
-    const after = fake.requests.mock.calls.filter(([m, p]) => m === 'GET' && p.startsWith('/queue')).length
+    expect(wrapper.text()).toContain(message)
+    const after = fake.requests.mock.calls.filter(([method, path]) => method === 'GET' && path.startsWith('/queue')).length
     expect(after).toBeGreaterThan(before)
   })
 })
@@ -151,9 +151,9 @@ const HISTORY = [
 describe('historial del turno', () => {
   const mountModal = async () => {
     signInWith(ALL)
-    const w = await mountSuspended(QueueHistoryModal, { props: { entryId: 'e1' } })
+    const wrapper = await mountSuspended(QueueHistoryModal, { props: { entryId: 'e1' } })
     await flushAll()
-    return w
+    return wrapper
   }
 
   it('muestra la línea de tiempo: acción, etapas, motivo y quién ("Tú" para el usuario actual)', async () => {
@@ -201,9 +201,9 @@ describe('botón Historial', () => {
   it('aparece con el view de alguna etapa y abre el historial', async () => {
     fake.routes['GET /queue/e1/history'] = HISTORY
     signInWith([TAGS.results.view])
-    const w = await mountSuspended(QueueHistoryButton, { props: { entryId: 'e1' } })
+    const wrapper = await mountSuspended(QueueHistoryButton, { props: { entryId: 'e1' } })
     await flushAll()
-    btn(w, 'Historial')!.click()
+    btn(wrapper, 'Historial')!.click()
     await flushAll()
     expect(fake.requests).toHaveBeenCalledWith('GET', '/queue/e1/history', expect.anything())
     expect(document.body.textContent).toContain('Historial del turno')
@@ -211,9 +211,9 @@ describe('botón Historial', () => {
 
   it('sin ningún view no se muestra', async () => {
     signInWith([TAGS.preReception.enqueue, TAGS.sampling.supervise])
-    const w = await mountSuspended(QueueHistoryButton, { props: { entryId: 'e1' } })
+    const wrapper = await mountSuspended(QueueHistoryButton, { props: { entryId: 'e1' } })
     await flushAll()
-    expect(w.text()).not.toContain('Historial')
+    expect(wrapper.text()).not.toContain('Historial')
   })
 })
 
@@ -222,30 +222,30 @@ describe('recepción: propiedad del turno', () => {
   async function openReception(tags: string[], claim: Claim, extra: Record<string, unknown> = {}) {
     fake.routes['GET /queue'] = [entry('en_atencion_recepcion', 'e1', { ...claim, ...extra })]
     signInWith(tags)
-    const w = await mountSuspended(ReceptionPage)
+    const wrapper = await mountSuspended(ReceptionPage)
     await flushAll()
-    await w.find('article[role="button"]').trigger('click')
+    await wrapper.find('article[role="button"]').trigger('click')
     await flushAll()
-    return w
+    return wrapper
   }
   const OTHERS: Claim = { claimed_by: 'Luis Gómez', claimed_by_user_id: OTHER }
   const noSupervise = allExcept(TAGS.reception.supervise)
 
   it('el dueño ve "Atiende: <nombre>" y todo habilitado', async () => {
-    const w = await openReception(noSupervise, { claimed_by: 'Ana Pérez', claimed_by_user_id: ME })
-    expect(w.text()).toContain('Atiende: Ana Pérez')
-    expect(w.find('fieldset').element.disabled).toBe(false)
-    expect(btn(w, 'Devolver a pre-recepción')!.disabled).toBe(false)
+    const wrapper = await openReception(noSupervise, { claimed_by: 'Ana Pérez', claimed_by_user_id: ME })
+    expect(wrapper.text()).toContain('Atiende: Ana Pérez')
+    expect(wrapper.find('fieldset').element.disabled).toBe(false)
+    expect(btn(wrapper, 'Devolver a pre-recepción')!.disabled).toBe(false)
   })
 
   it('otra persona: formulario y acciones deshabilitados con aviso legible', async () => {
-    const w = await openReception(noSupervise, OTHERS)
-    expect(w.text()).toContain('Este turno lo tomó Luis Gómez. Solo esa persona (o un supervisor) puede')
-    expect(w.find('fieldset').element.disabled).toBe(true)
+    const wrapper = await openReception(noSupervise, OTHERS)
+    expect(wrapper.text()).toContain('Este turno lo tomó Luis Gómez. Solo esa persona (o un supervisor) puede')
+    expect(wrapper.find('fieldset').element.disabled).toBe(true)
     for (const text of ['Devolver a pre-recepción', 'Cerrar y generar orden']) {
-      const b = btn(w, text)!
-      expect(b.disabled).toBe(true)
-      expect(b.getAttribute('title')).toContain('Luis Gómez')
+      const button = btn(wrapper, text)!
+      expect(button.disabled).toBe(true)
+      expect(button.getAttribute('title')).toContain('Luis Gómez')
     }
   })
 
@@ -258,9 +258,9 @@ describe('recepción: propiedad del turno', () => {
   })
 
   it('turno legado (sin id de dueño) no se restringe', async () => {
-    const w = await openReception(noSupervise, { claimed_by: 'Luis Gómez', claimed_by_user_id: null })
-    expect(w.find('fieldset').element.disabled).toBe(false)
-    expect(btn(w, 'Devolver a pre-recepción')!.disabled).toBe(false)
+    const wrapper = await openReception(noSupervise, { claimed_by: 'Luis Gómez', claimed_by_user_id: null })
+    expect(wrapper.find('fieldset').element.disabled).toBe(false)
+    expect(btn(wrapper, 'Devolver a pre-recepción')!.disabled).toBe(false)
   })
 
   it('al cerrar abre el comprobante con el código de activación y lo descarta al cerrarlo', async () => {
@@ -269,8 +269,8 @@ describe('recepción: propiedad del turno', () => {
     fake.routes['POST /orders/close-reception/e1'] = {
       order_number: '2610-0001', order_id: 'o1', activation_code: 'ABCDE-FGHJK'
     }
-    const w = await openReception(noSupervise, { claimed_by: 'Ana Pérez', claimed_by_user_id: ME }, { draft: { test_codes: ['GLU'] } })
-    btn(w, 'Cerrar y generar orden')!.click()
+    const wrapper = await openReception(noSupervise, { claimed_by: 'Ana Pérez', claimed_by_user_id: ME }, { draft: { test_codes: ['GLU'] } })
+    btn(wrapper, 'Cerrar y generar orden')!.click()
     await flushAll()
     expect(document.body.textContent).toContain('ABCDE-FGHJK')
     expect(JSON.stringify({ ...localStorage })).not.toContain('ABCDE-FGHJK')
@@ -287,12 +287,12 @@ describe('recepción: propiedad del turno', () => {
       throw new LeoApiError(403, 'not_turn_owner', message, { claimed_by: 'Luis Gómez' })
     }
     // El front cree que es suyo (turno legado), pero el servidor sabe quién es el dueño.
-    const w = await openReception(noSupervise, { claimed_by: 'Luis Gómez', claimed_by_user_id: null }, { draft: { test_codes: ['GLU'] } })
-    const before = fake.requests.mock.calls.filter(([m, p]) => m === 'GET' && p.startsWith('/queue')).length
-    btn(w, 'Cerrar y generar orden')!.click()
+    const wrapper = await openReception(noSupervise, { claimed_by: 'Luis Gómez', claimed_by_user_id: null }, { draft: { test_codes: ['GLU'] } })
+    const before = fake.requests.mock.calls.filter(([method, path]) => method === 'GET' && path.startsWith('/queue')).length
+    btn(wrapper, 'Cerrar y generar orden')!.click()
     await flushAll()
-    expect(w.text()).toContain(message)
-    const after = fake.requests.mock.calls.filter(([m, p]) => m === 'GET' && p.startsWith('/queue')).length
+    expect(wrapper.text()).toContain(message)
+    const after = fake.requests.mock.calls.filter(([method, path]) => method === 'GET' && path.startsWith('/queue')).length
     expect(after).toBeGreaterThan(before)
   })
 })
@@ -314,11 +314,11 @@ describe('resultados: autoría', () => {
   it('muestra "Capturado por" ("Tú" para el usuario actual) y la validación', async () => {
     fake.routes['GET /results/tests/t1'] = DETAIL
     signInWith(ALL)
-    const w = await mountSuspended(ExamValidationForm, {
+    const wrapper = await mountSuspended(ExamValidationForm, {
       props: { orderTestId: 't1', professionalId: 'v1', professionalName: 'Dr. Pérez' }
     })
     await flushAll()
-    const text = w.text()
+    const text = wrapper.text()
     expect(text).toContain('Capturado por Tú')
     expect(text).toContain('Capturado por Luis Gómez')
     expect(text).toContain('Validado por Dra. Mora (profesional)')

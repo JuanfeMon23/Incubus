@@ -9,18 +9,18 @@ export function formatDuration(value: number | null, unit: string | null): strin
 }
 
 export function fullName(
-  p: Pick<Patient, 'first_name' | 'second_name' | 'first_last_name' | 'second_last_name'>
+  pick: Pick<Patient, 'first_name' | 'second_name' | 'first_last_name' | 'second_last_name'>
 ): string {
-  return [p.first_name, p.second_name, p.first_last_name, p.second_last_name].filter(Boolean).join(' ')
+  return [pick.first_name, pick.second_name, pick.first_last_name, pick.second_last_name].filter(Boolean).join(' ')
 }
 
 export function ageFrom(birthDate: string | null, today = new Date()): number | null {
   if (!birthDate) return null
-  const b = new Date(`${birthDate}T00:00:00`)
-  if (Number.isNaN(b.getTime())) return null
-  let age = today.getFullYear() - b.getFullYear()
+  const birth = new Date(`${birthDate}T00:00:00`)
+  if (Number.isNaN(birth.getTime())) return null
+  let age = today.getFullYear() - birth.getFullYear()
   const beforeBirthday =
-    today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())
+    today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())
   if (beforeBirthday) age -= 1
   return age
 }

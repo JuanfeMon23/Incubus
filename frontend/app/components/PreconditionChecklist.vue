@@ -1,41 +1,41 @@
 <template>
   <UiAlert variant="warning" :title="title">
     <ul class="space-y-3 text-sm">
-      <li v-for="p in items" :key="p.key" class="space-y-1">
+      <li v-for="item in items" :key="item.key" class="space-y-1">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <strong>{{ p.name }}</strong>
-            <span v-if="formatDuration(p.duration_value, p.duration_unit)">
-              — {{ formatDuration(p.duration_value, p.duration_unit) }}
+            <strong>{{ item.name }}</strong>
+            <span v-if="formatDuration(item.duration_value, item.duration_unit)">
+              — {{ formatDuration(item.duration_value, item.duration_unit) }}
             </span>
-            <span v-if="p.patient_instructions">: {{ p.patient_instructions }}</span>
+            <span v-if="item.patient_instructions">: {{ item.patient_instructions }}</span>
           </div>
           <div class="flex gap-1">
             <UiButton
               size="sm"
-              :variant="modelValue[p.key]?.met === true ? 'primary' : 'secondary'"
+              :variant="modelValue[item.key]?.met === true ? 'primary' : 'secondary'"
               :disabled="disabled"
               :title="disabled ? disabledHint : undefined"
-              @click="set(p.key, true)"
+              @click="set(item.key, true)"
             >Cumple</UiButton>
             <UiButton
               size="sm"
-              :variant="modelValue[p.key]?.met === false ? 'danger' : 'secondary'"
+              :variant="modelValue[item.key]?.met === false ? 'danger' : 'secondary'"
               :disabled="disabled"
               :title="disabled ? disabledHint : undefined"
-              @click="set(p.key, false)"
+              @click="set(item.key, false)"
             >No cumple</UiButton>
           </div>
         </div>
-        <p v-if="previous && previous[p.key] !== undefined && previous[p.key] !== null" class="text-xs text-text-muted">
-          Recepción: {{ previous[p.key] ? 'cumple' : 'no cumple' }}
+        <p v-if="previous && previous[item.key] !== undefined && previous[item.key] !== null" class="text-xs text-text-muted">
+          Recepción: {{ previous[item.key] ? 'cumple' : 'no cumple' }}
         </p>
         <UiTextInput
-          v-if="modelValue[p.key]?.met === false"
+          v-if="modelValue[item.key]?.met === false"
           :disabled="disabled"
-          :model-value="modelValue[p.key]?.note ?? ''"
+          :model-value="modelValue[item.key]?.note ?? ''"
           placeholder="Nota obligatoria: por qué no cumple"
-          @update:model-value="setNote(p.key, String($event ?? ''))"
+          @update:model-value="setNote(item.key, String($event ?? ''))"
         />
       </li>
     </ul>

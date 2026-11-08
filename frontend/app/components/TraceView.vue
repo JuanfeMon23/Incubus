@@ -10,11 +10,11 @@
       <legend class="sr-only">Filtros de la línea de tiempo</legend>
       <span class="text-sm text-text-muted">Ámbito:</span>
       <UiCheckbox
-        v-for="s in SCOPES"
-        :key="s"
-        :model-value="scopes.includes(s)"
-        :label="SCOPE_LABELS[s]"
-        @update:model-value="toggleScope(s, $event)"
+        v-for="scope in SCOPES"
+        :key="scope"
+        :model-value="scopes.includes(scope)"
+        :label="SCOPE_LABELS[scope]"
+        @update:model-value="toggleScope(scope, $event)"
       />
       <UiCheckbox v-model="hideQueue" label="Ocultar pasos de cola" />
     </fieldset>
@@ -52,7 +52,7 @@ const shown = computed(() => filterEvents(events.value, { scopes: scopes.value, 
 const hasMore = computed(() => events.value.length < total.value)
 
 function toggleScope(scope: TraceScope, on: boolean) {
-  scopes.value = on ? SCOPES.filter((s) => s === scope || scopes.value.includes(s)) : scopes.value.filter((s) => s !== scope)
+  scopes.value = on ? SCOPES.filter((candidate) => candidate === scope || scopes.value.includes(candidate)) : scopes.value.filter((candidate) => candidate !== scope)
 }
 
 let token = 0
@@ -70,8 +70,8 @@ async function fetchPage(next: number) {
     test.value = res.test
     total.value = res.total
     page.value = next
-  } catch (e) {
-    if (mine === token) error.value = leoErrorMessage(e)
+  } catch (caughtError) {
+    if (mine === token) error.value = leoErrorMessage(caughtError)
   } finally {
     if (mine === token) loading.value = false
   }

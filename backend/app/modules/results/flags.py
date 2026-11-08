@@ -90,8 +90,8 @@ def reference_text(rng: dict | None) -> str | None:
         return rng["display_text"]
     low, high = rng.get("low"), rng.get("high")
 
-    def fmt(x: float) -> str:
-        return f"{x:g}"
+    def fmt(number: float) -> str:
+        return f"{number:g}"
 
     if low is not None and high is not None:
         return f"{fmt(low)} - {fmt(high)}"

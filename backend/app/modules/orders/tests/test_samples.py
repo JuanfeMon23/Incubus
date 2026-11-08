@@ -47,7 +47,10 @@ def test_examenes_con_el_mismo_tipo_comparten_un_tubo():
 
 def test_tubos_ordenados_por_orden_de_extraccion():
     tests = [make_exam("A", ("red", True, 3.0)), make_exam("B", ("lila", True, 2.0))]
-    assert [t.sample_type_id for t in group_samples(tests, TYPES)] == ["lila", "red"]
+    assert [tube.sample_type_id for tube in group_samples(tests, TYPES)] == [
+        "lila",
+        "red",
+    ]
 
 
 def test_usa_el_tipo_preferido_activo():

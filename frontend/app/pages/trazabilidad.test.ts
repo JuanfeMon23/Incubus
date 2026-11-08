@@ -24,12 +24,12 @@ beforeEach(() => {
   fake.routes['GET /orders/O-1/tests/t1/trace'] = TRACE
 })
 
-async function search(w: { element: Element }, value: string) {
-  const input = w.element.querySelector('input') as HTMLInputElement
+async function search(wrapper: { element: Element }, value: string) {
+  const input = wrapper.element.querySelector('input') as HTMLInputElement
   input.value = value
   input.dispatchEvent(new Event('input', { bubbles: true }))
   await flushAll()
-  w.element.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
+  wrapper.element.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
   await flushAll()
 }
 
@@ -37,34 +37,34 @@ describe('/trazabilidad', () => {
   it('varias pruebas: las lista y muestra la línea de tiempo al elegir una', async () => {
     signInWith([TAGS.results.trace])
     fake.routes['GET /orders/O-1/tests'] = { order_number: 'O-1', order_id: 'o', tests: [TEST, { ...TEST, id: 't2', code: 'HB', name: 'Hemoglobina' }] }
-    const w = await mountSuspended(TracePage)
+    const wrapper = await mountSuspended(TracePage)
     await flushAll()
-    expect(w.element.textContent).toContain('Busque una orden')
-    expect(w.element.textContent).not.toContain('Profesional')
-    await search(w, 'O-1')
-    expect(w.element.textContent).toContain('GLU · Glucosa')
-    expect(w.element.querySelector('[data-testid="trace-event"]')).toBeNull()
-    findButton(w.element, 'GLU · Glucosa')!.click()
+    expect(wrapper.element.textContent).toContain('Busque una orden')
+    expect(wrapper.element.textContent).not.toContain('Profesional')
+    await search(wrapper, 'O-1')
+    expect(wrapper.element.textContent).toContain('GLU · Glucosa')
+    expect(wrapper.element.querySelector('[data-testid="trace-event"]')).toBeNull()
+    findButton(wrapper.element, 'GLU · Glucosa')!.click()
     await flushAll()
-    expect(w.element.querySelectorAll('[data-testid="trace-event"]')).toHaveLength(1)
-    expect(w.element.textContent).toContain('Sistema/servicio')
+    expect(wrapper.element.querySelectorAll('[data-testid="trace-event"]')).toHaveLength(1)
+    expect(wrapper.element.textContent).toContain('Sistema/servicio')
   })
 
   it('una sola prueba: se abre sola', async () => {
     signInWith([TAGS.results.trace])
     fake.routes['GET /orders/O-1/tests'] = { order_number: 'O-1', order_id: 'o', tests: [TEST] }
-    const w = await mountSuspended(TracePage)
+    const wrapper = await mountSuspended(TracePage)
     await flushAll()
-    await search(w, 'O-1')
-    expect(w.element.querySelectorAll('[data-testid="trace-event"]')).toHaveLength(1)
+    await search(wrapper, 'O-1')
+    expect(wrapper.element.querySelectorAll('[data-testid="trace-event"]')).toHaveLength(1)
   })
 
   it.each([['404 no existe'], ['403 sin permiso']])('error legible: %s', async (msg) => {
     signInWith([TAGS.results.trace])
     fake.routes['GET /orders/X-9/tests'] = () => { throw new Error(msg) }
-    const w = await mountSuspended(TracePage)
+    const wrapper = await mountSuspended(TracePage)
     await flushAll()
-    await search(w, 'X-9')
-    expect(w.element.querySelector('[role="alert"]')).not.toBeNull()
+    await search(wrapper, 'X-9')
+    expect(wrapper.element.querySelector('[role="alert"]')).not.toBeNull()
   })
 })

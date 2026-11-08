@@ -99,9 +99,9 @@ def test_pick_test_codes_distinct_and_bounded():
 def test_precondition_checks_require_note_when_not_met():
     pre = [{"key": f"k{i}", "name": "Ayuno"} for i in range(200)]
     checks = precondition_checks(pre, random.Random(7), "toma")
-    assert any(not c["met"] for c in checks)
-    assert all(c["note"] for c in checks if not c["met"])
-    assert all(c["note"] is None for c in checks if c["met"])
+    assert any(not check["met"] for check in checks)
+    assert all(check["note"] for check in checks if not check["met"])
+    assert all(check["note"] is None for check in checks if check["met"])
 
 
 def test_read_env_file_and_describe_error(tmp_path):

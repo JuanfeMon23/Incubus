@@ -139,7 +139,10 @@ async def order_in_laboratory(
     Devuelve `(entry_id, order_number)` con la entrada en `en_laboratorio`.
     """
     setup_catalog(catalog)
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     entry = (
         await client.post(
             "/api/v1/queue", json={"patient": PATIENT, "priority_id": pr["media"]}
@@ -156,10 +159,10 @@ async def order_in_laboratory(
     number = close.json()["order_number"]
     if extra is not None:  # respuesta completa del cierre (p. ej. activation_code)
         extra.update(close.json())
-    r = await client.post(
+    response = await client.post(
         f"/api/v1/orders/by-entry/{eid}/print-labels", json={**PRO, "actor": "i"}
     )
-    assert r.status_code == 200, r.text
+    assert response.status_code == 200, response.text
     await client.post(
         f"/api/v1/queue/{eid}/claim",
         json={

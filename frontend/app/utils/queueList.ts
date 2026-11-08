@@ -8,7 +8,7 @@ export interface QueueListDeps {
   subscribe: (sub: RealtimeSubscriber) => () => void
   fetchList: (statuses: QueueStatus[]) => Promise<QueueEntry[]>
   fetchOne: (id: string) => Promise<QueueEntry>
-  toMessage: (e: unknown) => string
+  toMessage: (error: unknown) => string
   /** Gancho para pantallas que reaccionan a eventos (p. ej. `sample:updated`). */
   onEvent?: (name: LiveEventName, ev: LiveEvent) => void
 }
@@ -29,25 +29,25 @@ export function createQueueList(statuses: QueueStatus[], deps: QueueListDeps) {
   let pendingSnapshot: LiveEntry[] | null = null
   let unsubscribe: (() => void) | null = null
 
-  const inStage = (s: QueueStatus) => statuses.includes(s)
+  const inStage = (status: QueueStatus) => statuses.includes(status)
   const remember = (id: string, version: number) => seen.set(id, Math.max(seen.get(id) ?? -1, version))
 
   function upsert(entry: QueueEntry) {
-    entries.value = sortQueue([...entries.value.filter((e) => e.id !== entry.id), entry])
+    entries.value = sortQueue([...entries.value.filter((queued) => queued.id !== entry.id), entry])
   }
 
   function applyFetched(entry: QueueEntry) {
     if (entry.version < (seen.get(entry.id) ?? -1)) return // respuesta vieja
     remember(entry.id, entry.version)
     if (inStage(entry.status)) upsert(entry)
-    else entries.value = entries.value.filter((e) => e.id !== entry.id)
+    else entries.value = entries.value.filter((queued) => queued.id !== entry.id)
   }
 
   async function fetchEntry(id: string) {
     try {
       applyFetched(await deps.fetchOne(id))
-    } catch (e) {
-      error.value = deps.toMessage(e)
+    } catch (caughtError) {
+      error.value = deps.toMessage(caughtError)
     }
   }
 
@@ -55,11 +55,11 @@ export function createQueueList(statuses: QueueStatus[], deps: QueueListDeps) {
     listing = true
     try {
       const list = await deps.fetchList(statuses)
-      for (const e of list) remember(e.id, e.version)
+      for (const entry of list) remember(entry.id, entry.version)
       entries.value = sortQueue(list)
       error.value = ''
-    } catch (e) {
-      error.value = deps.toMessage(e)
+    } catch (caughtError) {
+      error.value = deps.toMessage(caughtError)
     } finally {
       listing = false
       loading.value = false
@@ -81,13 +81,13 @@ export function createQueueList(statuses: QueueStatus[], deps: QueueListDeps) {
       return
     }
     deps.onEvent?.(name, ev)
-    const known = entries.value.find((e) => e.id === ev.id)
+    const known = entries.value.find((entry) => entry.id === ev.id)
     const decision = decideEvent(name, ev, known, seen.get(ev.id), statuses)
     if (decision === 'ignore') {
       remember(ev.id, ev.version)
     } else if (decision === 'remove') {
       remember(ev.id, ev.version)
-      entries.value = entries.value.filter((e) => e.id !== ev.id)
+      entries.value = entries.value.filter((entry) => entry.id !== ev.id)
     } else if (decision === 'patch') {
       remember(ev.id, ev.version)
       upsert(patchEntry(known!, ev))
@@ -101,7 +101,7 @@ export function createQueueList(statuses: QueueStatus[], deps: QueueListDeps) {
       pendingSnapshot = snapshot
       return
     }
-    const mine = snapshot.filter((s) => inStage(s.status))
+    const mine = snapshot.filter((snapshotEntry) => inStage(snapshotEntry.status))
     if (snapshotDiffers(entries.value, mine)) void refresh()
   }
 

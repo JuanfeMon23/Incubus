@@ -95,7 +95,7 @@ class Probe:
         return await self.sio.call("sync", None, NS)
 
     def named(self, name):
-        return [p for n, p in self.events if n == name]
+        return [payload for event_name, payload in self.events if event_name == name]
 
 
 HANDSHAKE_HTU = "http://incubus.test/socket.io/"  # PUBLIC_URL (conftest) + path
@@ -142,12 +142,15 @@ async def connect(live_url, leo, browser):
         return probe
 
     yield _connect
-    for p in opened:
-        await p.sio.disconnect()
+    for opened_probe in opened:
+        await opened_probe.sio.disconnect()
 
 
 async def _priority(client):
-    prs = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    prs = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     return prs["media"]
 
 
@@ -277,7 +280,7 @@ async def test_subscribe_limita_los_rooms_por_socket(connect, client, session):
     )
     probe = await connect()
     first = ("pre_recepcion", "en_atencion_recepcion", "en_espera_impresion")
-    ack = await probe.subscribe(*(f"stage:{s}" for s in first))
+    ack = await probe.subscribe(*(f"stage:{stage}" for stage in first))
     assert ack["ok"] is True
     ack = await probe.subscribe(
         "stage:en_espera_toma_muestras", "stage:en_laboratorio", "stage:finalizada"
@@ -309,8 +312,8 @@ async def test_alta_llega_solo_al_stage_suscrito_y_sin_pii(connect, client):
     await en_otro.subscribe("stage:en_laboratorio")
     entry = await _enter(client)
     await events.drain()
-    for p in (en_pre, en_otro, sin_nada):
-        await p.sync()
+    for probe in (en_pre, en_otro, sin_nada):
+        await probe.sync()
     assert en_otro.events == [] and sin_nada.events == []
     [(name, payload)] = en_pre.events
     assert name == "entry:created"
@@ -343,11 +346,11 @@ async def test_cambio_de_etapa_llega_al_stage_nuevo_al_anterior_y_a_la_entrada(
     res = await client.post(f"/api/v1/queue/{entry['id']}/claim", json={"actor": "a"})
     assert res.status_code == 200
     await events.drain()
-    for p in (nuevo, anterior, por_entrada, ajeno):
-        await p.sync()
+    for probe in (nuevo, anterior, por_entrada, ajeno):
+        await probe.sync()
     assert ajeno.events == []
-    for p in (nuevo, anterior, por_entrada):
-        [(name, payload)] = p.events
+    for probe in (nuevo, anterior, por_entrada):
+        [(name, payload)] = probe.events
         assert name == "status:changed"
         assert payload["status"] == "en_atencion_recepcion"
         assert payload["previous_status"] == "pre_recepcion"
@@ -383,10 +386,10 @@ async def test_retiro_emite_entry_removed_al_stage_anterior(connect, client):
     )
     assert res.status_code == 200, res.text
     await events.drain()
-    for p in (anterior, removidos):
-        await p.sync()
-    for p in (anterior, removidos):
-        [(name, payload)] = p.events
+    for probe in (anterior, removidos):
+        await probe.sync()
+    for probe in (anterior, removidos):
+        [(name, payload)] = probe.events
         assert name == "entry:removed"
         assert payload["status"] == "retirado"
         assert payload["previous_status"] == "pre_recepcion"
@@ -428,11 +431,14 @@ async def test_tubo_emite_sample_updated_con_sample_id_a_staff_y_entrada(
     await client.post(f"/api/v1/orders/samples/{tube['id']}/collect", json={})
     await client.post(f"/api/v1/orders/samples/{tube['id']}/uncollect", json={})
     await events.drain()
-    for p in (staff, ajeno):
-        await p.sync()
+    for probe in (staff, ajeno):
+        await probe.sync()
     assert ajeno.events == []
-    assert [n for n, _ in staff.events] == ["sample:updated", "sample:updated"]
-    first, second = (p for _, p in staff.events)
+    assert [event_name for event_name, _ in staff.events] == [
+        "sample:updated",
+        "sample:updated",
+    ]
+    first, second = (payload for _, payload in staff.events)
     assert first["sample_id"] == second["sample_id"] == tube["id"]
     assert first["assigned_professional_id"] == "staff-1"
     assert first["order_number"] == number
@@ -450,10 +456,10 @@ async def test_claim_de_toma_llega_a_la_etapa_anterior_y_al_profesional(
     await events.drain()
     await _claim(client, entry_id)
     await events.drain()
-    for p in (anterior, staff):
-        await p.sync()
-    for p in (anterior, staff):
-        [(name, payload)] = p.events
+    for probe in (anterior, staff):
+        await probe.sync()
+    for probe in (anterior, staff):
+        [(name, payload)] = probe.events
         assert name == "status:changed"
         assert payload["previous_status"] == "en_espera_toma_muestras"
         assert payload["status"] == "en_atencion_toma_muestras"
@@ -470,7 +476,7 @@ async def test_eventos_de_una_entrada_llegan_en_orden_de_version(connect, client
         )
     await events.drain()
     await probe.sync()
-    versions = [p["version"] for _, p in probe.events]
+    versions = [payload["version"] for _, payload in probe.events]
     assert len(versions) == 4
     assert versions == sorted(versions) and len(set(versions)) == 4
 
@@ -609,9 +615,9 @@ async def test_prueba_repetida_se_rechaza_una_sola_vez_vale(connect, browser):
 
 
 async def test_cada_conexion_con_prueba_nueva_entra(connect):
-    a = await connect()
-    b = await connect()
-    assert a.sio.connected and b.sio.connected
+    first_probe = await connect()
+    second_probe = await connect()
+    assert first_probe.sio.connected and second_probe.sio.connected
 
 
 async def test_sesion_inactiva_en_leo_se_rechaza(connect, leo):

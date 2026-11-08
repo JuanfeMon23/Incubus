@@ -12,7 +12,10 @@ PATIENT = {
 
 
 async def _ids(client):
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     rm = (await client.get("/api/v1/removal-reasons")).json()
     rt = (await client.get("/api/v1/return-reasons")).json()
     return pr, rm[0]["id"], rt[0]["id"]
@@ -26,19 +29,24 @@ async def _enter(client, priority="media", **over):
 
 async def test_prioridades_parametrizadas_vienen_ordenadas(client):
     prios = (await client.get("/api/v1/priorities")).json()
-    assert [p["code"] for p in prios] == ["extrema", "alta", "media", "baja"]
-    assert all(p["color_hex"].startswith("#") for p in prios)
+    assert [priority["code"] for priority in prios] == [
+        "extrema",
+        "alta",
+        "media",
+        "baja",
+    ]
+    assert all(priority["color_hex"].startswith("#") for priority in prios)
 
 
 async def test_ingreso_y_orden_por_prioridad_luego_llegada(client):
-    a = await _enter(client, "baja", document_number="111111")
-    b = await _enter(client, "extrema", document_number="222222")
-    c = await _enter(client, "baja", document_number="333333")
-    assert a.status_code == b.status_code == 201
+    first_response = await _enter(client, "baja", document_number="111111")
+    second_response = await _enter(client, "extrema", document_number="222222")
+    third_response = await _enter(client, "baja", document_number="333333")
+    assert first_response.status_code == second_response.status_code == 201
     queue = (await client.get("/api/v1/queue?status=pre_recepcion")).json()
-    docs = [q["patient"]["document_number"] for q in queue]
+    docs = [queue_entry["patient"]["document_number"] for queue_entry in queue]
     assert docs[:3] == ["222222", "111111", "333333"]
-    assert c.json()["status"] == "pre_recepcion"
+    assert third_response.json()["status"] == "pre_recepcion"
 
 
 async def test_paciente_no_puede_estar_dos_veces(client):
@@ -91,12 +99,19 @@ async def test_historial_registra_cada_transicion(client):
     await client.post(f"/api/v1/queue/{eid}/claim", json={})
     await client.post(f"/api/v1/queue/{eid}/return", json={"reason_id": ret})
     hist = (await client.get(f"/api/v1/queue/{eid}/history")).json()
-    assert [(h["from_status"], h["to_status"], h["kind"]) for h in hist] == [
+    assert [
+        (
+            history_entry["from_status"],
+            history_entry["to_status"],
+            history_entry["kind"],
+        )
+        for history_entry in hist
+    ] == [
         (None, "pre_recepcion", "enter"),
         ("pre_recepcion", "en_atencion_recepcion", "advance"),
         ("en_atencion_recepcion", "pre_recepcion", "return"),
     ]
-    stamps = [h["changed_at"] for h in hist]
+    stamps = [history_entry["changed_at"] for history_entry in hist]
     assert stamps == sorted(stamps)
 
 

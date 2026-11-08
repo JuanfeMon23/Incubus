@@ -98,7 +98,7 @@ export interface TraceFilters {
 }
 
 export function filterEvents(events: TraceEvent[], filters: TraceFilters): TraceEvent[] {
-  return events.filter((e) => filters.scopes.includes(e.scope) && !(filters.hideQueue && isQueueStep(e.step)))
+  return events.filter((event) => filters.scopes.includes(event.scope) && !(filters.hideQueue && isQueueStep(event.step)))
 }
 
 export interface TraceDay {
@@ -108,38 +108,38 @@ export interface TraceDay {
   events: TraceEvent[]
 }
 
-const pad = (n: number) => String(n).padStart(2, '0')
+const pad = (value: number) => String(value).padStart(2, '0')
 
 export function dayKey(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 export function dayLabel(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return 'Fecha desconocida'
-  return d.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'Fecha desconocida'
+  return date.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 /** Hora local `HH:MM:SS`. */
 export function timeLabel(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 /** Agrupa por día local conservando el orden recibido (cronológico). */
 export function groupByDay(events: TraceEvent[]): TraceDay[] {
   const days: TraceDay[] = []
-  for (const e of events) {
-    const key = dayKey(e.at)
+  for (const event of events) {
+    const key = dayKey(event.at)
     let day = days[days.length - 1]
     if (!day || day.key !== key) {
-      day = { key, label: dayLabel(e.at), events: [] }
+      day = { key, label: dayLabel(event.at), events: [] }
       days.push(day)
     }
-    day.events.push(e)
+    day.events.push(event)
   }
   return days
 }
@@ -149,41 +149,41 @@ const STAGE_LABELS: Record<string, string> = {
   sampling: 'Toma de muestras'
 }
 
-const show = (v: unknown): string => (v === null || v === undefined || v === '' ? '—' : String(v))
+const show = (value: unknown): string => (value === null || value === undefined || value === '' ? '—' : String(value))
 const flagText = (flag: unknown) => (flag ? ` (bandera ${flag})` : '')
 
-function metText(c: { met?: boolean | null; note?: string | null } | null | undefined): string {
-  if (!c || c.met === null || c.met === undefined) return 'Sin registrar'
-  return `${c.met ? 'Cumplida' : 'No cumplida'}${c.note ? ` — ${c.note}` : ''}`
+function metText(check: { met?: boolean | null; note?: string | null } | null | undefined): string {
+  if (!check || check.met === null || check.met === undefined) return 'Sin registrar'
+  return `${check.met ? 'Cumplida' : 'No cumplida'}${check.note ? ` — ${check.note}` : ''}`
 }
 
 /** Líneas legibles de los `details` de un evento (vacío si no hay nada que mostrar). */
 export function detailLines(event: Pick<TraceEvent, 'step' | 'details'>): string[] {
-  const d = event.details ?? {}
+  const details = event.details ?? {}
   if (event.step.startsWith('result.')) {
-    if (!d.analyte_code && d.before === undefined && d.after === undefined) return []
-    const calc = d.calculated ? ' · calculado' : ''
-    return [`${show(d.analyte_code)}: ${show(d.before)} → ${show(d.after)}${flagText(d.flag)}${calc}`]
+    if (!details.analyte_code && details.before === undefined && details.after === undefined) return []
+    const calc = details.calculated ? ' · calculado' : ''
+    return [`${show(details.analyte_code)}: ${show(details.before)} → ${show(details.after)}${flagText(details.flag)}${calc}`]
   }
   if (event.step === 'precondition.checked') {
-    const stage = STAGE_LABELS[d.stage as string] ?? (d.stage ? String(d.stage) : '')
-    if (d.key || d.name) {
-      const head = `${d.name || d.key}${stage ? ` (${stage})` : ''}`
-      return [`${head}: ${metText(d.before)} → ${metText(d.after)}`]
+    const stage = STAGE_LABELS[details.stage as string] ?? (details.stage ? String(details.stage) : '')
+    if (details.key || details.name) {
+      const head = `${details.name || details.key}${stage ? ` (${stage})` : ''}`
+      return [`${head}: ${metText(details.before)} → ${metText(details.after)}`]
     }
-    const lines = [`${stage ? `${stage}: ` : ''}${d.checked ?? 0} verificadas`]
-    const unmet = Array.isArray(d.unmet_keys) ? d.unmet_keys : []
+    const lines = [`${stage ? `${stage}: ` : ''}${details.checked ?? 0} verificadas`]
+    const unmet = Array.isArray(details.unmet_keys) ? details.unmet_keys : []
     lines.push(unmet.length ? `No cumplidas: ${unmet.join(', ')}` : 'Todas cumplidas')
     return lines
   }
   if (event.step === 'test.validated') {
-    const flags = Array.isArray(d.abnormal_flags) ? d.abnormal_flags : []
+    const flags = Array.isArray(details.abnormal_flags) ? details.abnormal_flags : []
     const lines = [
       flags.length
-        ? `Banderas anormales: ${flags.map((f: { analyte_code: string; flag: string }) => `${f.analyte_code} ${f.flag}`).join(', ')}`
+        ? `Banderas anormales: ${flags.map((abnormal: { analyte_code: string; flag: string }) => `${abnormal.analyte_code} ${abnormal.flag}`).join(', ')}`
         : 'Sin banderas anormales'
     ]
-    if (d.validated_by) lines.push(`Firmado por: ${d.validated_by}`)
+    if (details.validated_by) lines.push(`Firmado por: ${details.validated_by}`)
     return lines
   }
   return []

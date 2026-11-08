@@ -6,7 +6,7 @@ const canOnly = (...tags: string[]) => (tag: string) => tags.includes(tag)
 
 describe('menú por permiso', () => {
   it('cada pantalla exige el view de su etapa', () => {
-    expect(Object.fromEntries(SCREENS.map((s) => [s.to, s.tag]))).toEqual({
+    expect(Object.fromEntries(SCREENS.map((screen) => [screen.to, screen.tag]))).toEqual({
       '/pre-recepcion': TAGS.preReception.view,
       '/recepcion': TAGS.reception.view,
       '/impresion-etiquetas': TAGS.labelPrinting.view,
@@ -26,7 +26,7 @@ describe('menú por permiso', () => {
 
   it('solo se ven las pantallas con view (los permisos de acción no abren pantallas)', () => {
     const can = canOnly(TAGS.reception.view, TAGS.sampling.view, TAGS.results.enter)
-    expect(visibleScreens(can).map((s) => s.label)).toEqual(['Recepción', 'Toma de muestras'])
+    expect(visibleScreens(can).map((screen) => screen.label)).toEqual(['Recepción', 'Toma de muestras'])
   })
 
   it('el inicio lleva a la primera pantalla visible', () => {

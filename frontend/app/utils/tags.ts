@@ -7,60 +7,60 @@ import permissions from '../generated/permissions.json'
  * `TAGS` se mantiene a mano por ergonomía; `tags.test.ts` lo compara con el contrato.
  * Un módulo por pantalla/etapa; `resultsDelivery` es solo API para otros servicios.
  */
-const t = (module: string, verb: string) => `incubus.${module}.${verb}`
+const buildTag = (module: string, verb: string) => `incubus.${module}.${verb}`
 
 export const TAGS = {
   preReception: {
-    view: t('pre-reception', 'view'),
-    enqueue: t('pre-reception', 'enqueue'),
-    remove: t('pre-reception', 'remove')
+    view: buildTag('pre-reception', 'view'),
+    enqueue: buildTag('pre-reception', 'enqueue'),
+    remove: buildTag('pre-reception', 'remove')
   },
   reception: {
-    view: t('reception', 'view'),
-    callNext: t('reception', 'call-next'),
-    editPatient: t('reception', 'edit-patient'),
-    closeReception: t('reception', 'close-reception'),
-    return: t('reception', 'return'),
-    remove: t('reception', 'remove'),
-    supervise: t('reception', 'supervise')
+    view: buildTag('reception', 'view'),
+    callNext: buildTag('reception', 'call-next'),
+    editPatient: buildTag('reception', 'edit-patient'),
+    closeReception: buildTag('reception', 'close-reception'),
+    return: buildTag('reception', 'return'),
+    remove: buildTag('reception', 'remove'),
+    supervise: buildTag('reception', 'supervise')
   },
   labelPrinting: {
-    view: t('label-printing', 'view'),
-    print: t('label-printing', 'print')
+    view: buildTag('label-printing', 'view'),
+    print: buildTag('label-printing', 'print')
   },
   sampling: {
-    view: t('sampling', 'view'),
-    claim: t('sampling', 'claim'),
-    collect: t('sampling', 'collect'),
-    finish: t('sampling', 'finish'),
-    return: t('sampling', 'return'),
-    supervise: t('sampling', 'supervise')
+    view: buildTag('sampling', 'view'),
+    claim: buildTag('sampling', 'claim'),
+    collect: buildTag('sampling', 'collect'),
+    finish: buildTag('sampling', 'finish'),
+    return: buildTag('sampling', 'return'),
+    supervise: buildTag('sampling', 'supervise')
   },
   labReception: {
-    view: t('lab-reception', 'view'),
-    receive: t('lab-reception', 'receive'),
-    unreceive: t('lab-reception', 'unreceive')
+    view: buildTag('lab-reception', 'view'),
+    receive: buildTag('lab-reception', 'receive'),
+    unreceive: buildTag('lab-reception', 'unreceive')
   },
   results: {
-    view: t('results', 'view'),
-    enter: t('results', 'enter'),
-    validate: t('results', 'validate'),
-    trace: t('results', 'trace')
+    view: buildTag('results', 'view'),
+    enter: buildTag('results', 'enter'),
+    validate: buildTag('results', 'validate'),
+    trace: buildTag('results', 'trace')
   },
   resultsDelivery: {
-    view: t('results-delivery', 'view')
+    view: buildTag('results-delivery', 'view')
   },
   queueAdmin: {
-    view: t('queue-admin', 'view'),
-    create: t('queue-admin', 'create'),
-    update: t('queue-admin', 'update'),
-    toggle: t('queue-admin', 'toggle')
+    view: buildTag('queue-admin', 'view'),
+    create: buildTag('queue-admin', 'create'),
+    update: buildTag('queue-admin', 'update'),
+    toggle: buildTag('queue-admin', 'toggle')
   },
   // `incubus.settings.update` (evento de auditoría de los cambios) no se concede ni tiene pantalla.
   settings: {
-    view: t('settings', 'view'),
-    edit: t('settings', 'edit'),
-    editSecurity: t('settings', 'edit-security')
+    view: buildTag('settings', 'view'),
+    edit: buildTag('settings', 'edit'),
+    editSecurity: buildTag('settings', 'edit-security')
   }
 } as const
 

@@ -3,8 +3,8 @@
     <aside>
       <h2 class="mb-2 font-semibold">En espera de impresión ({{ entries.length }})</h2>
       <ul class="space-y-3">
-        <li v-for="e in entries" :key="e.id">
-          <QueueEntryCard :entry="e" selectable :selected="current?.id === e.id" @select="select(e)" />
+        <li v-for="entry in entries" :key="entry.id">
+          <QueueEntryCard :entry="entry" selectable :selected="current?.id === entry.id" @select="select(entry)" />
         </li>
         <li v-if="listLoading" class="flex justify-center py-4">
           <UiSpinner color="primary" label="Cargando cola" />
@@ -36,15 +36,15 @@
             <UiSpinner size="lg" color="primary" label="Preparando tubos" />
           </div>
           <ul v-else class="space-y-3">
-            <li v-for="s in order?.samples ?? []" :key="s.id">
-              <SampleTubeCard :sample="s">
+            <li v-for="sample in order?.samples ?? []" :key="sample.id">
+              <SampleTubeCard :sample="sample">
                 <LabelPreview
                   class="mt-1"
                   :patient-name="fullName(current.patient)"
                   :document="`${current.patient.document_type} ${current.patient.document_number}`"
                   :order-number="current.order_number ?? ''"
-                  :tube-name="s.name"
-                  :area-route="s.area_route"
+                  :tube-name="sample.name"
+                  :area-route="sample.area_route"
                 />
               </SampleTubeCard>
             </li>
@@ -93,11 +93,11 @@ const { entries, loading: listLoading, refresh } = useQueueList(['en_espera_impr
 
 const staff = ref<StaffMember[]>([])
 const staffOptions = computed(() =>
-  staff.value.map((s) => ({ value: s.id, label: s.job_title ? `${s.name} · ${s.job_title}` : s.name }))
+  staff.value.map((staffMember) => ({ value: staffMember.id, label: staffMember.job_title ? `${staffMember.name} · ${staffMember.job_title}` : staffMember.name }))
 )
 const professionalId = ref('')
 const currentId = ref<string | null>(null)
-const current = computed(() => entries.value.find((e) => e.id === currentId.value) ?? null)
+const current = computed(() => entries.value.find((entry) => entry.id === currentId.value) ?? null)
 const order = ref<OrderDetail | null>(null)
 const loading = ref(false)
 const busy = ref(false)
@@ -107,8 +107,8 @@ const error = ref('')
 async function loadStaff() {
   try {
     staff.value = await api.get<StaffMember[]>('/catalog/staff')
-  } catch (e) {
-    error.value = leoErrorMessage(e)
+  } catch (caughtError) {
+    error.value = leoErrorMessage(caughtError)
     toast.error(error.value)
   }
 }
@@ -127,14 +127,14 @@ async function downloadZpl() {
   }
 }
 
-async function select(e: QueueEntry) {
-  currentId.value = e.id
+async function select(entry: QueueEntry) {
+  currentId.value = entry.id
   error.value = ''
   order.value = null
   professionalId.value = ''
   loading.value = true
   try {
-    order.value = await api.post<OrderDetail>(`/orders/by-entry/${e.id}/samples`)
+    order.value = await api.post<OrderDetail>(`/orders/by-entry/${entry.id}/samples`)
   } catch (err) {
     error.value = leoErrorMessage(err)
     toast.error(error.value)
@@ -147,7 +147,7 @@ async function print() {
   if (!current.value) return
   const entryId = current.value.id
   const orderNumber = current.value.order_number
-  const pro = staff.value.find((s) => s.id === professionalId.value)
+  const pro = staff.value.find((staffMember) => staffMember.id === professionalId.value)
   if (!pro) return
   busy.value = true
   error.value = ''

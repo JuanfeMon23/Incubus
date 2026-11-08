@@ -21,7 +21,7 @@ const Harness = defineComponent({
     })
     const onSubmit = form.submit(async () => {})
     return () =>
-      h('form', { onSubmit: (e: Event) => { e.preventDefault(); void onSubmit() } }, [
+      h('form', { onSubmit: (event: Event) => { event.preventDefault(); void onSubmit() } }, [
         h(UiFormField, { name: 'first_name', label: 'Primer nombre', required: true }, {
           default: () => h(UiTextInput)
         }),
@@ -37,7 +37,7 @@ describe('validación inline del formulario de recepción', () => {
   it('muestra el texto de campo obligatorio bajo cada campo vacío al enviar', async () => {
     const wrapper = await mountSuspended(Harness)
     await wrapper.find('form').trigger('submit')
-    await new Promise((r) => setTimeout(r, 50))
+    await new Promise((resolve) => setTimeout(resolve, 50))
     await nextTick()
     const text = wrapper.text()
     expect(text).toContain('El primer nombre es obligatorio.')
@@ -47,7 +47,7 @@ describe('validación inline del formulario de recepción', () => {
   it('marca el campo como inválido (aria-invalid) y en rojo', async () => {
     const wrapper = await mountSuspended(Harness)
     await wrapper.find('form').trigger('submit')
-    await new Promise((r) => setTimeout(r, 50))
+    await new Promise((resolve) => setTimeout(resolve, 50))
     expect(wrapper.find('input[aria-invalid="true"]').exists()).toBe(true)
     expect(wrapper.html()).toContain('text-danger')
   })

@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 
 from app.conftest import FakeLeo, make_leo_user
-from app.core import permissions as p
+from app.core import permissions
 from app.core.leo import auth, catalog
 from app.modules.orders.models import OrderPrecondition, OrderResult, OrderTest
 from app.modules.orders.tests.test_sampling import _claim, _printed
@@ -16,7 +16,7 @@ from app.modules.results.tests.helpers import order_in_laboratory
 
 API = "/api/v1"
 ALL = set(catalog.tags)
-NO_SUPERVISE = ALL - {p.SAM_SUPERVISE}
+NO_SUPERVISE = ALL - {permissions.SAM_SUPERVISE}
 
 
 def _as(leo: FakeLeo, name: str, tags=NO_SUPERVISE):
@@ -44,7 +44,7 @@ def _assert_not_owner(response, owner_name: str) -> None:
 
 
 def _denied(leo: FakeLeo) -> list[str]:
-    return [e["action_tag"] for e in leo.events if e["result"] == "denied"]
+    return [event["action_tag"] for event in leo.events if event["result"] == "denied"]
 
 
 # --- Catalogo ---------------------------------------------------------------------
@@ -52,12 +52,18 @@ def _denied(leo: FakeLeo) -> list[str]:
 
 def test_the_supervise_tag_is_in_the_catalog_with_a_readable_name() -> None:
     auth.check_catalog()
-    assert p.SAM_SUPERVISE == "incubus.sampling.supervise"
-    assert p.SAM_SUPERVISE in catalog.tags
+    assert permissions.SAM_SUPERVISE == "incubus.sampling.supervise"
+    assert permissions.SAM_SUPERVISE in catalog.tags
     sampling = next(
-        m for m in catalog.to_payload()["modules"] if m["slug"] == "sampling"
+        module
+        for module in catalog.to_payload()["modules"]
+        if module["slug"] == "sampling"
     )
-    action = next(a for a in sampling["actions"] if a["verb"] == "supervise")
+    action = next(
+        supervise_action
+        for supervise_action in sampling["actions"]
+        if supervise_action["verb"] == "supervise"
+    )
     assert action["name"] == "Gestionar turnos de otros técnicos"
 
 
@@ -85,7 +91,10 @@ async def test_history_and_claim_record_who_acted_by_id(client, leo: FakeLeo) ->
     assert claimed["claimed_by"] == "Maria Recepcion"
     assert claimed["claimed_by_user_id"] == str(caller.id)
     history = (await client.get(f"{API}/queue/{entry['id']}/history")).json()
-    assert [(h["actor"], h["actor_user_id"]) for h in history] == [
+    assert [
+        (history_entry["actor"], history_entry["actor_user_id"])
+        for history_entry in history
+    ] == [
         ("Ana Ingreso", str(creator.id)),
         ("Maria Recepcion", str(caller.id)),
     ]
@@ -136,7 +145,7 @@ async def test_socket_events_carry_neither_names_nor_user_ids(
     dump = json.dumps(sent)
     assert str(owner.id) not in dump and "Tecnica A" not in dump
     for body in sent:
-        assert not any("user" in k or "actor" in k or "by" in k for k in body)
+        assert not any("user" in key or "actor" in key or "by" in key for key in body)
 
 
 # --- Tubos -------------------------------------------------------------------------------
@@ -167,7 +176,10 @@ async def test_receive_and_unreceive_write_and_clear_the_user_id(
         f"{API}/orders/by-entry/{entry_id}/precondition-checks",
         json={
             "stage": "sampling",
-            "checks": [{"key": c["key"], "met": True} for c in checks["preconditions"]],
+            "checks": [
+                {"key": precondition["key"], "met": True}
+                for precondition in checks["preconditions"]
+            ],
         },
     )
     assert (
@@ -181,7 +193,10 @@ async def test_receive_and_unreceive_write_and_clear_the_user_id(
     assert received["received_by_user_id"] == str(lab.id)
     lab_queue = (await client.get(f"{API}/lab/reception")).json()
     shown = next(
-        s for o in lab_queue for s in o["samples"] if s["id"] == tubes[0]["id"]
+        sample
+        for queue_entry in lab_queue
+        for sample in queue_entry["samples"]
+        if sample["id"] == tubes[0]["id"]
     )
     assert shown["received_by_user_id"] == str(lab.id)
     undone = (
@@ -201,7 +216,10 @@ async def test_precondition_checks_record_who_verified_each_stage(
         f"{API}/orders/by-entry/{entry_id}/precondition-checks",
         json={
             "stage": "sampling",
-            "checks": [{"key": c["key"], "met": True} for c in detail["preconditions"]],
+            "checks": [
+                {"key": precondition["key"], "met": True}
+                for precondition in detail["preconditions"]
+            ],
         },
     )
     rows = (
@@ -209,7 +227,10 @@ async def test_precondition_checks_record_who_verified_each_stage(
             await session.execute(
                 select(OrderPrecondition).where(
                     OrderPrecondition.key.in_(
-                        [c["key"] for c in detail["preconditions"]]
+                        [
+                            precondition["key"]
+                            for precondition in detail["preconditions"]
+                        ]
                     )
                 )
             )
@@ -236,7 +257,10 @@ async def test_results_record_who_typed_and_who_ran_the_validation(
         await client.get(f"{API}/results/queue", params={"professional_id": "staff-qc"})
     ).json()
     test_id = next(
-        t["order_test_id"] for o in queue for t in o["tests"] if t["code"] == "GLU"
+        test_row["order_test_id"]
+        for queue_entry in queue
+        for test_row in queue_entry["tests"]
+        if test_row["code"] == "GLU"
     )
     body = {
         "professional_id": "staff-qc",
@@ -277,7 +301,10 @@ async def test_the_owner_can_mark_finish_and_return_their_turn(
         f"{API}/orders/by-entry/{entry_id}/precondition-checks",
         json={
             "stage": "sampling",
-            "checks": [{"key": c["key"], "met": True} for c in detail["preconditions"]],
+            "checks": [
+                {"key": precondition["key"], "met": True}
+                for precondition in detail["preconditions"]
+            ],
         },
     )
     assert (
@@ -305,7 +332,7 @@ async def test_another_technician_cannot_mark_a_tube(
     for action in ("collect", "uncollect"):
         response = await client.post(f"{API}/orders/samples/{tube['id']}/{action}")
         _assert_not_owner(response, "Tecnica A")
-    assert _denied(leo) == [p.SAM_COLLECT, p.SAM_COLLECT]
+    assert _denied(leo) == [permissions.SAM_COLLECT, permissions.SAM_COLLECT]
     again = (await _tubes(client, entry_id))[0]
     assert again["collected_by"] == "Tecnica A"  # nada cambio
 
@@ -323,7 +350,7 @@ async def test_another_technician_cannot_finish_or_return_the_turn(
         f"{API}/queue/{entry_id}/return", json={"reason_id": reasons[0]["id"]}
     )
     _assert_not_owner(back, "Tecnica A")
-    assert _denied(leo) == [p.SAM_FINISH, p.SAM_RETURN]
+    assert _denied(leo) == [permissions.SAM_FINISH, permissions.SAM_RETURN]
     entry = (await client.get(f"{API}/queue/{entry_id}")).json()
     assert entry["status"] == "en_atencion_toma_muestras"
     assert entry["claimed_by"] == "Tecnica A"

@@ -9,7 +9,7 @@ mockNuxtImport('useLeoAppApi', () => () => fake.client)
 
 enableAutoUnmount(afterEach)
 
-const page = (n: number, total = 45) => ({ items: [], page: n, page_size: 20, total })
+const page = (pageNumber: number, total = 45) => ({ items: [], page: pageNumber, page_size: 20, total })
 
 beforeEach(() => {
   fake.reset()

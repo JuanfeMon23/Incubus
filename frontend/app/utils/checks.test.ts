@@ -3,17 +3,17 @@ import { checksComplete, emptyChecks, missingNoteKeys, toCheckPayload, unanswere
 
 describe('checks', () => {
   it('emptyChecks deja todo sin responder', () => {
-    const c = emptyChecks(['a', 'b'])
-    expect(unansweredKeys(['a', 'b'], c)).toEqual(['a', 'b'])
-    expect(checksComplete(['a', 'b'], c)).toBe(false)
+    const checks = emptyChecks(['a', 'b'])
+    expect(unansweredKeys(['a', 'b'], checks)).toEqual(['a', 'b'])
+    expect(checksComplete(['a', 'b'], checks)).toBe(false)
   })
 
   it('"no cumple" exige nota', () => {
-    const c = { a: { met: false, note: '  ' }, b: { met: true, note: '' } }
-    expect(missingNoteKeys(['a', 'b'], c)).toEqual(['a'])
-    expect(checksComplete(['a', 'b'], c)).toBe(false)
-    c.a.note = 'comió'
-    expect(checksComplete(['a', 'b'], c)).toBe(true)
+    const checks = { a: { met: false, note: '  ' }, b: { met: true, note: '' } }
+    expect(missingNoteKeys(['a', 'b'], checks)).toEqual(['a'])
+    expect(checksComplete(['a', 'b'], checks)).toBe(false)
+    checks.a.note = 'comió'
+    expect(checksComplete(['a', 'b'], checks)).toBe(true)
   })
 
   it('sin precondiciones no hay nada pendiente', () => {

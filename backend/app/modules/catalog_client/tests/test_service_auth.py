@@ -84,7 +84,7 @@ async def test_leo_caido_es_catalog_unavailable_sin_filtrar_detalles():
     def leo(_r: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"code": "x", "message": "interno secreto"})
 
-    client = catalog(make_provider(leo), lambda r: httpx.Response(200, json={}))
+    client = catalog(make_provider(leo), lambda response: httpx.Response(200, json={}))
     with pytest.raises(CatalogUnavailableError) as info:
         await client.search_tests(None)
     assert info.value.code == "catalog_unavailable"
@@ -99,7 +99,7 @@ async def test_credenciales_invalidas_es_catalog_unavailable():
             401, json={"code": "invalid_client", "message": "Credenciales invalidas"}
         )
 
-    client = catalog(make_provider(leo), lambda r: httpx.Response(200, json={}))
+    client = catalog(make_provider(leo), lambda response: httpx.Response(200, json={}))
     with pytest.raises(CatalogUnavailableError) as info:
         await client.search_tests(None)
     assert info.value.message.startswith("No se pudo autenticar con Leo")
@@ -125,14 +125,14 @@ async def test_leo_deniega_la_concesion_es_catalog_forbidden():
             403, json={"code": "access_denied", "message": "Sin concesion"}
         )
 
-    client = catalog(make_provider(leo), lambda r: httpx.Response(200, json={}))
+    client = catalog(make_provider(leo), lambda response: httpx.Response(200, json={}))
     with pytest.raises(CatalogForbiddenError):
         await client.search_tests(None)
 
 
 async def test_otros_errores_siguen_siendo_catalog_unavailable():
     client = catalog(
-        make_provider(leo_issuing(["a"])), lambda r: httpx.Response(500, json={})
+        make_provider(leo_issuing(["a"])), lambda response: httpx.Response(500, json={})
     )
     with pytest.raises(CatalogUnavailableError) as info:
         await client.search_tests(None)

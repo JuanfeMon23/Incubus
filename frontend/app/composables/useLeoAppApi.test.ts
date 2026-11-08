@@ -38,7 +38,7 @@ describe('useLeoAppApi', () => {
         action: 'incubus.reception.call-next'
       })
     )
-    const err = await useLeoAppApi().post('/queue/call-next').catch((e) => e)
+    const err = await useLeoAppApi().post('/queue/call-next').catch((error) => error)
     expect(err).toBeInstanceOf(LeoApiError)
     expect(leoErrorMessage(err)).toBe('No tienes permiso para: Llamar al siguiente paciente')
   })
@@ -50,17 +50,17 @@ describe('useLeoAppApi', () => {
         any_of: ['incubus.reception.return', 'incubus.sampling.return']
       })
     )
-    expect(leoErrorMessage(await useLeoAppApi().post('/queue/1/return').catch((e) => e))).toBe(
+    expect(leoErrorMessage(await useLeoAppApi().post('/queue/1/return').catch((error) => error))).toBe(
       'No tienes permiso para: Devolver pacientes a pre-recepción o Devolver pacientes a espera de toma'
     )
     rejectWith(new LeoApiError(403, 'forbidden', 'No tienes permiso para realizar esta acción.', {}))
-    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((e) => e))).toBe('No tienes permiso para realizar esta acción.')
+    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((error) => error))).toBe('No tienes permiso para realizar esta acción.')
   })
 
   it('otros errores conservan su mensaje legible (y los de red no muestran texto crudo)', async () => {
     rejectWith(new LeoApiError(409, 'conflict', 'El paciente ya fue tomado.', null))
-    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((e) => e))).toBe('El paciente ya fue tomado.')
+    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((error) => error))).toBe('El paciente ya fue tomado.')
     rejectWith(new TypeError('Failed to fetch'))
-    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((e) => e))).not.toContain('Failed to fetch')
+    expect(leoErrorMessage(await useLeoAppApi().get('/x').catch((error) => error))).not.toContain('Failed to fetch')
   })
 })

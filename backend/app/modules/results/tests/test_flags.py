@@ -54,13 +54,13 @@ def test_ignora_rangos_inactivos():
 
 
 def test_banderas_numericas():
-    r = rng(low=3.4, high=7.0, critical_low=2.0, critical_high=9.0)
-    assert evaluate_flag(5.0, r) == "normal"
-    assert evaluate_flag(3.4, r) == "normal"
-    assert evaluate_flag(3.0, r) == "low"
-    assert evaluate_flag(7.5, r) == "high"
-    assert evaluate_flag(1.5, r) == "critical_low"
-    assert evaluate_flag(9.5, r) == "critical_high"
+    response = rng(low=3.4, high=7.0, critical_low=2.0, critical_high=9.0)
+    assert evaluate_flag(5.0, response) == "normal"
+    assert evaluate_flag(3.4, response) == "normal"
+    assert evaluate_flag(3.0, response) == "low"
+    assert evaluate_flag(7.5, response) == "high"
+    assert evaluate_flag(1.5, response) == "critical_low"
+    assert evaluate_flag(9.5, response) == "critical_high"
 
 
 def test_sin_rango_no_hay_bandera():

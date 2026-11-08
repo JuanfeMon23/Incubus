@@ -147,7 +147,7 @@ def require_any_action(*tags: str) -> Any:
     async def dependency(
         request: Request, user: Annotated[LeoUser, Depends(auth.current_user)]
     ) -> LeoUser:
-        if not any(user.can(t) for t in tags):
+        if not any(user.can(required_tag) for required_tag in tags):
             await deny(request, user, tags[0], any_of=list(tags))
         return user
 
@@ -164,7 +164,9 @@ async def _catalog_reader(
             "Esta acción es solo para personas, no para aplicaciones.",
             403,
         )
-    if not any(p.startswith(f"{APP_SLUG}.") for p in user.permissions):
+    if not any(
+        permission.startswith(f"{APP_SLUG}.") for permission in user.permissions
+    ):
         raise LeoError(
             "forbidden",
             "No tienes permiso para realizar esta acción.",

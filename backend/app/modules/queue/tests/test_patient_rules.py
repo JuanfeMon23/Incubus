@@ -7,14 +7,14 @@ BASE = {"first_name": "ANA", "first_last_name": "LOPEZ"}
 
 async def _priority(client):
     prs = (await client.get("/api/v1/priorities")).json()
-    return next(p["id"] for p in prs if p["code"] == "media")
+    return next(priority["id"] for priority in prs if priority["code"] == "media")
 
 
 async def test_tipos_de_documento_parametrizados(client):
     res = (await client.get("/api/v1/document-types")).json()
-    codes = [d["code"] for d in res]
+    codes = [document_type["code"] for document_type in res]
     assert {"CC", "TI", "CE", "PA", "RC"} <= set(codes)
-    assert all(d["name"] for d in res)
+    assert all(document_type["name"] for document_type in res)
 
 
 async def test_ingreso_con_tipo_de_documento_que_no_existe(client):
@@ -165,8 +165,8 @@ async def test_la_plantilla_publicada_se_consulta_una_sola_vez():
 
     client = CatalogClient("http://vladimir", transport=httpx.MockTransport(handler))
     first = await client.template_structure("v1")
-    n = len(calls)
+    calls_after_first_read = len(calls)
     second = await client.template_structure("v1")
-    assert [a["code"] for a in first["analytes"]] == ["A0", "A1", "A2"]
+    assert [analyte["code"] for analyte in first["analytes"]] == ["A0", "A1", "A2"]
     assert second == first
-    assert len(calls) == n  # la segunda lectura sale de cache
+    assert len(calls) == calls_after_first_read  # la segunda lectura sale de cache

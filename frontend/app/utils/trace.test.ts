@@ -6,7 +6,7 @@ const ev = (step: string, at: string, over: Partial<TraceEvent> = {}): TraceEven
   at, step, scope: 'test', actor: { id: null, name: null, staff_id: null }, summary: step, details: {}, source: 'event', ...over
 })
 // Fechas locales (sin zona) para no depender del huso del entorno.
-const local = (d: string) => new Date(d).toISOString()
+const local = (dateText: string) => new Date(dateText).toISOString()
 
 describe('stepCategory', () => {
   it.each([
@@ -48,13 +48,13 @@ describe('actorName', () => {
 
 describe('groupByDay', () => {
   it('agrupa por día local y conserva el orden', () => {
-    const a = ev('a', local('2026-03-01T08:00:00'))
-    const b = ev('b', local('2026-03-01T23:59:00'))
-    const c = ev('c', local('2026-03-02T00:01:00'))
-    const days = groupByDay([a, b, c])
-    expect(days.map((d) => d.key)).toEqual(['2026-03-01', '2026-03-02'])
-    expect(days[0]!.events).toEqual([a, b])
-    expect(days[1]!.events).toEqual([c])
+    const first = ev('a', local('2026-03-01T08:00:00'))
+    const second = ev('b', local('2026-03-01T23:59:00'))
+    const third = ev('c', local('2026-03-02T00:01:00'))
+    const days = groupByDay([first, second, third])
+    expect(days.map((day) => day.key)).toEqual(['2026-03-01', '2026-03-02'])
+    expect(days[0]!.events).toEqual([first, second])
+    expect(days[1]!.events).toEqual([third])
     expect(groupByDay([])).toEqual([])
   })
   it('hora local HH:MM:SS', () => {
@@ -69,12 +69,12 @@ describe('filterEvents', () => {
     ev('result.entered', local('2026-03-01T10:00:00'), { scope: 'test' })
   ]
   it('por ámbito', () => {
-    expect(filterEvents(list, { scopes: ['test'], hideQueue: false }).map((e) => e.step)).toEqual(['result.entered'])
+    expect(filterEvents(list, { scopes: ['test'], hideQueue: false }).map((event) => event.step)).toEqual(['result.entered'])
     expect(filterEvents(list, { scopes: ['test', 'order', 'sample'], hideQueue: false })).toHaveLength(3)
     expect(filterEvents(list, { scopes: [], hideQueue: false })).toHaveLength(0)
   })
   it('oculta los pasos de cola', () => {
-    expect(filterEvents(list, { scopes: ['test', 'order', 'sample'], hideQueue: true }).map((e) => e.step)).toEqual(['sample.collected', 'result.entered'])
+    expect(filterEvents(list, { scopes: ['test', 'order', 'sample'], hideQueue: true }).map((event) => event.step)).toEqual(['sample.collected', 'result.entered'])
   })
 })
 

@@ -28,14 +28,14 @@ def test_unidades_se_normalizan_a_minutos():
 
 def test_categorias_distintas_se_conservan():
     out = dedupe_preconditions([p("ayuno", 8, "horas"), p("tabaco", 2, "horas")])
-    assert {o.category for o in out} == {"ayuno", "tabaco"}
+    assert {precondition.category for precondition in out} == {"ayuno", "tabaco"}
 
 
 def test_sin_duracion_deduplica_por_texto():
-    a = p("recoleccion_muestra", text="Primera orina de la manana")
-    b = p("recoleccion_muestra", text="primera orina de la manana ")
-    c = p("recoleccion_muestra", text="Aseo genital previo")
-    out = dedupe_preconditions([a, b, c])
+    first = p("recoleccion_muestra", text="Primera orina de la manana")
+    duplicate = p("recoleccion_muestra", text="primera orina de la manana ")
+    other = p("recoleccion_muestra", text="Aseo genital previo")
+    out = dedupe_preconditions([first, duplicate, other])
     assert len(out) == 2
 
 
@@ -45,11 +45,11 @@ def test_sin_duracion_y_con_duracion_de_misma_categoria_coexisten():
         [p("ayuno", None, None, text="Solo agua"), p("ayuno", 8, "horas")]
     )
     assert len(out) == 2
-    assert any(o.duration_value == 8 for o in out)
+    assert any(precondition.duration_value == 8 for precondition in out)
 
 
 def test_orden_estable_por_primera_aparicion():
     out = dedupe_preconditions(
         [p("tabaco", 1, "horas"), p("ayuno", 8, "horas"), p("tabaco", 3, "horas")]
     )
-    assert [o.category for o in out] == ["tabaco", "ayuno"]
+    assert [precondition.category for precondition in out] == ["tabaco", "ayuno"]

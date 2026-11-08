@@ -53,14 +53,16 @@ def _parse_rooms(data: Any) -> list[str] | None:
     """Lista de rooms validos y sin repetir, o `None` si el payload es invalido."""
     if not isinstance(data, dict) or not isinstance(data.get("rooms"), list):
         return None
-    if not all(rooms.is_valid_room(r) for r in data["rooms"]):
+    if not all(rooms.is_valid_room(room) for room in data["rooms"]):
         return None
     return list(dict.fromkeys(data["rooms"]))
 
 
 class QueueNamespace(socketio.AsyncNamespace):
     def _joined(self, sid: str) -> list[str]:
-        return [r for r in self.rooms(sid) if r != sid]  # cada socket tiene su sid
+        return [
+            room for room in self.rooms(sid) if room != sid
+        ]  # cada socket tiene su sid
 
     async def on_connect(self, sid: str, environ: dict, auth: Any = None) -> None:
         try:
@@ -107,7 +109,9 @@ class QueueNamespace(socketio.AsyncNamespace):
         principal = await self._principal(sid)
         if principal is None:
             return _error("session_expired")
-        if not all(authorize_room(principal, r) for r in wanted):
+        if not all(
+            authorize_room(principal, requested_room) for requested_room in wanted
+        ):
             return _error("forbidden")
         current = self._joined(sid)
         max_rooms = await runtime_settings.get("realtime.socket_max_rooms")

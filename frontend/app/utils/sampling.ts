@@ -1,7 +1,7 @@
 import type { OrderSample } from '../types'
 
 export function pendingSamples(samples: OrderSample[]): OrderSample[] {
-  return samples.filter((s) => !s.collected_at)
+  return samples.filter((sample) => !sample.collected_at)
 }
 
 export function allCollected(samples: OrderSample[]): boolean {

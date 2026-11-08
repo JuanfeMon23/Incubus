@@ -30,17 +30,22 @@ async def test_dos_claims_simultaneos_de_la_toma_uno_200_y_otro_409(
     _overlap_unlocked_reads(monkeypatch)
     url = f"/api/v1/queue/{entry_id}/claim"
     results = await asyncio.gather(*(client.post(url, json=CLAIM) for _ in range(3)))
-    codes = sorted(r.status_code for r in results)
-    assert codes == [200, 409, 409], [r.text for r in results]
+    codes = sorted(result.status_code for result in results)
+    assert codes == [200, 409, 409], [result.text for result in results]
     hist = (await client.get(f"/api/v1/queue/{entry_id}/history")).json()
-    assert [h["to_status"] for h in hist].count("en_atencion_toma_muestras") == 1
+    assert [history_entry["to_status"] for history_entry in hist].count(
+        "en_atencion_toma_muestras"
+    ) == 1
 
 
 async def test_dos_claims_simultaneos_de_recepcion_uno_200_y_otro_409(
     committed_client, monkeypatch
 ):
     client = committed_client
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     entry = (
         await client.post(
             "/api/v1/queue",
@@ -59,4 +64,4 @@ async def test_dos_claims_simultaneos_de_recepcion_uno_200_y_otro_409(
     results = await asyncio.gather(
         *(client.post(url, json={"actor": f"u{i}"}) for i in range(3))
     )
-    assert sorted(r.status_code for r in results) == [200, 409, 409]
+    assert sorted(result.status_code for result in results) == [200, 409, 409]

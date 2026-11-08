@@ -22,10 +22,17 @@ class Tube:
 
 
 def _chosen_link(test: dict) -> dict | None:
-    active = [s for s in test.get("sample_types", []) if s.get("is_active", True)]
+    active = [
+        sample_type
+        for sample_type in test.get("sample_types", [])
+        if sample_type.get("is_active", True)
+    ]
     if not active:
         return None
-    return next((s for s in active if s.get("is_preferred")), active[0])
+    return next(
+        (sample_type for sample_type in active if sample_type.get("is_preferred")),
+        active[0],
+    )
 
 
 def group_samples(tests: list[dict], sample_types: dict[str, dict]) -> list[Tube]:
@@ -55,5 +62,9 @@ def group_samples(tests: list[dict], sample_types: dict[str, dict]) -> list[Tube
         tube.test_codes.append(test["code"])
     return sorted(
         tubes.values(),
-        key=lambda t: (t.draw_order is None, t.draw_order or 0, t.name),
+        key=lambda grouped_tube: (
+            grouped_tube.draw_order is None,
+            grouped_tube.draw_order or 0,
+            grouped_tube.name,
+        ),
     )

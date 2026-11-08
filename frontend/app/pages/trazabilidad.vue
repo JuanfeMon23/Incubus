@@ -22,13 +22,13 @@
     <UiCard v-else-if="searched && tests.length">
       <h2 class="mb-2 text-sm font-semibold">Pruebas de la orden <span class="font-mono">{{ searched }}</span></h2>
       <ul class="flex flex-wrap gap-2" aria-label="Pruebas de la orden">
-        <li v-for="t in tests" :key="t.id">
+        <li v-for="test in tests" :key="test.id">
           <UiButton
             size="sm"
-            :variant="t.id === testId ? 'primary' : 'secondary'"
-            :aria-pressed="t.id === testId"
-            @click="selectTest(t.id)"
-          >{{ t.code }} · {{ t.name }}</UiButton>
+            :variant="test.id === testId ? 'primary' : 'secondary'"
+            :aria-pressed="test.id === testId"
+            @click="selectTest(test.id)"
+          >{{ test.code }} · {{ test.name }}</UiButton>
         </li>
       </ul>
     </UiCard>
@@ -70,7 +70,7 @@ const testId = ref('')
 const searching = ref(false)
 const error = ref('')
 
-const one = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? '') : v ? String(v) : '')
+const one = (queryValue: unknown) => (Array.isArray(queryValue) ? String(queryValue[0] ?? '') : queryValue ? String(queryValue) : '')
 
 async function search(preferredTest = '') {
   const number = orderInput.value.trim()
@@ -84,10 +84,10 @@ async function search(preferredTest = '') {
     const res = await api.get<{ tests: TraceTest[] }>(`/orders/${encodeURIComponent(number)}/tests`)
     searched.value = number
     tests.value = res.tests
-    const chosen = tests.value.find((t) => t.id === preferredTest) ?? (tests.value.length === 1 ? tests.value[0] : undefined)
+    const chosen = tests.value.find((test) => test.id === preferredTest) ?? (tests.value.length === 1 ? tests.value[0] : undefined)
     if (chosen) selectTest(chosen.id)
-  } catch (e) {
-    error.value = leoErrorMessage(e)
+  } catch (caughtError) {
+    error.value = leoErrorMessage(caughtError)
   } finally {
     searching.value = false
   }

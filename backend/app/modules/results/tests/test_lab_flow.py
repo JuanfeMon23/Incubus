@@ -4,10 +4,10 @@ QC = "staff-qc"
 HEM = "staff-hem"
 
 
-async def _queue(client, professional_id, q=None):
+async def _queue(client, professional_id, query=None):
     params = {"professional_id": professional_id}
-    if q:
-        params["q"] = q
+    if query:
+        params["q"] = query
     res = await client.get("/api/v1/results/queue", params=params)
     assert res.status_code == 200, res.text
     return res.json()
@@ -15,9 +15,9 @@ async def _queue(client, professional_id, q=None):
 
 async def _test_id(client, professional_id, code):
     for order in await _queue(client, professional_id):
-        for t in order["tests"]:
-            if t["code"] == code:
-                return t["order_test_id"]
+        for test in order["tests"]:
+            if test["code"] == code:
+                return test["order_test_id"]
     raise AssertionError(f"no hay {code} en la cola de {professional_id}")
 
 
@@ -37,7 +37,10 @@ async def test_recepcion_exige_todos_los_tubos_para_pasar_a_laboratorio(
     setup_catalog(catalog)
     from app.modules.results.tests.helpers import DEMOGRAPHICS, PATIENT
 
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
     catalog.add_sample_type("lila", "Tapa lila", "#7C3AED", draw_order=2)
     catalog.tests["VIH"]["sample_types"] = [
         {
@@ -47,14 +50,14 @@ async def test_recepcion_exige_todos_los_tubos_para_pasar_a_laboratorio(
             "is_active": True,
         }
     ]
-    e = (
+    error = (
         await client.post(
             "/api/v1/queue", json={"patient": PATIENT, "priority_id": pr["media"]}
         )
     ).json()
-    eid = e["id"]
+    eid = error["id"]
     await client.post(f"/api/v1/queue/{eid}/claim", json={"actor": "r"})
-    await client.patch(f"/api/v1/patients/{e['patient']['id']}", json=DEMOGRAPHICS)
+    await client.patch(f"/api/v1/patients/{error['patient']['id']}", json=DEMOGRAPHICS)
     await client.post(
         f"/api/v1/orders/close-reception/{eid}", json={"test_codes": ["GLU", "VIH"]}
     )
@@ -67,12 +70,12 @@ async def test_recepcion_exige_todos_los_tubos_para_pasar_a_laboratorio(
     )
     tubes = (await client.get(f"/api/v1/orders/by-entry/{eid}")).json()["samples"]
     assert len(tubes) == 2
-    for t in tubes:
-        await client.post(f"/api/v1/orders/samples/{t['id']}/collect", json={})
+    for tube in tubes:
+        await client.post(f"/api/v1/orders/samples/{tube['id']}/collect", json={})
     await client.post(f"/api/v1/queue/{eid}/finish-sampling", json={})
 
     waiting = (await client.get("/api/v1/lab/reception")).json()
-    assert [w["entry_id"] for w in waiting] == [eid]
+    assert [entry["entry_id"] for entry in waiting] == [eid]
     assert waiting[0]["pending"] == 2
 
     first = await client.post(
@@ -90,9 +93,9 @@ async def test_recepcion_exige_todos_los_tubos_para_pasar_a_laboratorio(
     )
     assert undo.json()["received_at"] is None
 
-    for t in tubes:
+    for tube in tubes:
         await client.post(
-            f"/api/v1/orders/samples/{t['id']}/receive", json={"actor": "lab"}
+            f"/api/v1/orders/samples/{tube['id']}/receive", json={"actor": "lab"}
         )
     assert (await client.get(f"/api/v1/queue/{eid}")).json()[
         "status"
@@ -105,15 +108,18 @@ async def test_busqueda_en_recepcion_por_orden_o_documento(client, catalog):
     setup_catalog(catalog)
     from app.modules.results.tests.helpers import DEMOGRAPHICS, PATIENT
 
-    pr = {p["code"]: p["id"] for p in (await client.get("/api/v1/priorities")).json()}
-    e = (
+    pr = {
+        priority["code"]: priority["id"]
+        for priority in (await client.get("/api/v1/priorities")).json()
+    }
+    error = (
         await client.post(
             "/api/v1/queue", json={"patient": PATIENT, "priority_id": pr["alta"]}
         )
     ).json()
-    eid = e["id"]
+    eid = error["id"]
     await client.post(f"/api/v1/queue/{eid}/claim", json={"actor": "r"})
-    await client.patch(f"/api/v1/patients/{e['patient']['id']}", json=DEMOGRAPHICS)
+    await client.patch(f"/api/v1/patients/{error['patient']['id']}", json=DEMOGRAPHICS)
     number = (
         await client.post(
             f"/api/v1/orders/close-reception/{eid}", json={"test_codes": ["GLU"]}
@@ -126,8 +132,10 @@ async def test_busqueda_en_recepcion_por_orden_o_documento(client, catalog):
         f"/api/v1/queue/{eid}/claim",
         json={"actor": "x", "professional_id": PRO["professional_id"]},
     )
-    for t in (await client.get(f"/api/v1/orders/by-entry/{eid}")).json()["samples"]:
-        await client.post(f"/api/v1/orders/samples/{t['id']}/collect", json={})
+    for sample in (await client.get(f"/api/v1/orders/by-entry/{eid}")).json()[
+        "samples"
+    ]:
+        await client.post(f"/api/v1/orders/samples/{sample['id']}/collect", json={})
     await client.post(f"/api/v1/queue/{eid}/finish-sampling", json={})
 
     assert (
@@ -154,26 +162,26 @@ async def test_cada_profesional_solo_ve_su_area(client, catalog):
     await order_in_laboratory(client, catalog)
     qc = await _queue(client, QC)
     hem = await _queue(client, HEM)
-    assert {t["code"] for o in qc for t in o["tests"]} == {"GLU", "LIP"}
-    assert {t["code"] for o in hem for t in o["tests"]} == {"VIH"}
-    assert all(t["area_code"] == "QUI" for o in qc for t in o["tests"])
+    assert {test["code"] for order in qc for test in order["tests"]} == {"GLU", "LIP"}
+    assert {test["code"] for order in hem for test in order["tests"]} == {"VIH"}
+    assert all(test["area_code"] == "QUI" for order in qc for test in order["tests"])
 
 
 async def test_validadores_son_quienes_encargan_un_area(client, catalog):
     setup_catalog(catalog)
     res = (await client.get("/api/v1/catalog/validators")).json()
-    by_id = {v["id"]: v for v in res}
+    by_id = {order["id"]: order for order in res}
     assert set(by_id) == {QC, HEM}
-    assert [a["code"] for a in by_id[QC]["areas"]] == ["QUI"]
+    assert [area["code"] for area in by_id[QC]["areas"]] == ["QUI"]
 
 
 async def test_buscador_de_ordenes_del_area(client, catalog):
     _, number = await order_in_laboratory(client, catalog)
-    assert len(await _queue(client, QC, q=number)) == 1
-    assert len(await _queue(client, QC, q="7001002003")) == 1
-    assert len(await _queue(client, QC, q="RUIZ")) == 1
-    assert len(await _queue(client, QC, q="glu")) == 1
-    assert await _queue(client, QC, q="00000000") == []
+    assert len(await _queue(client, QC, query=number)) == 1
+    assert len(await _queue(client, QC, query="7001002003")) == 1
+    assert len(await _queue(client, QC, query="RUIZ")) == 1
+    assert len(await _queue(client, QC, query="glu")) == 1
+    assert await _queue(client, QC, query="00000000") == []
 
 
 # --------------------------------------------------------------- resultados
@@ -227,7 +235,7 @@ async def test_analito_calculado_se_obtiene_de_la_formula(client, catalog):
             "values": {"COL": "250", "HDL": "50", "TG": "100"},
         },
     )
-    rows = {r["code"]: r for r in saved.json()["results"]}
+    rows = {result["code"]: result for result in saved.json()["results"]}
     assert rows["LDL"]["value"] == 180  # 250 - 50 - 100/5
     assert rows["LDL"]["flag"] == "high"
     assert rows["COL"]["flag"] == "high"
@@ -389,8 +397,8 @@ async def test_orden_con_todos_sus_examenes_del_area_incluye_los_validados(
     assert before.status_code == 200
     data = before.json()
     assert data["order_number"] == number
-    assert {t["code"] for t in data["tests"]} == {"GLU", "LIP"}  # solo su area
-    assert all(t["validation_status"] == "pending" for t in data["tests"])
+    assert {test["code"] for test in data["tests"]} == {"GLU", "LIP"}  # solo su area
+    assert all(test["validation_status"] == "pending" for test in data["tests"])
 
     await client.post(
         f"/api/v1/results/tests/{glu}/validate",
@@ -405,14 +413,14 @@ async def test_orden_con_todos_sus_examenes_del_area_incluye_los_validados(
             f"/api/v1/results/orders/{entry_id}", params={"professional_id": QC}
         )
     ).json()
-    by_code = {t["code"]: t for t in after["tests"]}
+    by_code = {test["code"]: test for test in after["tests"]}
     assert by_code["GLU"]["validation_status"] == "validated"
     assert by_code["GLU"]["validated_by"] == "Paola"
     assert by_code["GLU"]["validated_at"]
     assert by_code["LIP"]["validation_status"] == "pending"
     # el listado general ya no ofrece el validado
     queue = await _queue(client, QC)
-    assert [t["code"] for t in queue[0]["tests"]] == ["LIP"]
+    assert [test["code"] for test in queue[0]["tests"]] == ["LIP"]
 
 
 async def test_orden_sin_examenes_en_el_area_del_profesional(client, catalog):

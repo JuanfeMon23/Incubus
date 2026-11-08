@@ -64,16 +64,19 @@ def option_value(
     if not options:
         return None
     expected = (rng or {}).get("expected_option_id")
-    ids = [str(o["id"]) for o in options]
+    ids = [str(option["id"]) for option in options]
     if not abnormal:
         if expected is not None and str(expected) in ids:
             return str(expected)
-        normal = [str(o["id"]) for o in options if not o.get("is_abnormal")]
+        normal = [
+            str(option["id"]) for option in options if not option.get("is_abnormal")
+        ]
         return rand.choice(normal or ids)
     others = [
-        str(o["id"])
-        for o in options
-        if str(o["id"]) != str(expected) and (o.get("is_abnormal") or expected)
+        str(option["id"])
+        for option in options
+        if str(option["id"]) != str(expected)
+        and (option.get("is_abnormal") or expected)
     ]
     return rand.choice(others or ids)
 
