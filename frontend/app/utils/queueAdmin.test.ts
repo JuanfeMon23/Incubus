@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { QueueAdminItem } from '../types'
+import type { QueueAdminItem, QueueAdminKind } from '../types'
 import {
   buildCreatePayload,
   buildUpdatePayload,
@@ -8,6 +8,7 @@ import {
   colorInputValue,
   deactivateBlockedReason,
   deactivateSchema,
+  isSystemKind,
   listParams,
   queueAdminErrorMessage,
   setDefaultSchema
@@ -145,5 +146,36 @@ describe('tope de page_size (ajuste del backend)', () => {
 
   it('el 422 sobre page_size llega legible (mensaje del servidor con el máximo vigente)', () => {
     expect(queueAdminErrorMessage(tooBig({ field: 'page_size', max: 50 }), 'priorities')).toBe('El tamaño de página máximo permitido es 50.')
+  })
+})
+
+describe('catálogos de sistema', () => {
+  const flag = item({ id: 'f1', code: 'critical_high', name: 'Crítico alto', color_hex: null, rank: null, is_default: null, sort_order: 5, variant: 'danger', show_in_report: true })
+
+  it('solo son de sistema los 6 catálogos nuevos', () => {
+    expect(['blood-types', 'queue-statuses', 'queue-transition-kinds', 'validation-statuses', 'result-flags', 'trace-steps'].every((kind) => isSystemKind(kind as QueueAdminKind))).toBe(true)
+    expect(isSystemKind('priorities')).toBe(false)
+    expect(isSystemKind('removal-reasons')).toBe(false)
+  })
+
+  it('el schema exige nombre y orden; en result-flags también variante', () => {
+    const system = catalogFormSchema({ priority: false, create: false, system: true })
+    expect(system.safeParse({ name: 'Tipo', sort_order: '3' }).success).toBe(true)
+    expect(system.safeParse({ name: 'Tipo', sort_order: '' }).success).toBe(false)
+    const flags = catalogFormSchema({ priority: false, create: false, system: true, resultFlag: true })
+    expect(flags.safeParse({ name: 'X', sort_order: 1, variant: 'danger', show_in_report: false }).success).toBe(true)
+    expect(flags.safeParse({ name: 'X', sort_order: 1, variant: 'azul', show_in_report: false }).success).toBe(false)
+  })
+
+  it('el PATCH envía solo nombre, orden y presentación cambiados', () => {
+    const values = { code: 'critical_high', name: 'Crítico alto', color_hex: '', rank: 0, sort_order: 5, variant: 'warning' as const, show_in_report: true }
+    expect(buildUpdatePayload('result-flags', values, flag)).toEqual({ variant: 'warning' })
+    expect(buildUpdatePayload('result-flags', { ...values, variant: 'danger', name: 'Nuevo', sort_order: 9 }, flag)).toEqual({ name: 'Nuevo', sort_order: 9 })
+    expect(buildUpdatePayload('blood-types', { ...values, variant: 'danger' }, flag)).toBeNull()
+  })
+
+  it('un 409 por sort_order explica el intercambio de orden', () => {
+    const conflict = { status: 409, code: 'conflict', details: { field: 'sort_order', value: 5 } }
+    expect(queueAdminErrorMessage(conflict, 'trace-steps')).toMatch(/orden/)
   })
 })

@@ -229,7 +229,7 @@
 import type { CatalogTest, OrderPrecondition, QueueEntry, Reason } from '../types'
 import { checksComplete, emptyChecks, toCheckPayload } from '../utils/checks'
 import type { CheckMap } from '../utils/checks'
-import { BLOOD_TYPES, digitsOnly, receptionPatientSchema, todayISO } from '../utils/patientSchemas'
+import { digitsOnly, receptionPatientSchema, todayISO } from '../utils/patientSchemas'
 import type { ReceptionPatientInput } from '../utils/patientSchemas'
 import { isNotTurnOwnerError } from '../utils/turnOwnership'
 
@@ -244,12 +244,9 @@ const canSeeWaiting = useCan(TAGS.preReception.view)
 const editPatientName = permissionName(TAGS.reception.editPatient)
 
 const today = todayISO()
-const bloodOptions = BLOOD_TYPES.map((bloodType) => ({ value: bloodType, label: bloodType }))
-const documentTypes = ref<Reason[]>([])
-const documentTypeOptions = computed(() =>
-  documentTypes.value.map((documentType) => ({ value: documentType.code, label: `${documentType.code} · ${documentType.name}` }))
-)
-const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
+const { optionsWithCode: documentTypeOptions } = useCatalog('document-types')
+const { options: sexOptions } = useCatalog('sexes')
+const { options: bloodOptions } = useCatalog('blood-types')
 const api = useLeoAppApi()
 const toast = useToast()
 const { entries, loading: listLoading, refresh } = useQueueList(['pre_recepcion', 'en_atencion_recepcion'])
@@ -293,10 +290,7 @@ const returning = ref(false)
 const returnReasons = ref<Reason[]>([])
 
 onMounted(async () => {
-  ;[returnReasons.value, documentTypes.value] = await Promise.all([
-    api.get<Reason[]>('/return-reasons'),
-    api.get<Reason[]>('/document-types')
-  ])
+  returnReasons.value = await api.get<Reason[]>('/return-reasons')
 })
 
 function select(entry: QueueEntry) {

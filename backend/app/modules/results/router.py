@@ -22,6 +22,8 @@ from app.core.permissions import (
 )
 from app.core.trace import record_test_event
 from app.modules.catalog_client.client import CatalogClient, get_catalog_client
+from app.modules.catalogs import service as catalogs_service
+from app.modules.catalogs.owners import OwnerCatalogs, get_owner_catalogs
 from app.modules.orders.models import Order, OrderResult, OrderTest
 from app.modules.queue import events
 from app.modules.queue.models import Patient, QueueEntry
@@ -32,6 +34,7 @@ from app.modules.results.report import render_report_pdf
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 Catalog = Annotated[CatalogClient, Depends(get_catalog_client)]
+Owners = Annotated[OwnerCatalogs, Depends(get_owner_catalogs)]
 
 lab_router = APIRouter(tags=["laboratorio"])
 results_router = APIRouter(tags=["resultados"])
@@ -113,10 +116,13 @@ async def get_test(
     order_test_id: UUID,
     session: Session,
     catalog: Catalog,
+    owners: Owners,
     _user: CanViewResults,
     professional_id: Annotated[str, Query(max_length=64)],
 ) -> dict:
-    detail = await service.test_detail(session, catalog, order_test_id, professional_id)
+    detail = await service.test_detail(
+        session, catalog, owners, order_test_id, professional_id
+    )
     await session.commit()  # la estructura se crea la primera vez que se abre
     return detail
 
@@ -127,6 +133,7 @@ async def save_values(
     body: ValuesInput,
     session: Session,
     catalog: Catalog,
+    owners: Owners,
     user: CanEnterResults,
 ) -> dict:
     """Guarda valores. `professional_*` identifica al profesional del area (se
@@ -135,6 +142,7 @@ async def save_values(
     detail = await service.save_values(
         session,
         catalog,
+        owners,
         order_test_id,
         body.professional_id,
         body.professional_name,
@@ -163,11 +171,13 @@ async def validate_test(
     body: ValuesInput,
     session: Session,
     catalog: Catalog,
+    owners: Owners,
     user: CanValidateResults,
 ) -> dict:
     detail, finalized = await service.validate_test(
         session,
         catalog,
+        owners,
         order_test_id,
         body.professional_id,
         body.professional_name,
@@ -232,7 +242,7 @@ async def _record_delivery(
 
 
 async def _delivery_payload(
-    session: AsyncSession, order: Order, patient: Patient
+    session: AsyncSession, owners: OwnerCatalogs, order: Order, patient: Patient
 ) -> dict:
     tests = list(
         (
@@ -244,6 +254,7 @@ async def _delivery_payload(
         ).scalars()
     )
     age = age_in_years(patient.birth_date)
+    age_unit_days = await owners.age_unit_days()
     out_tests = []
     for test in tests:
         rows = list(
@@ -273,7 +284,7 @@ async def _delivery_payload(
                         "unit": row.unit,
                         "options": row.options,
                         "reference": reference_text(
-                            pick_range(row.ranges, patient.sex, age)
+                            pick_range(row.ranges, patient.sex, age, age_unit_days)
                         ),
                         "flag": row.flag,
                         "is_reportable": row.is_reportable,
@@ -299,11 +310,11 @@ async def _delivery_payload(
 
 @delivery_router.get("/orders/{order_number}")
 async def delivery_order(
-    order_number: str, session: Session, user: CanViewDelivery
+    order_number: str, session: Session, owners: Owners, user: CanViewDelivery
 ) -> dict:
     """Resultados finalizados de una orden (para el servicio de pacientes)."""
     order, patient = await _finalized_order(session, order_number)
-    payload = await _delivery_payload(session, order, patient)
+    payload = await _delivery_payload(session, owners, order, patient)
     await _record_delivery(
         session,
         user,
@@ -317,16 +328,17 @@ async def delivery_order(
 
 @delivery_router.get("/orders/{order_number}/report.pdf")
 async def delivery_report(
-    order_number: str, session: Session, user: CanViewDelivery
+    order_number: str, session: Session, owners: Owners, user: CanViewDelivery
 ) -> Response:
     order, patient = await _finalized_order(session, order_number)
-    data = await _delivery_payload(session, order, patient)
+    data = await _delivery_payload(session, owners, order, patient)
     await _record_delivery(
         session, user, "delivery.report_downloaded", order.id, "Informe PDF descargado"
     )
+    flag_labels = await catalogs_service.report_flag_labels(session)
     await session.commit()
     return Response(
-        content=render_report_pdf(data),
+        content=render_report_pdf(data, flag_labels),
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'inline; filename="resultados-{order_number}.pdf"'

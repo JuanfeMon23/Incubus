@@ -58,7 +58,7 @@ ACTIVE_STATUSES = (
 )
 # Datos que exige el cierre de recepcion; si faltan se completan (como la secretaria).
 DEMO_DEMOGRAPHICS = {
-    "sex": "F",
+    "sex": "female",
     "birth_date": "1990-05-05",
     "birth_place": "Bogota",
     "blood_type": "O+",

@@ -70,7 +70,7 @@ async def test_helper_records_actor_staff_and_truncates_in_the_same_session(
     uid = uuid4()
     ev = await record_test_event(
         session,
-        "demo.step_one",
+        "order.finalized",
         Actor("Ana", uid),
         order.id,
         summary="x" * 500,
@@ -81,7 +81,7 @@ async def test_helper_records_actor_staff_and_truncates_in_the_same_session(
     assert len(ev.summary) == 300
     assert ev.details["id"] == str(uid) and isinstance(ev.details["when"], str)
     bad = await record_test_event(
-        session, "demo.step_one", None, order.id, summary="s", staff_id="staff-qc"
+        session, "order.finalized", None, order.id, summary="s", staff_id="staff-qc"
     )
     assert bad.staff_id is None and bad.actor_name is None
 

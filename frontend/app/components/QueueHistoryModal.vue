@@ -26,6 +26,7 @@
 
 <script setup lang="ts">
 import type { QueueHistoryRow } from '../types'
+import { namesByCode } from '../utils/catalogs'
 import { historyItems } from '../utils/queueHistory'
 
 /** Quién hizo qué en un turno de la cola (`GET /queue/{id}/history`). */
@@ -37,7 +38,11 @@ const user = useLeoUser()
 const rows = ref<QueueHistoryRow[]>([])
 const loading = ref(true)
 const error = ref('')
-const items = computed(() => historyItems(rows.value, user.value?.id))
+const stages = useCatalog('queue-statuses', { includeInactive: true })
+const kinds = useCatalog('queue-transition-kinds', { includeInactive: true })
+const items = computed(() =>
+  historyItems(rows.value, user.value?.id, { stages: namesByCode(stages.items.value), kinds: namesByCode(kinds.items.value) })
+)
 
 onMounted(async () => {
   try {

@@ -16,6 +16,20 @@
       <UiTextInput maxlength="100" />
     </UiFormField>
 
+    <template v-if="system">
+      <UiFormField name="sort_order" label="Orden" required hint="Número entero; define cómo se listan las opciones.">
+        <UiTextInput type="number" min="0" step="1" />
+      </UiFormField>
+      <template v-if="resultFlag">
+        <UiFormField name="variant" label="Variante de color" required>
+          <UiSelect :options="FLAG_VARIANT_OPTIONS" placeholder="Seleccione…" />
+        </UiFormField>
+        <UiFormField name="show_in_report">
+          <UiCheckbox label="Mostrar en el informe" />
+        </UiFormField>
+      </template>
+    </template>
+
     <template v-if="priority">
       <UiFormField name="color_hex" label="Color" required hint="Formato #RRGGBB.">
         <div class="flex items-center gap-2">
@@ -44,8 +58,11 @@ import {
   buildUpdatePayload,
   catalogFormSchema,
   colorInputValue,
+  FLAG_VARIANT_OPTIONS,
   HEX_PATTERN,
   isPriorityKind,
+  isResultFlagKind,
+  isSystemKind,
   KIND_INFO,
   queueAdminErrorMessage
 } from '../utils/queueAdmin'
@@ -56,19 +73,24 @@ const open = defineModel<boolean>('open', { required: true })
 
 const api = useQueueAdminApi(props.kind)
 const priority = isPriorityKind(props.kind)
+const system = isSystemKind(props.kind)
+const resultFlag = isResultFlagKind(props.kind)
 const isEdit = props.item !== null
 const info = KIND_INFO[props.kind]
 const title = isEdit ? `Editar ${info.noun}` : `${info.feminine ? 'Nueva' : 'Nuevo'} ${info.noun}`
 
 // El schema depende del modo (el code solo se valida al crear): el panel recrea el modal
 // con `v-if` en cada apertura, así que se fija al montar.
-const schema = catalogFormSchema({ priority, create: !isEdit })
+const schema = catalogFormSchema({ priority, create: !isEdit, system, resultFlag })
 const { submit, isSubmitting, formError, values, setFieldValue } = useZodForm(schema, {
   initialValues: () => ({
     code: props.item?.code ?? '',
     name: props.item?.name ?? '',
     color_hex: props.item?.color_hex ?? '#3B82F6',
-    rank: props.item?.rank ?? ''
+    rank: props.item?.rank ?? '',
+    sort_order: props.item?.sort_order ?? '',
+    variant: props.item?.variant ?? '',
+    show_in_report: props.item?.show_in_report ?? false
   }),
   resetOn: open
 })

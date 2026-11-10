@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <UiPageHeader
       title="Catálogos de la cola"
-      description="Prioridades y motivos de retiro y devolución que usan recepción y pre-recepción. Nada se elimina: se desactiva."
+      description="Prioridades, motivos y catálogos de sistema (estados, tipos de sangre, banderas…) que usan la cola y el laboratorio. Nada se elimina; los de sistema solo permiten editar nombre, orden y presentación."
     />
     <UiTabs v-model="activeTab" :tabs="tabs" aria-label="Catálogos de la cola">
       <template v-for="kind in QUEUE_ADMIN_KINDS" :key="kind" #[kind]>

@@ -2,7 +2,7 @@ PATIENT = {
     "document_number": "5544332211",
     "first_name": "ANA",
     "first_last_name": "LOPEZ",
-    "sex": "F",
+    "sex": "female",
     "birth_date": "1990-01-01",
 }
 FULL_DEMOGRAPHICS = {

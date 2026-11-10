@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TraceEvent } from '../types'
+import type { TraceEvent, TraceStepCatalogItem } from '../types'
 import { actorName, CATEGORY_INFO, detailLines, filterEvents, groupByDay, isQueueStep, stepCategory, stepLabel, timeLabel } from './trace'
 
 const ev = (step: string, at: string, over: Partial<TraceEvent> = {}): TraceEvent => ({
@@ -7,6 +7,26 @@ const ev = (step: string, at: string, over: Partial<TraceEvent> = {}): TraceEven
 })
 // Fechas locales (sin zona) para no depender del huso del entorno.
 const local = (dateText: string) => new Date(dateText).toISOString()
+
+const STEPS: TraceStepCatalogItem[] = [
+  ['queue.entered', 'queue', 'Ingreso a la cola'],
+  ['queue.reception_claimed', 'reception', 'Recepción iniciada'],
+  ['queue.reception_closed', 'reception', 'Recepción cerrada'],
+  ['queue.labels_printed', 'labels', 'Etiquetas impresas (cola)'],
+  ['queue.sampling_finished', 'sampling', 'Toma de muestras finalizada'],
+  ['queue.in_laboratory', 'lab', 'Paso a laboratorio'],
+  ['labels.printed', 'labels', 'Etiquetas impresas'],
+  ['sample.collected', 'sampling', 'Tubo tomado'],
+  ['lab.received', 'lab', 'Tubo recibido en laboratorio'],
+  ['precondition.checked', 'sampling', 'Precondición verificada'],
+  ['result.changed', 'capture', 'Resultado modificado'],
+  ['result.entered', 'capture', 'Resultado capturado'],
+  ['test.validated', 'validation', 'Prueba validada'],
+  ['delivery.report_downloaded', 'delivery', 'Informe descargado'],
+  ['activation.used', 'activation', 'Activación usada'],
+  ['order.finalized', 'order', 'Orden finalizada'],
+  ['paso.categoria_nueva', 'categoria-que-no-existe', 'Paso nuevo']
+].map(([code, category, name], index) => ({ code: code!, category: category!, name: name!, sort_order: index, is_active: true }))
 
 describe('stepCategory', () => {
   it.each([
@@ -25,14 +45,16 @@ describe('stepCategory', () => {
     ['delivery.report_downloaded', 'delivery'],
     ['activation.used', 'activation'],
     ['order.finalized', 'order'],
-    ['algo.nuevo', 'order']
+    ['algo.nuevo', 'order'],
+    ['paso.categoria_nueva', 'order']
   ])('%s -> %s', (step, cat) => {
-    expect(stepCategory(step)).toBe(cat)
+    expect(stepCategory(step, STEPS)).toBe(cat)
     expect(CATEGORY_INFO[cat as keyof typeof CATEGORY_INFO].icon).toBeTruthy()
   })
   it('etiqueta legible y fallback al paso', () => {
-    expect(stepLabel('result.entered')).toBe('Resultado capturado')
-    expect(stepLabel('x.y')).toBe('x.y')
+    expect(stepLabel('result.entered', STEPS)).toBe('Resultado capturado')
+    expect(stepLabel('x.y', STEPS)).toBe('x.y')
+    expect(stepLabel('result.entered')).toBe('result.entered')
     expect(isQueueStep('queue.removed')).toBe(true)
     expect(isQueueStep('lab.received')).toBe(false)
   })

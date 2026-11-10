@@ -176,5 +176,21 @@ async def _catalog_reader(
     return user
 
 
+def catalog_reader_or_service(service_tag: str) -> Any:
+    """Dependencia: persona con algun permiso de Incubus, o servicio con `service_tag`
+    (p. ej. Acuarius, que lee estados y marcas con su permiso de entrega)."""
+    auth.used_tags.add(validate_tag(service_tag, app_slug=APP_SLUG))
+
+    async def dependency(
+        request: Request, user: Annotated[LeoUser, Depends(auth.current_user)]
+    ) -> LeoUser:
+        if user.is_service:
+            await authorize(request, user, service_tag)
+            return user
+        return await _catalog_reader(request, user)
+
+    return Depends(dependency)
+
+
 # Catalogos compartidos y herramientas sin datos: cualquier persona de Incubus.
 CatalogReader = Annotated[LeoUser, Depends(_catalog_reader)]

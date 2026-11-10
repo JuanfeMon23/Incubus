@@ -51,14 +51,18 @@ def test_value_for_types():
     rand = random.Random(4)
     assert (
         value_for(
-            {"code": "C", "result_type": "calculated"}, "F", None, rand, abnormal=False
+            {"code": "C", "result_type": "calculated"},
+            "female",
+            None,
+            rand,
+            abnormal=False,
         )
         is None
     )
     expected = {"range": {"expected_boolean": True}}
     boolean = {"code": "B", "result_type": "boolean", **expected}
-    assert value_for(boolean, "F", None, rand, abnormal=False) is True
-    assert value_for(boolean, "F", None, rand, abnormal=True) is False
+    assert value_for(boolean, "female", None, rand, abnormal=False) is True
+    assert value_for(boolean, "female", None, rand, abnormal=True) is False
     options = [{"id": "o1"}, {"id": "o2", "is_abnormal": True}]
     qual = {
         "code": "Q",
@@ -66,11 +70,11 @@ def test_value_for_types():
         "options": options,
         "range": {"expected_option_id": "o1"},
     }
-    assert value_for(qual, "M", None, rand, abnormal=False) == "o1"
-    assert value_for(qual, "M", None, rand, abnormal=True) == "o2"
+    assert value_for(qual, "male", None, rand, abnormal=False) == "o1"
+    assert value_for(qual, "male", None, rand, abnormal=True) == "o2"
     assert isinstance(
         value_for(
-            {"code": "T", "result_type": "text"}, "M", None, rand, abnormal=False
+            {"code": "T", "result_type": "text"}, "male", None, rand, abnormal=False
         ),
         str,
     )
@@ -81,7 +85,7 @@ def test_values_for_test_fills_required_and_skips_calculated():
         numeric("A", is_required=True, range=RANGE),
         {"code": "C", "result_type": "calculated"},
     ]
-    values = values_for_test(analytes, "F", date(1990, 5, 5), random.Random(5))
+    values = values_for_test(analytes, "female", date(1990, 5, 5), random.Random(5))
     assert set(values) == {"A"}
 
 

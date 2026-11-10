@@ -1,20 +1,25 @@
 """Seleccion del rango de referencia y banderas de interpretacion."""
 
+from collections.abc import Mapping
 from datetime import date
 
-_UNIT_YEARS = {"dias": 1 / 365.25, "meses": 1 / 12, "anos": 1.0}
-_SEX_MAP = {"M": "male", "F": "female"}
+# Dias de un ano: `age_in_years` y la conversion de las unidades de edad (cuyos
+# `days` salen del catalogo `age-units` de Vladimir) usan la misma base.
+DAYS_PER_YEAR = 365.25
 
 
 def age_in_years(birth_date: date | None, today: date | None = None) -> float | None:
     if birth_date is None:
         return None
     today = today or date.today()
-    return (today - birth_date).days / 365.25
+    return (today - birth_date).days / DAYS_PER_YEAR
 
 
-def _bounds_years(rng: dict) -> tuple[float | None, float | None]:
-    factor = _UNIT_YEARS.get(rng.get("age_unit") or "anos", 1.0)
+def _bounds_years(
+    rng: dict, age_unit_days: Mapping[str, float]
+) -> tuple[float | None, float | None]:
+    days = age_unit_days.get(rng.get("age_unit") or "")
+    factor = 1.0 if days is None else days / DAYS_PER_YEAR
     low = rng.get("age_min")
     high = rng.get("age_max")
     return (
@@ -24,18 +29,24 @@ def _bounds_years(rng: dict) -> tuple[float | None, float | None]:
 
 
 def pick_range(
-    ranges: list[dict], sex: str | None, age_years: float | None
+    ranges: list[dict],
+    sex: str | None,
+    age_years: float | None,
+    age_unit_days: Mapping[str, float],
 ) -> dict | None:
-    """Rango que aplica al paciente: mas especifico primero (sexo, luego edad)."""
-    patient_sex = _SEX_MAP.get(sex or "")
+    """Rango que aplica al paciente: mas especifico primero (sexo, luego edad).
+
+    `sex`: codigo del catalogo de sexos (`male`/`female`). `age_unit_days`:
+    unidad de edad -> dias (catalogo `age-units` de Vladimir); una unidad ausente
+    o sin definir se toma como anos."""
     best: tuple[int, dict] | None = None
     for rng in ranges:
         if not rng.get("is_active", True):
             continue
         rng_sex = rng.get("sex") or "any"
-        if rng_sex != "any" and rng_sex != patient_sex:
+        if rng_sex != "any" and rng_sex != sex:
             continue
-        low, high = _bounds_years(rng)
+        low, high = _bounds_years(rng, age_unit_days)
         has_age = low is not None or high is not None
         if has_age:
             if age_years is None:

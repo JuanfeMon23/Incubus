@@ -15,17 +15,26 @@ const row = (extra: Partial<QueueHistoryRow> = {}): QueueHistoryRow => ({
   ...extra
 })
 
+const STAGES = {
+  pre_recepcion: 'Pre-recepción',
+  en_atencion_recepcion: 'En atención de recepción',
+  en_espera_toma_muestras: 'Espera de toma de muestras'
+}
+const KINDS = { enter: 'Ingreso a la cola', advance: 'Avance', return: 'Devolución', remove: 'Retiro' }
+const NAMES = { stages: STAGES, kinds: KINDS }
+
 describe('etiquetas', () => {
   it('nombra las etapas legiblemente', () => {
-    expect(stageName('en_espera_toma_muestras')).toBe('Espera de toma de muestras')
-    expect(stageName(null)).toBe('')
+    expect(stageName('en_espera_toma_muestras', STAGES)).toBe('Espera de toma de muestras')
+    expect(stageName(null, STAGES)).toBe('')
+    expect(stageName('desconocida', STAGES)).toBe('')
   })
   it('traduce el tipo de acción', () => {
-    expect(actionLabel('enter')).toBe('Ingreso a la cola')
-    expect(actionLabel('advance')).toBe('Avance')
-    expect(actionLabel('return')).toBe('Devolución')
-    expect(actionLabel('remove')).toBe('Retiro')
-    expect(actionLabel('otra')).toBe('Cambio de estado')
+    expect(actionLabel('enter', KINDS)).toBe('Ingreso a la cola')
+    expect(actionLabel('advance', KINDS)).toBe('Avance')
+    expect(actionLabel('return', KINDS)).toBe('Devolución')
+    expect(actionLabel('remove', KINDS)).toBe('Retiro')
+    expect(actionLabel('otra', KINDS)).toBe('Cambio de estado')
   })
 })
 
@@ -47,7 +56,7 @@ describe('actorLabel', () => {
 
 describe('historyItems', () => {
   it('arma líneas con acción, tránsito, motivo y quién', () => {
-    const [item] = historyItems([row({ kind: 'return', note: 'Falta ayuno' })], 'u1')
+    const [item] = historyItems([row({ kind: 'return', note: 'Falta ayuno' })], 'u1', NAMES)
     expect(item).toMatchObject({
       action: 'Devolución',
       transition: 'Pre-recepción → En atención de recepción',
@@ -57,7 +66,7 @@ describe('historyItems', () => {
     expect(item!.when).toMatch(/2026/)
   })
   it('el ingreso no tiene estado de origen', () => {
-    const [item] = historyItems([row({ from_status: null, kind: 'enter', to_status: 'pre_recepcion' })], 'u9')
+    const [item] = historyItems([row({ from_status: null, kind: 'enter', to_status: 'pre_recepcion' })], 'u9', NAMES)
     expect(item!.transition).toBe('Pre-recepción')
   })
   it('lista vacía', () => {

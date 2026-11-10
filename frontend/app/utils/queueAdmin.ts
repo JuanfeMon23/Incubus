@@ -5,7 +5,25 @@ import { zRequiredNumber, zRequiredText } from '#andromeda/utils/zodFields'
 import type { QueueAdminItem, QueueAdminKind } from '../types'
 
 /** Catálogos de la pantalla «Catálogos de la cola», en el orden de las pestañas. */
-export const QUEUE_ADMIN_KINDS: QueueAdminKind[] = ['priorities', 'removal-reasons', 'return-reasons']
+export const QUEUE_ADMIN_KINDS: QueueAdminKind[] = [
+  'priorities', 'removal-reasons', 'return-reasons',
+  'blood-types', 'queue-statuses', 'queue-transition-kinds', 'validation-statuses', 'result-flags', 'trace-steps'
+]
+
+/**
+ * Catálogos de sistema: sus codes los usa la lógica, así que solo se edita nombre, orden y
+ * presentación (nada se crea ni se activa/desactiva: el backend responde 409).
+ */
+const SYSTEM_KINDS: readonly QueueAdminKind[] = ['blood-types', 'queue-statuses', 'queue-transition-kinds', 'validation-statuses', 'result-flags', 'trace-steps']
+export const isSystemKind = (kind: QueueAdminKind) => SYSTEM_KINDS.includes(kind)
+export const isResultFlagKind = (kind: QueueAdminKind) => kind === 'result-flags'
+
+/** Variantes de color de una bandera de resultado (`variant` de `result-flags`). */
+export const FLAG_VARIANT_OPTIONS = [
+  { value: 'success', label: 'Éxito (verde)' },
+  { value: 'warning', label: 'Advertencia (amarillo)' },
+  { value: 'danger', label: 'Peligro (rojo)' }
+]
 
 interface KindInfo {
   /** Título de la pestaña. */
@@ -20,7 +38,13 @@ interface KindInfo {
 export const KIND_INFO: Record<QueueAdminKind, KindInfo> = {
   priorities: { tab: 'Prioridades', article: 'una', noun: 'prioridad', feminine: true },
   'removal-reasons': { tab: 'Motivos de retiro', article: 'un', noun: 'motivo de retiro', feminine: false },
-  'return-reasons': { tab: 'Motivos de devolución', article: 'un', noun: 'motivo de devolución', feminine: false }
+  'return-reasons': { tab: 'Motivos de devolución', article: 'un', noun: 'motivo de devolución', feminine: false },
+  'blood-types': { tab: 'Tipos de sangre', article: 'un', noun: 'tipo de sangre', feminine: false },
+  'queue-statuses': { tab: 'Estados de la cola', article: 'un', noun: 'estado de la cola', feminine: false },
+  'queue-transition-kinds': { tab: 'Tipos de transición', article: 'un', noun: 'tipo de transición', feminine: false },
+  'validation-statuses': { tab: 'Estados de validación', article: 'un', noun: 'estado de validación', feminine: false },
+  'result-flags': { tab: 'Banderas de resultado', article: 'una', noun: 'bandera de resultado', feminine: true },
+  'trace-steps': { tab: 'Pasos de trazabilidad', article: 'un', noun: 'paso de trazabilidad', feminine: false }
 }
 
 export const isPriorityKind = (kind: QueueAdminKind) => kind === 'priorities'
@@ -34,19 +58,25 @@ export interface CatalogFormInput {
   name: string
   color_hex: string
   rank: string | number | null | undefined
+  sort_order?: string | number | null
+  variant?: string
+  show_in_report?: boolean
 }
 export interface CatalogFormValues {
   code: string
   name: string
   color_hex: string
   rank: number
+  sort_order?: number
+  variant?: 'success' | 'warning' | 'danger'
+  show_in_report?: boolean
 }
 
 /**
  * Schema del formulario crear/editar de un catálogo. El `code` solo se valida al crear
  * (no es editable); `color_hex` y `rank` solo se exigen en prioridades.
  */
-export function catalogFormSchema(opts: { priority: boolean, create: boolean }) {
+export function catalogFormSchema(opts: { priority: boolean, create: boolean, system?: boolean, resultFlag?: boolean }) {
   const schema = z.object({
     code: opts.create
       ? zRequiredText('El código es obligatorio.', 64).regex(
@@ -60,7 +90,14 @@ export function catalogFormSchema(opts: { priority: boolean, create: boolean }) 
       : z.string().optional(),
     rank: opts.priority
       ? zRequiredNumber('El orden es obligatorio.', { integer: true, min: 1 })
-      : z.unknown().optional()
+      : z.unknown().optional(),
+    sort_order: opts.system
+      ? zRequiredNumber('El orden es obligatorio.', { integer: true, min: 0 })
+      : z.unknown().optional(),
+    variant: opts.resultFlag
+      ? z.enum(['success', 'warning', 'danger'], { errorMap: () => ({ message: 'Selecciona una variante.' }) })
+      : z.unknown().optional(),
+    show_in_report: opts.resultFlag ? z.boolean() : z.unknown().optional()
   })
   return schema as unknown as z.ZodType<CatalogFormValues, z.ZodTypeDef, CatalogFormInput>
 }
@@ -88,6 +125,13 @@ export function buildUpdatePayload(kind: QueueAdminKind, values: CatalogFormValu
     const color = values.color_hex.toUpperCase()
     if (color !== (item.color_hex ?? '').toUpperCase()) body.color_hex = color
     if (values.rank !== item.rank) body.rank = values.rank
+  }
+  if (isSystemKind(kind)) {
+    if (values.sort_order !== item.sort_order) body.sort_order = values.sort_order
+    if (isResultFlagKind(kind)) {
+      if (values.variant !== item.variant) body.variant = values.variant
+      if (values.show_in_report !== item.show_in_report) body.show_in_report = values.show_in_report
+    }
   }
   return Object.keys(body).length ? body : null
 }
@@ -139,7 +183,7 @@ export function queueAdminErrorMessage(err: unknown, kind: QueueAdminKind): stri
   if (errorShape.status === 409 && errorShape.code === 'conflict' && details && typeof details.field === 'string') {
     const { noun, article } = KIND_INFO[kind]
     const value = details.value !== undefined && details.value !== null ? ` «${String(details.value)}»` : ''
-    if (details.field === 'rank') {
+    if (details.field === 'rank' || details.field === 'sort_order') {
       return `Ya existe ${article} ${noun} con el orden${value}. Para intercambiar el orden entre dos registros, primero mueve uno a un orden libre y luego asigna ese orden al otro.`
     }
     if (details.field === 'name') return `Ya existe ${article} ${noun} con el nombre${value}. Usa un nombre distinto.`

@@ -1,4 +1,4 @@
-"""CHECK `ck_patients_blood_type` y normalizacion de RH invalido (migracion 0008)."""
+"""RH como FK a `blood_types` (0013, antes CHECK de 0008) y normalizacion de RH invalido (0008)."""
 
 import uuid
 
@@ -24,15 +24,15 @@ def _patient(blood_type):
 
 
 @pytest.mark.parametrize("value", [*VALID, None])
-async def test_check_acepta_rh_valido_y_null(session, value):
+async def test_fk_acepta_rh_valido_y_null(session, value):
     session.add(_patient(value))
     await session.flush()
 
 
 @pytest.mark.parametrize("value", ["DD", "22", "a+", "O", "AB", ""])
-async def test_check_rechaza_rh_invalido(session, value):
+async def test_fk_rechaza_rh_invalido(session, value):
     session.add(_patient(value))
-    with pytest.raises(IntegrityError, match="ck_patients_blood_type"):
+    with pytest.raises(IntegrityError, match="fk_patients_blood_type_blood_types"):
         await session.flush()
 
 
@@ -69,7 +69,7 @@ def test_migracion_0008_normaliza_rh_invalido_y_baja():
                 ("M3", "NOMBRE", "O+"),
                 ("M4", "NOMBRE", None),
             ]
-            with pytest.raises(psycopg.errors.CheckViolation):
+            with pytest.raises(psycopg.errors.ForeignKeyViolation):
                 conn.execute("UPDATE patients SET blood_type = 'DD'")
             _migrate(db_url, "downgrade", "0007")
             conn.execute(

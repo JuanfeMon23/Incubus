@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { zOptionalText, zRequiredEnum, zRequiredText } from '#andromeda/utils/zodFields'
+import { zOptionalText, zRequiredText } from '#andromeda/utils/zodFields'
 
-const SEX = ['M', 'F'] as const
-export const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const
+// Sexo y RH son catálogos de BD (`sexes`, `blood-types`): aquí solo se exige que haya un code;
+// el backend valida que exista y un 422 se muestra en el campo.
 
 /** Fecha de hoy (YYYY-MM-DD) en hora local: tope de la fecha de nacimiento. */
 export function todayISO(now = new Date()): string {
@@ -31,7 +31,7 @@ const requiredBirthDate = zRequiredText('La fecha de nacimiento es obligatoria.'
   'La fecha de nacimiento no puede ser posterior a hoy.'
 )
 
-const requiredBloodType = zRequiredEnum(BLOOD_TYPES, 'El RH es obligatorio.')
+const requiredBloodType = zRequiredText('El RH es obligatorio.', 8)
 
 /**
  * Recepción: todos los campos son obligatorios salvo segundo nombre, segundo
@@ -48,13 +48,17 @@ export const receptionPatientSchema = z.object({
   second_last_name: zOptionalText(80),
   birth_date: requiredBirthDate,
   birth_place: zRequiredText('El lugar de nacimiento es obligatorio.', 120),
-  sex: zRequiredEnum(SEX, 'El sexo es obligatorio.'),
+  sex: zRequiredText('El sexo es obligatorio.', 16),
   blood_type: requiredBloodType,
   email: requiredEmail,
   phone: requiredPhone,
   insurer: zOptionalText(150),
   address: zRequiredText('La dirección de residencia es obligatoria.', 255)
 })
+
+/** Code de catálogo opcional: vacío -> `null`. */
+const optionalCode = (max: number) =>
+  z.string().max(max).transform((value) => (value.trim() ? value.trim() : null))
 
 /** Pre-recepción: solo la identidad que trae la cédula, más la prioridad. */
 export const intakePatientSchema = z.object({
@@ -64,12 +68,12 @@ export const intakePatientSchema = z.object({
   second_name: zOptionalText(80),
   first_last_name: zRequiredText('El primer apellido es obligatorio.', 80),
   second_last_name: zOptionalText(80),
-  sex: z.union([z.enum(SEX), z.literal('')]).transform((value) => (value === '' ? null : value)),
+  sex: optionalCode(16),
   birth_date: z
     .string()
     .transform((value) => (value.trim() ? value.trim() : null))
     .refine((value) => value === null || value <= todayISO(), 'La fecha de nacimiento no puede ser posterior a hoy.'),
-  blood_type: z.union([z.enum(BLOOD_TYPES), z.literal('')]).transform((value) => (value === '' ? null : value)),
+  blood_type: optionalCode(8),
   priority_id: z.string({ required_error: 'Selecciona una prioridad.' }).min(1, 'Selecciona una prioridad.')
 })
 

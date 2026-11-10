@@ -1,24 +1,15 @@
 from datetime import date, datetime
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Sex = Literal["M", "F"]
-BloodType = Literal["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+# Codigos de catalogos externos o de BD: se validan contra su fuente (sexos de
+# Vladimir, tipos de sangre en `blood_types`), no con un Literal.
+Sex = Annotated[str, Field(max_length=16)]
+BloodType = Annotated[str, Field(max_length=3)]
 # Solo digitos (7 a 15): sin guiones, espacios ni letras.
 Phone = Annotated[str, Field(pattern=r"^\d{7,15}$")]
-QueueStatusLiteral = Literal[
-    "pre_recepcion",
-    "en_atencion_recepcion",
-    "en_espera_impresion",
-    "en_espera_toma_muestras",
-    "en_atencion_toma_muestras",
-    "toma_finalizada",
-    "en_laboratorio",
-    "finalizada",
-    "retirado",
-]
 
 
 class CatalogRead(BaseModel):
@@ -111,7 +102,7 @@ class QueueEntryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    status: QueueStatusLiteral
+    status: str
     claimed_by: str | None
     # Id (Leo) de quien tomo el turno; NULL en turnos anteriores a la migracion 0007.
     claimed_by_user_id: UUID | None = None
@@ -132,7 +123,7 @@ class QueueEntryLive(BaseModel):
     viaja en los eventos y en el snapshot de `sync`; el detalle se pide por REST."""
 
     id: UUID
-    status: QueueStatusLiteral
+    status: str
     version: int
     priority_id: UUID
     assigned_professional_id: str | None = None
@@ -142,7 +133,7 @@ class QueueEntryLive(BaseModel):
 class QueueEntryEvent(QueueEntryLive):
     """Payload de un evento: la vista minima + la etapa de la que viene."""
 
-    previous_status: QueueStatusLiteral | None = None
+    previous_status: str | None = None
     sample_id: str | None = None
 
 

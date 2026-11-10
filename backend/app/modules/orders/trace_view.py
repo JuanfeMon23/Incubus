@@ -25,6 +25,7 @@ from app.core import runtime_settings
 from app.core.leo import uuid_str
 from app.core.trace import as_uuid
 from app.modules.activation.models import ActivationCode
+from app.modules.catalogs import service as catalogs_service
 from app.modules.orders.models import (
     Order,
     OrderPrecondition,
@@ -51,18 +52,6 @@ _STATUS_STEP = {
     "en_laboratorio": "queue.in_laboratory",
     "finalizada": "order.finalized",
     "retirado": "queue.removed",
-}
-_STATUS_TEXT = {
-    "queue.entered": "Ingreso a la cola",
-    "queue.reception_claimed": "Recepción tomó al paciente",
-    "queue.reception_closed": "Recepción cerrada; orden creada",
-    "queue.labels_printed": "Etiquetas impresas; en espera de toma",
-    "queue.sampling_claimed": "Toma de muestras tomó al paciente",
-    "queue.sampling_finished": "Toma de muestras finalizada",
-    "queue.in_laboratory": "Orden en laboratorio",
-    "order.finalized": "Orden finalizada",
-    "queue.removed": "Paciente retirado de la cola",
-    "queue.returned": "Orden devuelta a la etapa anterior",
 }
 
 
@@ -134,6 +123,7 @@ def _covered(
 
 
 async def _queue_items(session: AsyncSession, order: Order) -> list[dict]:
+    step_names = await catalogs_service.trace_step_names(session)
     history = (
         await session.execute(
             select(QueueStatusHistory)
@@ -154,7 +144,7 @@ async def _queue_items(session: AsyncSession, order: Order) -> list[dict]:
                 step,
                 "order",
                 _actor(history_entry.actor_user_id, history_entry.actor),
-                _STATUS_TEXT[step],
+                step_names.get(step, step),
                 {
                     "from_status": history_entry.from_status,
                     "to_status": history_entry.to_status,

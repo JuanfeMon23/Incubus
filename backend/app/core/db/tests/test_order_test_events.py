@@ -52,7 +52,7 @@ async def _order(session) -> tuple[Order, OrderTest, OrderSample]:
 
 
 async def _event(session, order, test=None, sample=None, **kw) -> OrderTestEvent:
-    values = {"step": "muestra.recolectada", "summary": "Muestra recolectada"} | kw
+    values = {"step": "sample.collected", "summary": "Muestra recolectada"} | kw
     ev = OrderTestEvent(
         order_id=order.id,
         order_test_id=test.id if test else None,
@@ -77,7 +77,7 @@ async def test_defaults_de_la_bd(session):
 
 async def test_evento_de_orden_completa_sin_prueba_ni_tubo(session):
     order, _, _ = await _order(session)
-    ev = await _event(session, order, step="orden.creada", summary="Orden creada")
+    ev = await _event(session, order, step="order.finalized", summary="Orden creada")
     assert ev.order_test_id is None and ev.order_sample_id is None
 
 
@@ -136,6 +136,14 @@ async def test_delete_bloqueado_por_trigger(session):
 )
 async def test_step_valido(session, step):
     order, _, _ = await _order(session)
+    # El formato lo valida el CHECK; el FK exige que el paso exista en el catalogo.
+    await session.execute(
+        text(
+            "INSERT INTO trace_steps (code, name, category) VALUES (:s, :s, 'order') "
+            "ON CONFLICT (code) DO NOTHING"
+        ),
+        {"s": step},
+    )
     ev = await _event(session, order, step=step)
     assert ev.step == step
 
@@ -198,7 +206,8 @@ async def test_fks_son_on_delete_restrict(session):
             await session.execute(
                 text(
                     "SELECT confdeltype::text FROM pg_constraint "
-                    "WHERE conrelid = 'order_test_events'::regclass AND contype = 'f'"
+                    "WHERE conrelid = 'order_test_events'::regclass AND contype = 'f' "
+                    "AND conname NOT LIKE '%trace_steps'"
                 )
             )
         )

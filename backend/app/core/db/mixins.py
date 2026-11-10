@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, text
+from sqlalchemy import Boolean, DateTime, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -34,4 +34,14 @@ class CatalogMixin(UUIDv7PK, Timestamps):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, server_default=text("true"), nullable=False
+    )
+
+
+class SortedCatalogMixin(CatalogMixin):
+    """Catalogo de categoria referenciado por `code` desde otras tablas (FK al code):
+    `sort_order` define el orden de presentacion; las columnas de comportamiento
+    las agrega cada tabla."""
+
+    sort_order: Mapped[int] = mapped_column(
+        Integer, server_default=text("0"), nullable=False
     )

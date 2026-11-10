@@ -20,9 +20,10 @@ class QueueEmptyError(NotFoundError):
 
 
 from app.core.permissions import SUPERVISE_BY_STATUS
+from app.modules.catalogs import service as catalogs_service
+from app.modules.catalogs.owners import OwnerCatalogs
 from app.modules.orders.models import Order
 from app.modules.queue.models import (
-    DocumentType,
     Patient,
     Priority,
     QueueEntry,
@@ -118,22 +119,66 @@ async def _write_history(
     await session.flush()
 
 
+async def validate_patient_codes(
+    session: AsyncSession,
+    owners: OwnerCatalogs,
+    *,
+    document_type: str | None = None,
+    sex: str | None = None,
+    blood_type: str | None = None,
+) -> None:
+    """422 si algun codigo no existe en su catalogo: tipo de documento (Leo), sexo
+    (Vladimir, sin comodin) o tipo de sangre (`blood_types`, activo)."""
+    if document_type is not None:
+        await owners.validate_document_type(document_type)
+    await owners.validate_sex(sex)
+    await catalogs_service.ensure_active_code(
+        session, catalogs_service.OWN_CATALOGS["blood-types"], blood_type, "blood_type"
+    )
+
+
+async def apply_patient_update(
+    session: AsyncSession, owners: OwnerCatalogs, patient: Patient, changes: dict
+) -> None:
+    """Aplica los cambios demograficos de recepcion (validando sexo y RH)."""
+    await validate_patient_codes(
+        session, owners, sex=changes.get("sex"), blood_type=changes.get("blood_type")
+    )
+    for field, value in changes.items():
+        setattr(patient, field, value)
+
+
+async def parse_status_filter(
+    session: AsyncSession, names: list[str]
+) -> list[QueueStatus]:
+    """Estados pedidos en `?status=`: deben existir en `queue_statuses` y ser un
+    estado de sistema conocido (`QueueStatus`)."""
+    await catalogs_service.ensure_known_codes(
+        session, catalogs_service.OWN_CATALOGS["queue-statuses"], names, "status"
+    )
+    try:
+        return [QueueStatus(name) for name in names]
+    except ValueError as exc:
+        raise ValidationAppError(
+            "El estado no corresponde a una etapa de la cola.", {"status": names}
+        ) from exc
+
+
 async def enter_queue(
-    session: AsyncSession, patient_in: PatientIn, priority_id: UUID, actor: Actor
+    session: AsyncSession,
+    patient_in: PatientIn,
+    priority_id: UUID,
+    actor: Actor,
+    owners: OwnerCatalogs,
 ) -> QueueEntry:
     await _active_priority(session, priority_id)
-    doc_type = (
-        await session.execute(
-            select(DocumentType).where(
-                DocumentType.code == patient_in.document_type, DocumentType.is_active
-            )
-        )
-    ).scalar_one_or_none()
-    if doc_type is None:
-        raise ValidationAppError(
-            "El tipo de documento no existe o esta inactivo.",
-            {"document_type": patient_in.document_type},
-        )
+    await validate_patient_codes(
+        session,
+        owners,
+        document_type=patient_in.document_type,
+        sex=patient_in.sex,
+        blood_type=patient_in.blood_type,
+    )
     patient = (
         await session.execute(
             select(Patient).where(

@@ -1,32 +1,19 @@
 import { formatDateTime } from '#andromeda/utils/formatDateTime'
-import type { QueueHistoryRow, QueueStatus } from '../types'
+import type { QueueHistoryRow } from '../types'
 
-const STAGE_NAMES: Record<QueueStatus, string> = {
-  pre_recepcion: 'Pre-recepción',
-  en_atencion_recepcion: 'En atención de recepción',
-  en_espera_impresion: 'Espera de impresión de etiquetas',
-  en_espera_toma_muestras: 'Espera de toma de muestras',
-  en_atencion_toma_muestras: 'En atención de toma de muestras',
-  toma_finalizada: 'Toma de muestras finalizada',
-  en_laboratorio: 'En laboratorio',
-  finalizada: 'Finalizada',
-  retirado: 'Retirado'
+/** Nombres por code, de los catálogos `queue-statuses` (etapas) y `queue-transition-kinds` (acciones). */
+export interface HistoryNames {
+  stages?: Record<string, string>
+  kinds?: Record<string, string>
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  enter: 'Ingreso a la cola',
-  advance: 'Avance',
-  return: 'Devolución',
-  remove: 'Retiro'
+/** Nombre legible de una etapa de la cola ('' si no hay o no está en el catálogo). */
+export function stageName(status: string | null | undefined, stages: Record<string, string> = {}): string {
+  return (status && stages[status]) || ''
 }
 
-/** Nombre legible de una etapa de la cola ('' si no hay). */
-export function stageName(status: string | null | undefined): string {
-  return (status && STAGE_NAMES[status as QueueStatus]) || ''
-}
-
-export function actionLabel(kind: string): string {
-  return ACTION_LABELS[kind] ?? 'Cambio de estado'
+export function actionLabel(kind: string, kinds: Record<string, string> = {}): string {
+  return kinds[kind] ?? 'Cambio de estado'
 }
 
 /** Quién hizo la acción: "Tú" si es el usuario actual (por id), si no el nombre registrado. */
@@ -50,12 +37,12 @@ export interface HistoryItem {
 }
 
 /** Líneas de la línea de tiempo, en el orden recibido. */
-export function historyItems(rows: QueueHistoryRow[], currentUserId: string | null | undefined): HistoryItem[] {
+export function historyItems(rows: QueueHistoryRow[], currentUserId: string | null | undefined, names: HistoryNames = {}): HistoryItem[] {
   return rows.map((row, i) => ({
     key: `${row.changed_at}-${i}`,
     when: formatDateTime(row.changed_at),
-    action: actionLabel(row.kind),
-    transition: [stageName(row.from_status), stageName(row.to_status)].filter(Boolean).join(' → '),
+    action: actionLabel(row.kind, names.kinds),
+    transition: [stageName(row.from_status, names.stages), stageName(row.to_status, names.stages)].filter(Boolean).join(' → '),
     reason: row.removal_reason_name?.trim() || row.return_reason_name?.trim() || null,
     note: row.note?.trim() || null,
     who: actorLabel(row, currentUserId)

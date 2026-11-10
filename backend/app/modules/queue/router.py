@@ -28,13 +28,17 @@ from app.core.permissions import (
     CanReturn,
     CanViewAnyStage,
 )
+from app.modules.catalogs.owners import OwnerCatalogs, get_owner_catalogs
 from app.modules.orders.errors import UnansweredPreconditionsError
 from app.modules.orders.models import Order, OrderSample
 from app.modules.orders.service import unanswered_checks
-from app.modules.patients.cedula import CedulaParseError, parse_cedula_barcode
+from app.modules.patients.cedula import (
+    SEX_CODE_BY_LETTER,
+    CedulaParseError,
+    parse_cedula_barcode,
+)
 from app.modules.queue import events, service
 from app.modules.queue.models import (
-    DocumentType,
     Patient,
     Priority,
     RemovalReason,
@@ -55,12 +59,12 @@ from app.modules.queue.schemas import (
     PriorityRead,
     QueueEntryCreate,
     QueueEntryRead,
-    QueueStatusLiteral,
     ReasonedActionInput,
 )
 from app.modules.queue.transitions import QueueStatus
 
 Session = Annotated[AsyncSession, Depends(get_session)]
+Owners = Annotated[OwnerCatalogs, Depends(get_owner_catalogs)]
 
 # Catalogos compartidos: cualquier persona con algun permiso de Incubus
 # (`CatalogReader`). El resto de rutas exige el tag de su pantalla.
@@ -91,17 +95,6 @@ async def _authorize_for_status(
 @catalogs_router.get("/priorities", response_model=list[PriorityRead])
 async def list_priorities(session: Session, _user: CatalogReader) -> list[Priority]:
     stmt = select(Priority).where(Priority.is_active).order_by(Priority.rank)
-    return list((await session.execute(stmt)).scalars())
-
-
-@catalogs_router.get("/document-types", response_model=list[CatalogRead])
-async def list_document_types(
-    session: Session, _user: CatalogReader
-) -> list[DocumentType]:
-    """Tipos de documento de identidad parametrizados en BD (CC, TI, CE, PA...)."""
-    stmt = (
-        select(DocumentType).where(DocumentType.is_active).order_by(DocumentType.code)
-    )
     return list((await session.execute(stmt)).scalars())
 
 
@@ -144,7 +137,7 @@ async def parse_cedula(body: dict, _user: CanHandlePatients) -> dict:
         "second_name": data.second_name,
         "first_last_name": data.first_last_name,
         "second_last_name": data.second_last_name,
-        "sex": data.sex,
+        "sex": SEX_CODE_BY_LETTER[data.sex],
         "birth_date": data.birth_date.isoformat(),
         "blood_type": data.blood_type,
     }
@@ -181,6 +174,7 @@ async def update_patient(
     request: Request,
     session: Session,
     user: CanEditPatient,
+    owners: Owners,
 ) -> Patient:
     async with audit_not_owner(request, user, REC_EDIT_PATIENT):
         await service.ensure_patient_turn_owner(
@@ -194,8 +188,9 @@ async def update_patient(
         raise NotFoundError(
             f"No existe el paciente '{patient_id}'.", {"id": str(patient_id)}
         )
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(patient, field, value)
+    await service.apply_patient_update(
+        session, owners, patient, body.model_dump(exclude_unset=True)
+    )
     await session.commit()
     # Solo los NOMBRES de los campos editados (los valores son datos personales).
     await record_audit(
@@ -216,15 +211,13 @@ async def list_queue(
     request: Request,
     session: Session,
     user: CanViewAnyStage,
-    status_filter: Annotated[
-        list[QueueStatusLiteral] | None, Query(alias="status")
-    ] = None,
+    status_filter: Annotated[list[str] | None, Query(alias="status")] = None,
     professional_id: Annotated[str | None, Query(max_length=64)] = None,
 ) -> list[QueueEntryRead]:
     """Entradas de las etapas pedidas. Cada etapa exige el `view` de su pantalla;
     sin filtro se devuelven solo las etapas que la persona puede ver."""
     if status_filter:
-        statuses = [QueueStatus(status_name) for status_name in status_filter]
+        statuses = await service.parse_status_filter(session, status_filter)
         for stage in statuses:
             await authorize(request, user, STAGE_VIEW[stage.value])
     else:
@@ -242,10 +235,10 @@ async def list_queue(
     "", response_model=QueueEntryRead, status_code=status.HTTP_201_CREATED
 )
 async def enter_queue(
-    body: QueueEntryCreate, session: Session, user: CanEnqueue
+    body: QueueEntryCreate, session: Session, user: CanEnqueue, owners: Owners
 ) -> QueueEntryRead:
     entry = await service.enter_queue(
-        session, body.patient, body.priority_id, Actor.of(user)
+        session, body.patient, body.priority_id, Actor.of(user), owners
     )
     await session.commit()
     return await events.publish_entry(

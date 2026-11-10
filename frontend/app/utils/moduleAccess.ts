@@ -18,7 +18,10 @@ export type CanFn = (tag: string) => boolean
 
 /** Etapas de `statuses` cuyo `view` tiene el usuario (el servidor rechaza todo el pedido si falta una). */
 export function stagesWithView(statuses: QueueStatus[], can: CanFn): QueueStatus[] {
-  return statuses.filter((status) => can(STAGE_VIEW_TAG[status]))
+  return statuses.filter((status) => {
+    const tag = STAGE_VIEW_TAG[status]
+    return tag !== undefined && can(tag)
+  })
 }
 
 /** Pantallas del menú lateral; cada una exige el `view` de su etapa. */

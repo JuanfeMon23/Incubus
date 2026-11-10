@@ -84,7 +84,7 @@
 
 <script setup lang="ts">
 import type { Priority, Reason } from '../types'
-import { BLOOD_TYPES, intakePatientSchema, todayISO } from '../utils/patientSchemas'
+import { intakePatientSchema, todayISO } from '../utils/patientSchemas'
 
 // Pantalla: pre-reception.view. Sin enqueue no hay formulario de ingreso; sin remove, no "Retirar".
 definePageMeta({ leo: { tag: TAGS.preReception.view } })
@@ -92,12 +92,9 @@ const canEnqueue = useCan(TAGS.preReception.enqueue)
 const canRemove = useCan(TAGS.preReception.remove)
 
 const today = todayISO()
-const bloodOptions = BLOOD_TYPES.map((bloodType) => ({ value: bloodType, label: bloodType }))
-const documentTypes = ref<Reason[]>([])
-const documentTypeOptions = computed(() =>
-  documentTypes.value.map((documentType) => ({ value: documentType.code, label: `${documentType.code} · ${documentType.name}` }))
-)
-const sexOptions = [{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }]
+const { optionsWithCode: documentTypeOptions } = useCatalog('document-types')
+const { options: sexOptions } = useCatalog('sexes')
+const { options: bloodOptions } = useCatalog('blood-types')
 const api = useLeoAppApi()
 const toast = useToast()
 const { entries, error: listError, loading: listLoading, refresh } = useQueueList(['pre_recepcion'])
@@ -106,10 +103,9 @@ const priorities = ref<Priority[]>([])
 const removalReasons = ref<Reason[]>([])
 const defaultPriorityId = () => priorities.value.find((priority) => priority.is_default === true)?.id ?? ''
 onMounted(async () => {
-  ;[priorities.value, removalReasons.value, documentTypes.value] = await Promise.all([
+  ;[priorities.value, removalReasons.value] = await Promise.all([
     api.get<Priority[]>('/priorities'),
-    api.get<Reason[]>('/removal-reasons'),
-    api.get<Reason[]>('/document-types')
+    api.get<Reason[]>('/removal-reasons')
   ])
   priorityId.value = defaultPriorityId()
 })
@@ -121,7 +117,7 @@ const blank = () => ({
   second_name: '',
   first_last_name: '',
   second_last_name: '',
-  sex: '' as '' | 'M' | 'F',
+  sex: '',
   birth_date: '',
   blood_type: '',
   priority_id: ''
@@ -146,7 +142,7 @@ async function parseScan() {
       second_name: data.second_name ?? '',
       first_last_name: data.first_last_name ?? '',
       second_last_name: data.second_last_name ?? '',
-      sex: (data.sex ?? '') as '' | 'M' | 'F',
+      sex: data.sex ?? '',
       birth_date: data.birth_date ?? '',
       blood_type: data.blood_type ?? ''
     })
@@ -173,7 +169,7 @@ watch(
           second_name: text('second_name'),
           first_last_name: text('first_last_name'),
           second_last_name: text('second_last_name'),
-          sex: text('sex') as '' | 'M' | 'F',
+          sex: text('sex'),
           birth_date: text('birth_date'),
           blood_type: text('blood_type')
         })

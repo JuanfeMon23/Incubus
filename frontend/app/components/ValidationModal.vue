@@ -15,7 +15,7 @@
       <header class="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg bg-default-100 px-4 py-3 text-sm">
         <span class="font-semibold">{{ order.patient.name }}</span>
         <span>{{ order.patient.document_type }} {{ order.patient.document_number }}</span>
-        <span>Sexo: {{ order.patient.sex ?? '—' }}</span>
+        <span>Sexo: {{ sexes.nameOf(order.patient.sex, order.patient.sex ?? '—') }}</span>
         <span>
           Edad:
           {{ order.patient.age_years !== null ? `${Math.floor(order.patient.age_years)} años` : '—' }}
@@ -113,6 +113,8 @@
 <script setup lang="ts">
 import type { OrderValidationView } from '../types'
 import { validationLabels } from '../utils/resultAuthorship'
+
+const sexes = useCatalog('sexes')
 
 const props = defineProps<{
   entryId: string

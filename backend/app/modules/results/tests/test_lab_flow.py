@@ -194,7 +194,7 @@ async def test_estructura_valores_y_banderas(client, catalog):
         await client.get(f"/api/v1/results/tests/{tid}", params={"professional_id": QC})
     ).json()
     assert detail["code"] == "GLU"
-    assert detail["patient"]["sex"] == "F"
+    assert detail["patient"]["sex"] == "female"
     row = detail["results"][0]
     assert row["code"] == "GLU" and row["unit"] == "mg/dL"
     assert row["value"] is None

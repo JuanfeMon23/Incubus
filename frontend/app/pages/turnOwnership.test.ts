@@ -158,6 +158,14 @@ describe('historial del turno', () => {
 
   it('muestra la línea de tiempo: acción, etapas, motivo y quién ("Tú" para el usuario actual)', async () => {
     fake.routes['GET /queue/e1/history'] = HISTORY
+    fake.routes['GET /catalogs/queue-statuses'] = [
+      ['en_atencion_toma_muestras', 'En atención de toma de muestras'],
+      ['en_espera_toma_muestras', 'Espera de toma de muestras']
+    ].map(([code, name], index) => ({ code, name, sort_order: index, is_active: true, is_terminal: false }))
+    fake.routes['GET /catalogs/queue-transition-kinds'] = [
+      ['enter', 'Ingreso a la cola'],
+      ['return', 'Devolución']
+    ].map(([code, name], index) => ({ code, name, sort_order: index, is_active: true }))
     await mountModal()
     const text = document.body.textContent ?? ''
     expect(text).toContain('Ingreso a la cola')

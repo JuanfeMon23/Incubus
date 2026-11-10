@@ -82,6 +82,11 @@ class CatalogClient:
                 "No se pudo consultar el catalogo de Vladimir.", {"path": path}
             ) from exc
 
+    async def catalog(self, slug: str) -> list[dict]:
+        """Catalogo simple de Vladimir (`/catalogs/{slug}`): sexes, result-types,
+        age-units, duration-units. Devuelve la lista tal cual."""
+        return await self._get(f"/catalogs/{slug}")
+
     async def search_tests(self, query: str | None, limit: int = 20) -> list[dict]:
         """Busca examenes activos por nombre o codigo.
 
@@ -302,8 +307,13 @@ async def close_token_provider() -> None:
         await leo.aclose()
 
 
+def service_auth(audience: str) -> httpx.Auth:
+    """`httpx.Auth` con el token de servicio de Incubus para `audience`."""
+    return _service_token_provider().auth(audience)
+
+
 def get_catalog_client() -> CatalogClient:
     return CatalogClient(
         get_settings().vladimir_api_url,
-        auth=_service_token_provider().auth(VLADIMIR_AUDIENCE),
+        auth=service_auth(VLADIMIR_AUDIENCE),
     )

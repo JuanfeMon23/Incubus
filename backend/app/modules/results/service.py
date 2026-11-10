@@ -1,5 +1,6 @@
 """Recepcion en laboratorio y validacion de resultados por area."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from app.core.exceptions import (
 from app.core.leo import Actor, uuid_str
 from app.core.trace import record_sample_events, record_test_event
 from app.modules.catalog_client.client import CatalogClient
+from app.modules.catalogs.owners import OwnerCatalogs
 from app.modules.orders.models import Order, OrderResult, OrderSample, OrderTest
 from app.modules.queue import service as queue_service
 from app.modules.queue.models import Patient, QueueEntry
@@ -138,8 +140,12 @@ def _patient_context(patient: Patient) -> dict:
     }
 
 
-def _row_dict(row: OrderResult, patient: Patient) -> dict:
-    rng = pick_range(row.ranges, patient.sex, age_in_years(patient.birth_date))
+def _row_dict(
+    row: OrderResult, patient: Patient, age_unit_days: Mapping[str, float]
+) -> dict:
+    rng = pick_range(
+        row.ranges, patient.sex, age_in_years(patient.birth_date), age_unit_days
+    )
     value = (row.value or {}).get("v")
     return {
         "code": row.analyte_code,
@@ -172,12 +178,14 @@ def _row_dict(row: OrderResult, patient: Patient) -> dict:
 async def test_detail(
     session: AsyncSession,
     catalog: CatalogClient,
+    owners: OwnerCatalogs,
     order_test_id: UUID,
     professional_id: str,
 ) -> dict:
     test, order = await _load_test(session, catalog, order_test_id, professional_id)
     rows = await ensure_structure(session, catalog, test)
     patient = await session.get(Patient, order.patient_id)
+    age_unit_days = await owners.age_unit_days()
     return {
         "order_test_id": str(test.id),
         "order_number": order.order_number,
@@ -188,7 +196,7 @@ async def test_detail(
         "validated_by": test.validated_by_name,
         "validated_by_user_id": uuid_str(test.validated_by_user_id),
         "patient": _patient_context(patient),
-        "results": [_row_dict(row, patient) for row in rows],
+        "results": [_row_dict(row, patient, age_unit_days) for row in rows],
     }
 
 
@@ -218,7 +226,11 @@ def _store_value(row: OrderResult, typed: object, at: datetime, actor: Actor) ->
 
 
 def _apply_values(
-    rows: list[OrderResult], values: dict, patient: Patient, actor: Actor
+    rows: list[OrderResult],
+    values: dict,
+    patient: Patient,
+    actor: Actor,
+    age_unit_days: Mapping[str, float],
 ) -> list[dict]:
     """Aplica los valores y devuelve los cambios reales (analito, antes, despues,
     bandera, si es calculado) para la traza; un valor igual no genera cambio."""
@@ -270,7 +282,7 @@ def _apply_values(
     age = age_in_years(patient.birth_date)
     for row in rows:
         value = (row.value or {}).get("v")
-        rng = pick_range(row.ranges, patient.sex, age)
+        rng = pick_range(row.ranges, patient.sex, age, age_unit_days)
         row.flag = evaluate_flag(value, rng) if value is not None else None
 
     return [
@@ -328,6 +340,7 @@ async def _record_changes(
 async def save_values(
     session: AsyncSession,
     catalog: CatalogClient,
+    owners: OwnerCatalogs,
     order_test_id: UUID,
     professional_id: str,
     professional_name: str,
@@ -344,18 +357,19 @@ async def save_values(
         )
     rows = await ensure_structure(session, catalog, test)
     patient = await session.get(Patient, order.patient_id)
-    changes = _apply_values(rows, values, patient, actor)
+    changes = _apply_values(rows, values, patient, actor, await owners.age_unit_days())
     await _record_changes(session, actor, test, changes, professional_id)
     test.validation_status = (
         "draft" if any(row.value is not None for row in rows) else "pending"
     )
     await session.flush()
-    return await test_detail(session, catalog, order_test_id, professional_id)
+    return await test_detail(session, catalog, owners, order_test_id, professional_id)
 
 
 async def validate_test(
     session: AsyncSession,
     catalog: CatalogClient,
+    owners: OwnerCatalogs,
     order_test_id: UUID,
     professional_id: str,
     professional_name: str,
@@ -373,6 +387,7 @@ async def validate_test(
     await save_values(
         session,
         catalog,
+        owners,
         order_test_id,
         professional_id,
         professional_name,
@@ -444,7 +459,7 @@ async def validate_test(
             summary=f"Orden {order.order_number} finalizada",
             details={"order_number": order.order_number},
         )
-    detail = await test_detail(session, catalog, order_test_id, professional_id)
+    detail = await test_detail(session, catalog, owners, order_test_id, professional_id)
     return detail, finalized
 
 

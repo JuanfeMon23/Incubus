@@ -6,7 +6,7 @@ PATIENT = {
     "first_name": "JUAN",
     "first_last_name": "GOMEZ",
     "second_last_name": "RODRIGUEZ",
-    "sex": "M",
+    "sex": "male",
     "birth_date": "1985-03-12",
 }
 

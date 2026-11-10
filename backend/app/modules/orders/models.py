@@ -21,7 +21,38 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.db.base import Base
-from app.core.db.mixins import Timestamps, UUIDv7PK
+from app.core.db.mixins import SortedCatalogMixin, Timestamps, UUIDv7PK
+
+
+class ValidationStatus(SortedCatalogMixin, Base):
+    """Estado de validacion de un examen de la orden (pending, draft, validated)."""
+
+    __tablename__ = "validation_statuses"
+
+
+class ResultFlag(SortedCatalogMixin, Base):
+    """Bandera de interpretacion de un resultado. `variant` es el tono de la UI
+    (success|warning|danger); `show_in_report` indica si el informe la imprime."""
+
+    __tablename__ = "result_flags"
+
+    variant: Mapped[str] = mapped_column(String(16), nullable=False)
+    show_in_report: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("true"), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("variant IN ('success', 'warning', 'danger')", name="variant"),
+    )
+
+
+class TraceStep(SortedCatalogMixin, Base):
+    """Paso de la trazabilidad (`area.accion`): nombre visible y `category`, el
+    grupo visual de la linea de tiempo."""
+
+    __tablename__ = "trace_steps"
+
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
 
 
 class OrderCounter(Base):
@@ -63,7 +94,11 @@ class OrderTest(UUIDv7PK, Base):
     area_id: Mapped[str | None] = mapped_column(String(64))
     area_code: Mapped[str | None] = mapped_column(String(64))
     validation_status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'pending'")
+        String(16),
+        ForeignKey("validation_statuses.code"),
+        nullable=False,
+        server_default=text("'pending'"),
+        index=True,
     )
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     validated_by_id: Mapped[str | None] = mapped_column(String(64))
@@ -174,7 +209,9 @@ class OrderResult(UUIDv7PK, Base):
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
     value: Mapped[dict | None] = mapped_column(JSONB)  # {"v": <valor tipado>}
-    flag: Mapped[str | None] = mapped_column(String(16))
+    flag: Mapped[str | None] = mapped_column(
+        String(16), ForeignKey("result_flags.code"), index=True
+    )
     entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     entered_by: Mapped[str | None] = mapped_column(String(120))
     entered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -201,7 +238,9 @@ class OrderTestEvent(UUIDv7PK, Base):
     order_sample_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("order_samples.id", ondelete="RESTRICT")
     )
-    step: Mapped[str] = mapped_column(String(40), nullable=False)
+    step: Mapped[str] = mapped_column(
+        String(40), ForeignKey("trace_steps.code"), nullable=False, index=True
+    )
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
     )

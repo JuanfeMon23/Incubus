@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  BLOOD_TYPES,
   digitsOnly,
   intakePatientSchema,
   receptionPatientSchema,
@@ -16,7 +15,7 @@ const valid = {
   second_last_name: '',
   birth_date: '1985-03-12',
   birth_place: 'Bogotá',
-  sex: 'M',
+  sex: 'male',
   blood_type: 'O+',
   email: 'juan@correo.co',
   phone: '3001112233',
@@ -56,10 +55,11 @@ describe('receptionPatientSchema', () => {
     expect(errorsOf({ ...valid, birth_date: todayISO() }).birth_date).toBeUndefined()
   })
 
-  it('el RH solo admite los 8 valores válidos', () => {
-    for (const rh of BLOOD_TYPES) expect(errorsOf({ ...valid, blood_type: rh }).blood_type).toBeUndefined()
-    expect(errorsOf({ ...valid, blood_type: 'Z9' }).blood_type).toBeTruthy()
-    expect(errorsOf({ ...valid, blood_type: 'hola' }).blood_type).toBeTruthy()
+  it('el RH y el sexo son obligatorios; qué codes existen lo valida el backend (catálogos)', () => {
+    expect(errorsOf({ ...valid, blood_type: 'AB-' }).blood_type).toBeUndefined()
+    expect(errorsOf({ ...valid, blood_type: '' }).blood_type).toMatch(/RH/)
+    expect(errorsOf({ ...valid, sex: 'female' }).sex).toBeUndefined()
+    expect(errorsOf({ ...valid, sex: '' }).sex).toMatch(/sexo/)
   })
 
   it('el teléfono admite solo números', () => {
@@ -69,9 +69,8 @@ describe('receptionPatientSchema', () => {
     }
   })
 
-  it('valida formato de correo y sexo', () => {
+  it('valida formato de correo', () => {
     expect(errorsOf({ ...valid, email: 'no-es-correo' }).email).toMatch(/correo/)
-    expect(errorsOf({ ...valid, sex: 'X' }).sex).toBeTruthy()
   })
 })
 
@@ -106,12 +105,14 @@ describe('intakePatientSchema', () => {
     }
   })
 
-  it('normaliza vacíos a null y rechaza RH o fechas inválidas', () => {
+  it('normaliza vacíos a null, conserva los codes de catálogo y rechaza fechas inválidas', () => {
     const out = intakePatientSchema.parse(base)
     expect(out.sex).toBeNull()
     expect(out.birth_date).toBeNull()
     expect(out.blood_type).toBeNull()
-    expect(intakePatientSchema.safeParse({ ...base, blood_type: 'Z9' }).success).toBe(false)
+    const filled = intakePatientSchema.parse({ ...base, sex: 'female', blood_type: 'O+' })
+    expect(filled.sex).toBe('female')
+    expect(filled.blood_type).toBe('O+')
     expect(intakePatientSchema.safeParse({ ...base, birth_date: '2999-01-01' }).success).toBe(false)
   })
 })

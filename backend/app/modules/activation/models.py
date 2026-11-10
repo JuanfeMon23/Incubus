@@ -19,7 +19,7 @@ class ActivationCode(UUIDv7PK, Base):
     __tablename__ = "activation_codes"
 
     patient_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True
     )
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orders.id"), unique=True, nullable=False

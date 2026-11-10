@@ -4,7 +4,19 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CatalogKind = Literal["priorities", "removal-reasons", "return-reasons"]
+CatalogKind = Literal[
+    "priorities",
+    "removal-reasons",
+    "return-reasons",
+    # Catalogos de categoria (sus `code` son de sistema): solo se editan nombre
+    # y presentacion; no se crean ni se desactivan.
+    "blood-types",
+    "queue-statuses",
+    "queue-transition-kinds",
+    "validation-statuses",
+    "result-flags",
+    "trace-steps",
+]
 
 
 class CatalogAdminRead(BaseModel):
@@ -23,6 +35,12 @@ class CatalogAdminRead(BaseModel):
     rank: int | None = None
     # Solo prioridades: la que el ingreso preselecciona (null en los motivos).
     is_default: bool | None = None
+    # Solo catalogos de categoria (null en prioridades y motivos).
+    sort_order: int | None = None
+    is_terminal: bool | None = None  # queue-statuses
+    variant: str | None = None  # result-flags
+    show_in_report: bool | None = None  # result-flags
+    category: str | None = None  # trace-steps
 
 
 class CatalogPage(BaseModel):
@@ -52,6 +70,10 @@ class CatalogUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     color_hex: str | None = Field(default=None, max_length=7)
     rank: int | None = None
+    # Catalogos de categoria.
+    sort_order: int | None = None
+    variant: str | None = Field(default=None, max_length=16)  # result-flags
+    show_in_report: bool | None = None  # result-flags
     reason: str | None = Field(default=None, max_length=500)
 
 

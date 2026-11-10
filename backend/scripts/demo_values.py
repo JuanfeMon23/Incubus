@@ -7,6 +7,7 @@ de Incubus: el rango es el mismo que aplica el servidor.
 """
 
 import random
+from collections.abc import Mapping
 from datetime import date
 
 from app.modules.results.flags import age_in_years, pick_range
@@ -88,8 +89,13 @@ def value_for(
     rand: random.Random,
     *,
     abnormal: bool,
+    age_unit_days: Mapping[str, float] | None = None,
 ) -> str | bool | float | None:
-    """Valor a digitar para un analito; `None` = dejarlo vacio (calculado u opcional)."""
+    """Valor a digitar para un analito; `None` = dejarlo vacio (calculado u opcional).
+
+    `sex`: codigo del catalogo de sexos (`male`/`female`). `age_unit_days`: unidades
+    de edad -> dias (`age-units` de Vladimir); sin ellas, los rangos por edad se
+    leen en anos (solo aplica sin el `range` que ya entrega el servidor)."""
     kind = analyte["result_type"]
     if kind == "calculated":
         return None  # lo obtiene el servidor de su formula
@@ -100,7 +106,9 @@ def value_for(
     ranges = analyte.get("ranges") or []
     # `GET /results/tests/{id}` expone el rango ya elegido en `range`; si solo hay
     # la lista completa (plantilla), se elige con la misma regla del servidor.
-    rng = analyte.get("range") or pick_range(ranges, sex, age_in_years(birth_date))
+    rng = analyte.get("range") or pick_range(
+        ranges, sex, age_in_years(birth_date), age_unit_days or {}
+    )
     if kind == "numeric":
         return numeric_value(rng, _decimals(analyte), rand, abnormal)
     if kind == "boolean":

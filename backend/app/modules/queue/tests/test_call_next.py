@@ -1,4 +1,4 @@
-PATIENT = {"first_name": "ANA", "first_last_name": "LOPEZ", "sex": "F"}
+PATIENT = {"first_name": "ANA", "first_last_name": "LOPEZ", "sex": "female"}
 
 
 async def _enter(client, doc, priority):

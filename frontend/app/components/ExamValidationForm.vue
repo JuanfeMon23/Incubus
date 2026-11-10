@@ -136,8 +136,13 @@
 </template>
 
 <script setup lang="ts">
-import type { ResultRow, ResultTestDetail } from '../types'
+import type { ResultFlagCatalogItem, ResultRow, ResultTestDetail } from '../types'
+import { flagPresentation } from '../utils/catalogs'
 import { enteredByLabel, validationLabels } from '../utils/resultAuthorship'
+
+// Etiqueta y variante de cada bandera vienen del catálogo `result-flags`.
+const resultFlags = useCatalog<ResultFlagCatalogItem>('result-flags')
+const flagBadge = (flag: string | null) => flagPresentation(resultFlags.items.value, flag)
 
 const props = defineProps<{
   orderTestId: string
@@ -201,39 +206,24 @@ function displayValue(row: ResultRow) {
 }
 const boolText = (value: unknown) => (value === true ? 'true' : value === false ? 'false' : '')
 
-function isCritical(flag: string | null) {
-  return flag === 'critical_low' || flag === 'critical_high'
-}
-function isAbnormal(flag: string | null) {
-  return flag === 'low' || flag === 'high' || flag === 'abnormal'
-}
+const flagVariant = (flag: string | null) => flagPresentation(resultFlags.items.value, flag)?.variant ?? null
 function rowClass(flag: string | null) {
-  if (isCritical(flag)) return 'border-danger-300 bg-danger-50/60'
-  if (isAbnormal(flag)) return 'border-warning-300 bg-warning-50/60'
+  const variant = flagVariant(flag)
+  if (variant === 'danger') return 'border-danger-300 bg-danger-50/60'
+  if (variant === 'warning') return 'border-warning-300 bg-warning-50/60'
   return 'border-border'
 }
 function stripeClass(flag: string | null) {
-  if (isCritical(flag)) return 'bg-danger-500'
-  if (isAbnormal(flag)) return 'bg-warning-500'
-  if (flag === 'normal') return 'bg-success-500'
+  const variant = flagVariant(flag)
+  if (variant === 'danger') return 'bg-danger-500'
+  if (variant === 'warning') return 'bg-warning-500'
+  if (variant === 'success') return 'bg-success-500'
   return 'bg-default-200'
 }
 function numericValue(row: ResultRow): number | null {
   const raw = form[row.code] ?? row.value
   const numeric = typeof raw === 'number' ? raw : Number(String(raw ?? '').replace(',', '.'))
   return raw === null || raw === '' || Number.isNaN(numeric) ? null : numeric
-}
-
-function flagBadge(flag: string | null): { variant: 'success' | 'warning' | 'danger'; label: string } | null {
-  switch (flag) {
-    case 'normal': return { variant: 'success', label: 'Normal' }
-    case 'low': return { variant: 'warning', label: 'Bajo' }
-    case 'high': return { variant: 'warning', label: 'Alto' }
-    case 'abnormal': return { variant: 'warning', label: 'Anormal' }
-    case 'critical_low': return { variant: 'danger', label: 'Crítico bajo' }
-    case 'critical_high': return { variant: 'danger', label: 'Crítico alto' }
-    default: return null
-  }
 }
 
 function hydrate(loadedDetail: ResultTestDetail) {

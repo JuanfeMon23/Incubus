@@ -1,13 +1,15 @@
-export type QueueStatus =
-  | 'pre_recepcion'
-  | 'en_atencion_recepcion'
-  | 'en_espera_impresion'
-  | 'en_espera_toma_muestras'
-  | 'en_atencion_toma_muestras'
-  | 'toma_finalizada'
-  | 'en_laboratorio'
-  | 'finalizada'
-  | 'retirado'
+/** Code de sistema de un estado de la cola (catálogo `queue-statuses`; ver `GET /catalogs/queue-statuses`). */
+export type QueueStatus = string
+
+/** Slugs de `GET /catalogs/{slug}`. */
+export type CatalogSlug =
+  | 'blood-types' | 'queue-statuses' | 'queue-transition-kinds' | 'validation-statuses'
+  | 'result-flags' | 'trace-steps' | 'sexes' | 'document-types'
+/** Fila común de un catálogo; los extras de cada slug van en su tipo. */
+export interface CatalogItem { code: string; name: string; sort_order: number; is_active: boolean }
+export interface QueueStatusCatalogItem extends CatalogItem { is_terminal: boolean }
+export interface ResultFlagCatalogItem extends CatalogItem { variant: 'success' | 'warning' | 'danger'; show_in_report: boolean }
+export interface TraceStepCatalogItem extends CatalogItem { category: string }
 
 export interface Priority { id: string; code: string; name: string; color_hex: string; rank: number; is_default?: boolean }
 export interface Reason { id: string; code: string; name: string }
@@ -19,7 +21,7 @@ export interface Patient {
   second_name: string | null
   first_last_name: string
   second_last_name: string | null
-  sex: 'M' | 'F' | null
+  sex: string | null
   birth_date: string | null
   birth_place: string | null
   blood_type: string | null
@@ -112,7 +114,7 @@ export interface ResultsQueueTest {
   code: string
   name: string
   area_code: string | null
-  validation_status: 'pending' | 'draft' | 'validated'
+  validation_status: string
 }
 export interface ResultsQueueOrder {
   entry_id: string
@@ -146,7 +148,7 @@ export interface ResultTestDetail {
   code: string
   name: string
   area_code: string | null
-  validation_status: 'pending' | 'draft' | 'validated'
+  validation_status: string
   validated_by: string | null
   /** Usuario que EJECUTÓ la validación (distinto del profesional que firma, `validated_by`). */
   validated_by_user_id?: string | null
@@ -167,7 +169,7 @@ export interface OrderValidationTest {
   code: string
   name: string
   area_code: string | null
-  validation_status: 'pending' | 'draft' | 'validated'
+  validation_status: string
   validated_by: string | null
   validated_by_user_id?: string | null
   validated_by_user?: string | null
@@ -204,7 +206,9 @@ export interface QueueHistoryRow {
 }
 
 /** Catálogos administrables de la cola (`/queue-admin/{kind}`). */
-export type QueueAdminKind = 'priorities' | 'removal-reasons' | 'return-reasons'
+export type QueueAdminKind =
+  | 'priorities' | 'removal-reasons' | 'return-reasons'
+  | 'blood-types' | 'queue-statuses' | 'queue-transition-kinds' | 'validation-statuses' | 'result-flags' | 'trace-steps'
 /** Fila de un catálogo; `color_hex` y `rank` solo vienen en prioridades. */
 export interface QueueAdminItem {
   id: string
@@ -217,6 +221,11 @@ export interface QueueAdminItem {
   rank: number | null
   /** Prioridad por defecto de la cola; `null` en los motivos. */
   is_default: boolean | null
+  /** Solo catálogos de sistema (`blood-types`, `queue-statuses`…). */
+  sort_order?: number | null
+  /** Solo `result-flags`. */
+  variant?: 'success' | 'warning' | 'danger' | null
+  show_in_report?: boolean | null
 }
 export interface QueueAdminPage {
   items: QueueAdminItem[]

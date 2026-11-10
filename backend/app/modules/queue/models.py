@@ -22,12 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.db.base import Base
-from app.core.db.mixins import CatalogMixin, Timestamps, UUIDv7PK
-from app.modules.queue.transitions import QueueStatus
-
-STATUS_VALUES = tuple(queue_status.value for queue_status in QueueStatus)
-_STATUS_IN = ", ".join(f"'{status_value}'" for status_value in STATUS_VALUES)
-KIND_VALUES = ("enter", "advance", "return", "remove")
+from app.core.db.mixins import CatalogMixin, SortedCatalogMixin, Timestamps, UUIDv7PK
 
 
 class Priority(CatalogMixin, Base):
@@ -61,10 +56,27 @@ class ReturnReason(CatalogMixin, Base):
     __tablename__ = "return_reasons"
 
 
-class DocumentType(CatalogMixin, Base):
-    """Tipo de documento de identidad parametrizado (CC, TI, CE, PA...)."""
+class BloodType(SortedCatalogMixin, Base):
+    """Grupo sanguineo y RH (`code` = 'A+', 'O-'...). Propio de Incubus."""
 
-    __tablename__ = "document_types"
+    __tablename__ = "blood_types"
+
+
+class QueueStatusCatalog(SortedCatalogMixin, Base):
+    """Estado/etapa de la cola: nombre y orden de presentacion. Los `code` son de
+    sistema (`QueueStatus`); `is_terminal` marca los que sacan al paciente de la cola."""
+
+    __tablename__ = "queue_statuses"
+
+    is_terminal: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+
+
+class QueueTransitionKind(SortedCatalogMixin, Base):
+    """Tipo de cambio de estado del historial: enter, advance, return, remove."""
+
+    __tablename__ = "queue_transition_kinds"
 
 
 class Patient(UUIDv7PK, Timestamps, Base):
@@ -78,10 +90,14 @@ class Patient(UUIDv7PK, Timestamps, Base):
     second_name: Mapped[str | None] = mapped_column(String(80))
     first_last_name: Mapped[str] = mapped_column(String(80), nullable=False)
     second_last_name: Mapped[str | None] = mapped_column(String(80))
-    sex: Mapped[str | None] = mapped_column(String(1))
+    # Codigo del catalogo de sexos de Vladimir (`male`/`female`): sin FK, el
+    # backend valida contra su API.
+    sex: Mapped[str | None] = mapped_column(String(16))
     birth_date: Mapped[date | None] = mapped_column(Date)
     birth_place: Mapped[str | None] = mapped_column(String(120))
-    blood_type: Mapped[str | None] = mapped_column(String(3))
+    blood_type: Mapped[str | None] = mapped_column(
+        String(3), ForeignKey("blood_types.code"), index=True
+    )
     email: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(32))
     address: Mapped[str | None] = mapped_column(String(255))
@@ -93,12 +109,6 @@ class Patient(UUIDv7PK, Timestamps, Base):
             "document_type",
             "document_number",
             unique=True,
-        ),
-        CheckConstraint("sex IN ('M', 'F')", name="sex_values"),
-        CheckConstraint(
-            "blood_type IS NULL OR blood_type IN "
-            "('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')",
-            name="blood_type",
         ),
     )
 
@@ -113,7 +123,10 @@ class QueueEntry(UUIDv7PK, Timestamps, Base):
         UUID(as_uuid=True), ForeignKey("priorities.id"), nullable=False
     )
     status: Mapped[str] = mapped_column(
-        String(32), server_default=text("'pre_recepcion'"), nullable=False
+        String(32),
+        ForeignKey("queue_statuses.code"),
+        server_default=text("'pre_recepcion'"),
+        nullable=False,
     )
     claimed_by: Mapped[str | None] = mapped_column(String(120))
     claimed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -140,7 +153,6 @@ class QueueEntry(UUIDv7PK, Timestamps, Base):
     __mapper_args__: ClassVar[dict] = {"eager_defaults": True}
 
     __table_args__ = (
-        CheckConstraint(f"status IN ({_STATUS_IN})", name="status_values"),
         # Un paciente no puede estar dos veces en la cola a la vez (un turno
         # retirado o finalizado ya no cuenta como activo).
         Index(
@@ -164,9 +176,18 @@ class QueueStatusHistory(UUIDv7PK, Base):
     queue_entry_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("queue_entries.id"), nullable=False
     )
-    from_status: Mapped[str | None] = mapped_column(String(32))
-    to_status: Mapped[str] = mapped_column(String(32), nullable=False)
-    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("queue_statuses.code"), index=True
+    )
+    to_status: Mapped[str] = mapped_column(
+        String(32), ForeignKey("queue_statuses.code"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(
+        String(16),
+        ForeignKey("queue_transition_kinds.code"),
+        nullable=False,
+        index=True,
+    )
     changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
     )
@@ -184,10 +205,6 @@ class QueueStatusHistory(UUIDv7PK, Base):
     note: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
-        CheckConstraint(f"to_status IN ({_STATUS_IN})", name="to_status_values"),
-        CheckConstraint(
-            "kind IN ('enter', 'advance', 'return', 'remove')", name="kind_values"
-        ),
         Index("ix_queue_status_history_entry", "queue_entry_id", "changed_at"),
         Index("ix_queue_status_history_status", "to_status", "changed_at"),
         Index(

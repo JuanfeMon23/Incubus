@@ -35,7 +35,7 @@
               title="Datos anteriores a la trazabilidad detallada"
             >Reconstruido</span>
           </div>
-          <p class="font-semibold">{{ event.summary || stepLabel(event.step) }}</p>
+          <p class="font-semibold">{{ event.summary || stepLabel(event.step, traceSteps.items.value) }}</p>
           <p class="text-sm">Por: <span class="font-medium">{{ actorName(event.actor) }}</span></p>
           <details v-if="lines(event).length" class="mt-1 text-sm">
             <summary class="cursor-pointer text-primary-600 hover:underline focus-visible:outline focus-visible:outline-2">Ver detalles</summary>
@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import type { TraceEvent } from '../types'
+import type { TraceEvent, TraceStepCatalogItem } from '../types'
 import { actorName, CATEGORY_INFO, detailLines, groupByDay, SCOPE_LABELS, stepCategory, stepLabel, timeLabel } from '../utils/trace'
 
 /** Línea de tiempo de la trazabilidad de una prueba, agrupada por día (presentacional). */
@@ -68,7 +68,9 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ loadMore: [] }>()
 
+// Nombre y categoría de cada paso vienen del catálogo `trace-steps`; íconos y colores son UI (`CATEGORY_INFO`).
+const traceSteps = useCatalog<TraceStepCatalogItem>('trace-steps', { includeInactive: true })
 const days = computed(() => groupByDay(props.events))
-const info = (event: TraceEvent) => CATEGORY_INFO[stepCategory(event.step)]
+const info = (event: TraceEvent) => CATEGORY_INFO[stepCategory(event.step, traceSteps.items.value)]
 const lines = (event: TraceEvent) => detailLines(event)
 </script>

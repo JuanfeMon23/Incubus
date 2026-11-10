@@ -1,6 +1,6 @@
 """GET /orders/{order_number}/tests/{test_id}/trace: eventos reales + derivados."""
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 
 from app.conftest import FakeLeo
 from app.core import permissions
@@ -242,3 +242,21 @@ async def test_order_tests_list_404_and_403(client, catalog, leo: FakeLeo):
     assert (await client.get("/api/v1/orders/00000000/tests")).status_code == 404
     _as(leo, "Sin traza", ALL - {permissions.RES_TRACE})
     assert (await client.get(f"/api/v1/orders/{number}/tests")).status_code == 403
+
+
+async def test_derived_queue_events_take_their_name_from_trace_steps(
+    client, catalog, session, leo: FakeLeo
+):
+    from app.modules.orders.models import TraceStep
+
+    _, number = await order_in_laboratory(client, catalog, ("GLU",))
+    tid = await _test_id(session, number, "GLU")
+    await session.execute(
+        update(TraceStep)
+        .where(TraceStep.code == "queue.entered")
+        .values(name="Llegada del paciente")
+    )
+    _as(leo, "Analista A", ALL)
+    events = (await client.get(_url(number, tid))).json()["events"]
+    entered = next(event for event in events if event["step"] == "queue.entered")
+    assert entered["summary"] == "Llegada del paciente"

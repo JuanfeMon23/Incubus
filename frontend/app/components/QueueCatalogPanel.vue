@@ -13,7 +13,7 @@
           inactive-label="Inactivos"
         />
       </UiListToolbar>
-      <LeoCan :tag="TAGS.queueAdmin.create">
+      <LeoCan v-if="!system" :tag="TAGS.queueAdmin.create">
         <UiButton @click="openCreate">{{ info.feminine ? 'Nueva' : 'Nuevo' }} {{ info.noun }}</UiButton>
       </LeoCan>
     </div>
@@ -35,6 +35,9 @@
       <template #cell-name="{ row }">
         <PriorityBadge v-if="priority && row.color_hex" :priority="{ ...row, color_hex: row.color_hex, rank: row.rank ?? 0 }" />
         <span v-else class="font-medium text-text">{{ row.name }}</span>
+      </template>
+      <template #cell-variant="{ row }">
+        <UiStatusBadge v-if="row.variant" :variant="row.variant" :label="row.variant" />
       </template>
       <template #cell-code="{ row }">
         <span class="font-mono text-xs text-text-muted">{{ row.code }}</span>
@@ -61,7 +64,7 @@
               @click="openSetDefault(row)"
             >Hacer predeterminada</UiButton>
           </LeoCan>
-          <LeoCan :tag="TAGS.queueAdmin.toggle">
+          <LeoCan v-if="!system" :tag="TAGS.queueAdmin.toggle">
             <UiButton
               v-if="!row.is_active"
               variant="ghost"
@@ -132,13 +135,15 @@
 <script setup lang="ts">
 import type { UiDataTableColumn } from '#andromeda/components/ui/UiDataTable.vue'
 import type { QueueAdminItem, QueueAdminKind } from '../types'
-import { canMakeDefault, deactivateBlockedReason, deactivateSchema, isPriorityKind, KIND_INFO, queueAdminErrorMessage } from '../utils/queueAdmin'
+import { canMakeDefault, deactivateBlockedReason, deactivateSchema, isPriorityKind, isResultFlagKind, isSystemKind, KIND_INFO, queueAdminErrorMessage } from '../utils/queueAdmin'
 import { TAGS } from '../utils/tags'
 
 const props = defineProps<{ kind: QueueAdminKind }>()
 
 const info = KIND_INFO[props.kind]
 const priority = isPriorityKind(props.kind)
+const system = isSystemKind(props.kind)
+const resultFlag = isResultFlagKind(props.kind)
 const api = useQueueAdminApi(props.kind)
 const list = useQueueAdminList(props.kind)
 const toast = useToast()
@@ -147,6 +152,8 @@ const columns: UiDataTableColumn<QueueAdminItem>[] = [
   { key: 'name', label: 'Nombre' },
   { key: 'code', label: 'Código' },
   ...(priority ? [{ key: 'rank', label: 'Orden' } as UiDataTableColumn<QueueAdminItem>] : []),
+  ...(system ? [{ key: 'sort_order', label: 'Orden' } as UiDataTableColumn<QueueAdminItem>] : []),
+  ...(resultFlag ? [{ key: 'variant', label: 'Variante' } as UiDataTableColumn<QueueAdminItem>] : []),
   { key: 'is_active', label: 'Estado' },
   { key: 'updated_at', label: 'Actualizado' },
   { key: 'id', label: '', class: 'text-right' }

@@ -10,7 +10,7 @@ PATIENT = {
     "document_number": "1020304050",
     "first_name": "JUAN",
     "first_last_name": "GOMEZ",
-    "sex": "M",
+    "sex": "male",
     "birth_date": "1985-03-12",
 }
 

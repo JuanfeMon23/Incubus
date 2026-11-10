@@ -33,7 +33,7 @@
         <p class="mt-0.5 truncate text-xs text-text-muted">
           {{ entry.patient.document_type }} {{ entry.patient.document_number }}
           <template v-if="age !== null"> · {{ age }} años</template>
-          <template v-if="entry.patient.sex"> · {{ entry.patient.sex === 'F' ? 'Mujer' : 'Hombre' }}</template>
+          <template v-if="entry.patient.sex"> · {{ sexes.nameOf(entry.patient.sex, entry.patient.sex) }}</template>
         </p>
 
         <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
@@ -76,6 +76,8 @@
 
 <script setup lang="ts">
 import type { QueueEntry } from '../types'
+
+const sexes = useCatalog('sexes')
 
 const props = withDefaults(
   defineProps<{

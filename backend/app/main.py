@@ -19,6 +19,8 @@ from app.core.realtime import QUEUE_NAMESPACE, sio
 from app.core.trace import RequestIdMiddleware
 from app.modules.activation.router import router as activation_router
 from app.modules.catalog_client.client import close_token_provider
+from app.modules.catalogs.router import legacy_router as legacy_catalogs_router
+from app.modules.catalogs.router import router as catalogs_api_router
 from app.modules.orders.router import catalog_router
 from app.modules.orders.router import router as orders_router
 from app.modules.queue.router import catalogs_router, patients_router, queue_router
@@ -81,6 +83,8 @@ auth.install(app)  # errores de Leo con el formato {code, message, details}
 app.include_router(leo_router(auth))  # /auth/login /callback /me /activity /logout
 
 app.include_router(catalogs_router, prefix="/api/v1")
+app.include_router(legacy_catalogs_router, prefix="/api/v1")
+app.include_router(catalogs_api_router, prefix="/api/v1/catalogs")
 app.include_router(patients_router, prefix="/api/v1/patients")
 app.include_router(queue_router, prefix="/api/v1/queue")
 app.include_router(queue_admin_router, prefix="/api/v1/queue-admin")

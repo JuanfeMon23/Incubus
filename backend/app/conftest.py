@@ -72,6 +72,11 @@ from app.core.leo import auth
 from app.core.leo import catalog as leo_catalog
 from app.main import app
 from app.modules.catalog_client.client import get_catalog_client
+from app.modules.catalogs.owners import (
+    OwnerCatalogs,
+    OwnerCatalogUnavailableError,
+    get_owner_catalogs,
+)
 
 
 @dataclass
@@ -316,6 +321,73 @@ class FakeCatalog:
         return None
 
 
+class FakeVladimirOwner:
+    """Catalogos simples de Vladimir (`/catalogs/{slug}`) en memoria."""
+
+    def __init__(self) -> None:
+        self.down = False
+        self.data: dict[str, list[dict]] = {
+            "sexes": [
+                {"code": "male", "name": "Masculino", "is_wildcard": False},
+                {"code": "female", "name": "Femenino", "is_wildcard": False},
+                {"code": "any", "name": "Cualquiera", "is_wildcard": True},
+            ],
+            "age-units": [
+                {"code": "dias", "name": "Días", "days": 1},
+                {"code": "meses", "name": "Meses", "days": 30.4375},
+                {"code": "anos", "name": "Años", "days": 365.25},
+            ],
+        }
+
+    async def catalog(self, slug: str) -> list[dict]:
+        if self.down:
+            raise OwnerCatalogUnavailableError("Vladimir no responde.")
+        return self.data[slug]
+
+
+class FakeLeoOwner:
+    """Tipos de documento de Leo en memoria."""
+
+    def __init__(self) -> None:
+        self.down = False
+        self.data = [
+            {"code": code, "name": name, "sort_order": position, "is_active": True}
+            for position, (code, name) in enumerate(
+                [
+                    ("CC", "Cédula de ciudadanía"),
+                    ("TI", "Tarjeta de identidad"),
+                    ("CE", "Cédula de extranjería"),
+                    ("PA", "Pasaporte"),
+                    ("RC", "Registro civil"),
+                ],
+                start=1,
+            )
+        ]
+
+    async def document_types(self) -> list[dict]:
+        if self.down:
+            raise OwnerCatalogUnavailableError("Leo no responde.")
+        return self.data
+
+
+class OwnersFixture:
+    """`OwnerCatalogs` real con duenos simulados: apaga uno con `.leo.down` /
+    `.vladimir.down` (y `clear()` para olvidar la cache)."""
+
+    def __init__(self) -> None:
+        self.vladimir = FakeVladimirOwner()
+        self.leo = FakeLeoOwner()
+        self.catalogs = OwnerCatalogs(self.vladimir, self.leo)
+
+    def clear(self) -> None:
+        self.catalogs._cache.clear()
+
+
+@pytest.fixture
+def owners() -> OwnersFixture:
+    return OwnersFixture()
+
+
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession]:
     async with engine.connect() as connection:
@@ -353,7 +425,7 @@ def catalog() -> FakeCatalog:
 
 @pytest_asyncio.fixture
 async def client(
-    session: AsyncSession, catalog: FakeCatalog, leo: FakeLeo
+    session: AsyncSession, catalog: FakeCatalog, leo: FakeLeo, owners: OwnersFixture
 ) -> AsyncGenerator[AsyncClient]:
     async def override_get_session() -> AsyncGenerator[AsyncSession]:
         yield session
@@ -361,6 +433,7 @@ async def client(
     app.dependency_overrides[real_get_session] = override_get_session
     _override_current_user(leo)
     app.dependency_overrides[get_catalog_client] = lambda: catalog
+    app.dependency_overrides[get_owner_catalogs] = lambda: owners.catalogs
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -369,12 +442,13 @@ async def client(
 
 @pytest_asyncio.fixture
 async def committed_client(
-    catalog: FakeCatalog, leo: FakeLeo
+    catalog: FakeCatalog, leo: FakeLeo, owners: OwnersFixture
 ) -> AsyncGenerator[AsyncClient]:
     """Cliente con sesiones REALES por request (commit de verdad), para probar
     concurrencia entre transacciones. Limpia las tablas de datos al terminar
     (solo la BD `_test`; los catalogos parametrizados se conservan)."""
     app.dependency_overrides[get_catalog_client] = lambda: catalog
+    app.dependency_overrides[get_owner_catalogs] = lambda: owners.catalogs
     _override_current_user(leo)
     transport = ASGITransport(app=app)
     try:

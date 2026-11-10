@@ -17,6 +17,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
+from app.modules.catalogs.service import OWN_CATALOGS
 from app.modules.queue.models import Priority, RemovalReason, ReturnReason
 from app.modules.queue_admin.schemas import CatalogCreate, CatalogKind, CatalogUpdate
 
@@ -30,6 +31,10 @@ class Kind:
     entity_type: str
     label: str  # para mensajes
     has_style: bool = False
+    # Catalogo de categoria: ordena por `sort_order`, sus `code` son de sistema
+    # (sin altas ni desactivacion) y solo `editable` se puede cambiar.
+    closed: bool = False
+    editable: tuple[str, ...] = ()
 
 
 KINDS: dict[str, Kind] = {
@@ -37,6 +42,27 @@ KINDS: dict[str, Kind] = {
     "removal-reasons": Kind(RemovalReason, "removal_reason", "motivos de retiro"),
     "return-reasons": Kind(ReturnReason, "return_reason", "motivos de devolución"),
 }
+_CLOSED_ENTITY = {
+    "blood-types": "blood_type",
+    "queue-statuses": "queue_status",
+    "queue-transition-kinds": "queue_transition_kind",
+    "validation-statuses": "validation_status",
+    "result-flags": "result_flag",
+    "trace-steps": "trace_step",
+}
+for _slug, _entity in _CLOSED_ENTITY.items():
+    KINDS[_slug] = Kind(
+        OWN_CATALOGS[_slug].model,
+        _entity,
+        OWN_CATALOGS[_slug].label,
+        closed=True,
+        editable=(
+            ("name", "sort_order", "variant", "show_in_report")
+            if _slug == "result-flags"
+            else ("name", "sort_order")
+        ),
+    )
+VARIANTS = ("success", "warning", "danger")
 
 
 def kind_of(slug: CatalogKind) -> Kind:
@@ -51,6 +77,11 @@ def snapshot(row: Any) -> dict[str, Any]:
             "rank": row.rank,
             "is_default": row.is_default,
         }
+    if hasattr(row, "sort_order"):
+        data["sort_order"] = row.sort_order
+        for column in ("variant", "show_in_report"):
+            if hasattr(row, column):
+                data[column] = getattr(row, column)
     return data
 
 
@@ -90,6 +121,58 @@ def _clean_rank(value: int | None) -> int:
             "El orden debe ser un número entero mayor o igual a 1.", {"field": "rank"}
         )
     return value
+
+
+def _clean_sort_order(value: int | None) -> int:
+    if value is None or value < 0:
+        raise ValidationAppError(
+            "El orden debe ser un número entero mayor o igual a 0.",
+            {"field": "sort_order"},
+        )
+    return value
+
+
+def _clean_variant(value: str | None) -> str:
+    if value not in VARIANTS:
+        raise ValidationAppError(
+            f"La variante debe ser una de: {', '.join(VARIANTS)}.", {"field": "variant"}
+        )
+    return value
+
+
+def _clean_report_flag(value: bool | None) -> bool:
+    if value is None:
+        raise ValidationAppError(
+            "Indica si la marca sale en el informe.", {"field": "show_in_report"}
+        )
+    return value
+
+
+def _reject_closed(kind: Kind) -> None:
+    if kind.closed:
+        raise ConflictError(
+            f"El catálogo de {kind.label} es de sistema: no admite elementos nuevos "
+            "ni se desactiva; solo se editan sus nombres y su presentación.",
+            {"kind": kind.entity_type},
+        )
+
+
+def _reject_unsupported(kind: Kind, fields: set[str]) -> None:
+    """Campos que el catalogo no tiene o que no se pueden cambiar en un catalogo
+    de categoria."""
+    if kind.closed:
+        not_editable = fields - set(kind.editable)
+        if not_editable:
+            raise ValidationAppError(
+                f"Este catálogo ({kind.label}) solo permite cambiar: "
+                f"{', '.join(kind.editable)}.",
+                {"fields": sorted(not_editable)},
+            )
+    elif fields & {"sort_order", "variant", "show_in_report"}:
+        raise ValidationAppError(
+            f"Este catálogo ({kind.label}) no tiene orden de presentación.",
+            {"fields": sorted(fields & {"sort_order", "variant", "show_in_report"})},
+        )
 
 
 def _reject_style(kind: Kind, fields: set[str]) -> None:
@@ -170,7 +253,12 @@ async def list_items(
     total = (
         await session.execute(select(func.count()).select_from(model).where(*conds))
     ).scalar_one()
-    order = (model.rank, model.code) if kind.has_style else (model.name, model.code)
+    if kind.has_style:
+        order = (model.rank, model.code)
+    elif kind.closed:
+        order = (model.sort_order, model.code)
+    else:
+        order = (model.name, model.code)
     rows = (
         await session.execute(
             select(model)
@@ -184,6 +272,7 @@ async def list_items(
 
 
 async def create(session: AsyncSession, kind: Kind, body: CatalogCreate):
+    _reject_closed(kind)
     _reject_style(
         kind,
         {
@@ -213,10 +302,18 @@ async def create(session: AsyncSession, kind: Kind, body: CatalogCreate):
 async def update(session: AsyncSession, kind: Kind, item_id: UUID, body: CatalogUpdate):
     """Devuelve (fila, antes); `antes` solo trae los campos que cambian."""
     sent = body.model_dump(exclude_unset=True, exclude={"reason"})
+    _reject_unsupported(kind, set(sent))
     _reject_style(kind, set(sent))
     if not sent:
         raise ValidationAppError("No hay cambios que guardar.", None)
-    cleaners = {"name": _clean_name, "color_hex": _clean_color, "rank": _clean_rank}
+    cleaners = {
+        "name": _clean_name,
+        "color_hex": _clean_color,
+        "rank": _clean_rank,
+        "sort_order": _clean_sort_order,
+        "variant": _clean_variant,
+        "show_in_report": _clean_report_flag,
+    }
     cleaned = {field: cleaners[field](value) for field, value in sent.items()}
     await _lock(session, kind)
     row = await get(session, kind, item_id, lock=True)
@@ -239,6 +336,7 @@ async def update(session: AsyncSession, kind: Kind, item_id: UUID, body: Catalog
 async def set_active(
     session: AsyncSession, kind: Kind, item_id: UUID, active: bool, reason: str | None
 ):
+    _reject_closed(kind)
     reason = (reason or "").strip() or None
     if not active and reason is None:
         raise ValidationAppError(

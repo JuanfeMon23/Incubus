@@ -4,7 +4,7 @@ PATIENT = {
     "document_number": "7001002003",
     "first_name": "MARIA",
     "first_last_name": "RUIZ",
-    "sex": "F",
+    "sex": "female",
     "birth_date": "1990-06-15",
 }
 DEMOGRAPHICS = {

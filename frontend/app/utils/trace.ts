@@ -1,4 +1,4 @@
-import type { TraceEvent, TraceScope } from '../types'
+import type { TraceEvent, TraceScope, TraceStepCatalogItem } from '../types'
 
 /** Categorías visuales de la línea de tiempo de una prueba. */
 export type TraceCategory =
@@ -25,63 +25,18 @@ export const CATEGORY_INFO: Record<TraceCategory, CategoryInfo> = {
   activation: { label: 'Activación', dot: 'bg-secondary-600', icon: 'M15 7a4 4 0 1 1-3.9 4.9L4 19v-3l2-2h2v-2h2l1.1-1.1A4 4 0 0 1 15 7Z' }
 }
 
-const STEP_LABELS: Record<string, string> = {
-  'order.test_added': 'Prueba agregada',
-  'order.finalized': 'Orden finalizada',
-  'labels.printed': 'Etiquetas impresas',
-  'labels.downloaded': 'Etiquetas descargadas',
-  'sample.collected': 'Tubo tomado',
-  'sample.uncollected': 'Toma deshecha',
-  'lab.received': 'Tubo recibido en laboratorio',
-  'lab.unreceived': 'Recepción deshecha',
-  'precondition.checked': 'Precondición verificada',
-  'result.entered': 'Resultado capturado',
-  'result.changed': 'Resultado modificado',
-  'result.cleared': 'Resultado borrado',
-  'test.validated': 'Prueba validada',
-  'activation.issued': 'Activación emitida',
-  'activation.used': 'Activación usada',
-  'delivery.order_viewed': 'Orden consultada por el servicio de entrega',
-  'delivery.report_downloaded': 'Informe descargado',
-  'delivery.patient_orders_listed': 'Órdenes del paciente listadas',
-  'queue.entered': 'Ingreso a la cola',
-  'queue.reception_claimed': 'Recepción iniciada',
-  'queue.reception_closed': 'Recepción cerrada',
-  'queue.labels_printed': 'Etiquetas impresas (cola)',
-  'queue.sampling_claimed': 'Toma de muestras iniciada',
-  'queue.sampling_finished': 'Toma de muestras finalizada',
-  'queue.in_laboratory': 'Paso a laboratorio',
-  'queue.removed': 'Retirado de la cola',
-  'queue.returned': 'Devuelto en la cola'
-}
-
-/** Categoría de un paso; los pasos nuevos o desconocidos caen en `order`. */
-export function stepCategory(step: string): TraceCategory {
-  const [prefix, name = ''] = step.split('.')
-  switch (prefix) {
-    case 'queue':
-      if (name.startsWith('reception')) return 'reception'
-      if (name.startsWith('sampling')) return 'sampling'
-      if (name === 'labels_printed') return 'labels'
-      if (name === 'in_laboratory') return 'lab'
-      return 'queue'
-    case 'labels': return 'labels'
-    case 'sample': return 'sampling'
-    case 'lab': return 'lab'
-    case 'precondition': return 'sampling'
-    case 'result': return 'capture'
-    case 'test': return 'validation'
-    case 'delivery': return 'delivery'
-    case 'activation': return 'activation'
-    default: return 'order'
-  }
+/** Categoría de un paso según `trace-steps`; un paso nuevo o desconocido cae en `order`. */
+export function stepCategory(step: string, steps: readonly TraceStepCatalogItem[] = []): TraceCategory {
+  const category = steps.find((item) => item.code === step)?.category
+  return category && category in CATEGORY_INFO ? (category as TraceCategory) : 'order'
 }
 
 /** Los pasos de cola (todos los `queue.*`) que el filtro «ocultar cola» esconde. */
 export const isQueueStep = (step: string) => step.startsWith('queue.')
 
-export function stepLabel(step: string): string {
-  return STEP_LABELS[step] ?? step
+/** Nombre del paso según `trace-steps`; sin coincidencia, el code. */
+export function stepLabel(step: string, steps: readonly TraceStepCatalogItem[] = []): string {
+  return steps.find((item) => item.code === step)?.name ?? step
 }
 
 export const SCOPE_LABELS: Record<TraceScope, string> = { test: 'Prueba', order: 'Orden', sample: 'Tubo' }

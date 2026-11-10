@@ -1,5 +1,6 @@
 """Informe de resultados en PDF (una orden finalizada)."""
 
+from collections.abc import Mapping
 from io import BytesIO
 
 from reportlab.lib import colors
@@ -7,15 +8,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-
-FLAG_LABEL = {
-    "low": "Bajo",
-    "high": "Alto",
-    "critical_low": "Critico bajo",
-    "critical_high": "Critico alto",
-    "abnormal": "Anormal",
-    "normal": "",
-}
 
 
 def _display(row: dict) -> str:
@@ -33,7 +25,9 @@ def _display(row: dict) -> str:
     return f"{value:g}" if isinstance(value, float) else str(value)
 
 
-def render_report_pdf(data: dict) -> bytes:
+def render_report_pdf(data: dict, flag_labels: Mapping[str, str]) -> bytes:
+    """`flag_labels`: marca -> nombre de las que el informe imprime
+    (`result_flags.show_in_report`); el resto sale sin marca."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm
@@ -62,7 +56,7 @@ def render_report_pdf(data: dict) -> bytes:
                     _display(result),
                     result.get("unit") or "",
                     result.get("reference") or "",
-                    FLAG_LABEL.get(result.get("flag") or "", ""),
+                    flag_labels.get(result.get("flag") or "", ""),
                 ]
             )
         table = Table(rows, colWidths=[62 * mm, 32 * mm, 22 * mm, 34 * mm, 24 * mm])

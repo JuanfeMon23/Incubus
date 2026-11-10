@@ -91,7 +91,7 @@ async def test_busqueda_de_paciente_existente_por_documento(client):
                 **BASE,
                 "document_number": "5550004",
                 "blood_type": "A+",
-                "sex": "F",
+                "sex": "female",
                 "birth_date": "1990-01-02",
             },
             "priority_id": pid,

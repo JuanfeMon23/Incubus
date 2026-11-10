@@ -23,6 +23,10 @@ class CedulaParseError(ValueError):
     pass
 
 
+# La cedula codifica el sexo con una letra; el catalogo de sexos (Vladimir) usa codigos.
+SEX_CODE_BY_LETTER = {"M": "male", "F": "female"}
+
+
 @dataclass(frozen=True)
 class CedulaData:
     document_number: str
